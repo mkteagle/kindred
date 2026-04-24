@@ -92,6 +92,8 @@ export async function GET(req: NextRequest) {
         username: username || userId,
         display_name: fullname || username || userId,
         flickr_user_id: userId,
+        flickr_oauth_token: accessToken,
+        flickr_oauth_secret: accessTokenSecret,
       }),
     });
 
@@ -102,7 +104,7 @@ export async function GET(req: NextRequest) {
       const loginResp = await fetch(`${BACKEND_URL}/auth/flickr-login`, {
         method: "POST",
         headers: backendHeaders,
-        body: JSON.stringify({ flickr_user_id: userId }),
+        body: JSON.stringify({ flickr_user_id: userId, flickr_oauth_token: accessToken, flickr_oauth_secret: accessTokenSecret }),
       });
       if (!loginResp.ok) {
         const err = await loginResp.json().catch(() => ({}));

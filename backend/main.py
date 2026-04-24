@@ -147,10 +147,15 @@ def create_new_tables():
                     password_hash TEXT,
                     role TEXT NOT NULL DEFAULT 'member',
                     flickr_user_id TEXT,
+                    flickr_oauth_token TEXT,
+                    flickr_oauth_secret TEXT,
                     created_at TIMESTAMPTZ DEFAULT now(),
                     updated_at TIMESTAMPTZ DEFAULT now()
                 )
             """)
+            # Migration: add Flickr token columns if upgrading from older schema
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS flickr_oauth_token TEXT")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS flickr_oauth_secret TEXT")
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS sessions (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -239,6 +244,26 @@ def validate_session(token: str) -> dict | None:
 def generate_invite_code() -> str:
     chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no I/O/0/1 to avoid confusion
     return "".join(secrets.choice(chars) for _ in range(8))
+
+def get_flickr_credentials() -> dict | None:
+    """Get Flickr OAuth credentials from admin user in DB, falling back to env vars."""
+    rows = db_query(
+        "SELECT flickr_user_id, flickr_oauth_token, flickr_oauth_secret FROM users WHERE role = 'admin' AND flickr_user_id IS NOT NULL LIMIT 1"
+    )
+    if rows and rows[0].get("flickr_oauth_token") and rows[0].get("flickr_oauth_secret"):
+        return {
+            "user_id": rows[0]["flickr_user_id"],
+            "oauth_token": rows[0]["flickr_oauth_token"],
+            "oauth_secret": rows[0]["flickr_oauth_secret"],
+        }
+    # Fall back to env vars for backward compat
+    if FLICKR_OAUTH_TOKEN and FLICKR_OAUTH_SECRET:
+        return {
+            "user_id": FLICKR_USER_ID,
+            "oauth_token": FLICKR_OAUTH_TOKEN,
+            "oauth_secret": FLICKR_OAUTH_SECRET,
+        }
+    return None
 
 # ── Lazy model init ───────────────────────────────────────────────────────────
 _face_app = None
@@ -452,6 +477,7 @@ def get_app_config():
         "setup_complete": setup_complete,
         "features": {
             "flickr_integration": bool(FLICKR_API_KEY),
+            "flickr_connected": bool(get_flickr_credentials()),
             "face_detection": True,
             "pet_detection": True,
             "vehicle_detection": True,
@@ -468,6 +494,8 @@ class SetupRequest(BaseModel):
     username: str
     display_name: str
     flickr_user_id: str
+    flickr_oauth_token: Optional[str] = None
+    flickr_oauth_secret: Optional[str] = None
 
 @app.post("/auth/setup")
 def auth_setup(req: SetupRequest):
@@ -476,9 +504,9 @@ def auth_setup(req: SetupRequest):
     if rows and rows[0]["cnt"] > 0:
         raise HTTPException(409, "Setup already complete — admin user exists")
     user_rows = db_query(
-        """INSERT INTO users (username, display_name, role, flickr_user_id)
-           VALUES (%s, %s, 'admin', %s) RETURNING id, username, display_name, role""",
-        (req.username, req.display_name, req.flickr_user_id),
+        """INSERT INTO users (username, display_name, role, flickr_user_id, flickr_oauth_token, flickr_oauth_secret)
+           VALUES (%s, %s, 'admin', %s, %s, %s) RETURNING id, username, display_name, role""",
+        (req.username, req.display_name, req.flickr_user_id, req.flickr_oauth_token, req.flickr_oauth_secret),
     )
     user = user_rows[0]
     session = create_session(str(user["id"]))
@@ -490,10 +518,12 @@ def auth_setup(req: SetupRequest):
 
 class FlickrLoginRequest(BaseModel):
     flickr_user_id: str
+    flickr_oauth_token: Optional[str] = None
+    flickr_oauth_secret: Optional[str] = None
 
 @app.post("/auth/flickr-login")
 def auth_flickr_login(req: FlickrLoginRequest):
-    """Admin re-login via Flickr OAuth. Finds admin by flickr_user_id."""
+    """Admin re-login via Flickr OAuth. Finds admin by flickr_user_id and refreshes tokens."""
     rows = db_query(
         "SELECT id, username, display_name, role FROM users WHERE flickr_user_id = %s AND role = 'admin'",
         (req.flickr_user_id,),
@@ -501,6 +531,13 @@ def auth_flickr_login(req: FlickrLoginRequest):
     if not rows:
         raise HTTPException(401, "No admin account for this Flickr user")
     user = rows[0]
+    # Update stored Flickr tokens on each login (they may have been re-authorized)
+    if req.flickr_oauth_token and req.flickr_oauth_secret:
+        db_query(
+            "UPDATE users SET flickr_oauth_token = %s, flickr_oauth_secret = %s, updated_at = now() WHERE id = %s",
+            (req.flickr_oauth_token, req.flickr_oauth_secret, str(user["id"])),
+            fetch=False,
+        )
     session = create_session(str(user["id"]))
     return {
         "user": {"id": str(user["id"]), "username": user["username"],
@@ -684,8 +721,9 @@ async def process_photo(req: ProcessPhotoRequest, admin=Depends(require_admin)):
 
     # If no URL provided, look it up from Flickr
     if not photo_url:
-        if not all([FLICKR_API_KEY, FLICKR_OAUTH_TOKEN, FLICKR_OAUTH_SECRET]):
-            raise HTTPException(500, "Flickr OAuth not configured on backend")
+        flickr_creds = get_flickr_credentials()
+        if not FLICKR_API_KEY or not flickr_creds:
+            raise HTTPException(500, "Flickr OAuth not configured")
         flickr_url = "https://api.flickr.com/services/rest"
         params = {
             "method": "flickr.photos.getInfo",
@@ -711,7 +749,8 @@ async def process_photo(req: ProcessPhotoRequest, admin=Depends(require_admin)):
         photo_url = f"https://live.staticflickr.com/{server}/{photo_id}_{secret}_z.jpg"
 
     # Build a photo dict compatible with insert_detection / _run_analysis
-    owner_id = FLICKR_USER_ID or ""
+    flickr_creds_for_owner = get_flickr_credentials()
+    owner_id = (flickr_creds_for_owner or {}).get("user_id", "") or ""
     photo = {
         "id": photo_id,
         "url": photo_url,
@@ -2311,7 +2350,8 @@ async def delete_flickr_photos(req: FlickrDeleteRequest, admin=Depends(require_a
     """Delete photos from Flickr and clean up local DB records."""
     import urllib.parse
 
-    if not all([FLICKR_API_KEY, FLICKR_OAUTH_TOKEN, FLICKR_OAUTH_SECRET]):
+    flickr_creds = get_flickr_credentials()
+    if not FLICKR_API_KEY or not flickr_creds:
         raise HTTPException(500, "Flickr OAuth not configured")
 
     flickr_url = "https://api.flickr.com/services/rest"
@@ -2367,41 +2407,22 @@ async def auto_scan(background_tasks: BackgroundTasks, secret: str = ""):
     """Nightly auto-scan: fetch all Flickr photos and analyze new ones."""
     if secret != SCAN_SECRET:
         raise HTTPException(403, "Invalid scan secret")
-    if not all([FLICKR_API_KEY, FLICKR_OAUTH_TOKEN, FLICKR_OAUTH_SECRET, FLICKR_USER_ID]):
-        raise HTTPException(500, "Flickr OAuth env vars not configured")
+    flickr_creds = get_flickr_credentials()
+    if not FLICKR_API_KEY or not flickr_creds:
+        raise HTTPException(500, "Flickr OAuth not configured")
 
     # Fetch all photos from Flickr using OAuth
-    import hmac
-    import hashlib
-    import time
     import urllib.parse
 
-    def oauth_sign(url, params):
-        oauth_params = {
-            "oauth_consumer_key": FLICKR_API_KEY,
-            "oauth_token": FLICKR_OAUTH_TOKEN,
-            "oauth_signature_method": "HMAC-SHA1",
-            "oauth_timestamp": str(int(time.time())),
-            "oauth_nonce": uuid.uuid4().hex,
-            "oauth_version": "1.0",
-        }
-        all_params = {**params, **oauth_params}
-        sorted_params = "&".join(f"{urllib.parse.quote(k, '')}={urllib.parse.quote(str(v), '')}"
-                                 for k, v in sorted(all_params.items()))
-        base_string = f"GET&{urllib.parse.quote(url, '')}&{urllib.parse.quote(sorted_params, '')}"
-        signing_key = f"{urllib.parse.quote(FLICKR_SECRET, '')}&{urllib.parse.quote(FLICKR_OAUTH_SECRET, '')}"
-        sig = base64.b64encode(hmac.new(signing_key.encode(), base_string.encode(), hashlib.sha1).digest()).decode()
-        oauth_params["oauth_signature"] = sig
-        return oauth_params
-
     flickr_url = "https://api.flickr.com/services/rest"
+    flickr_uid = flickr_creds["user_id"]
     all_photos = []
     page = 1
 
     while True:
         params = {
             "method": "flickr.people.getPhotos",
-            "user_id": FLICKR_USER_ID,
+            "user_id": flickr_uid,
             "per_page": "500",
             "page": str(page),
             "extras": "url_z,url_b,owner_name,title,media",
@@ -2409,9 +2430,9 @@ async def auto_scan(background_tasks: BackgroundTasks, secret: str = ""):
             "format": "json",
             "nojsoncallback": "1",
         }
-        oauth_params = oauth_sign(flickr_url, params)
+        signed = _flickr_oauth_sign(flickr_url, params, flickr_creds)
         auth_header = "OAuth " + ", ".join(f'{k}="{urllib.parse.quote(str(v), "")}"'
-                                           for k, v in oauth_params.items())
+                                           for k, v in signed.items())
         qs = urllib.parse.urlencode(params)
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(f"{flickr_url}?{qs}", headers={"Authorization": auth_header})
@@ -2426,9 +2447,9 @@ async def auto_scan(background_tasks: BackgroundTasks, secret: str = ""):
                 "id": p["id"],
                 "url": url_z,
                 "title": p.get("title", ""),
-                "owner": p.get("ownername", FLICKR_USER_ID),
+                "owner": p.get("ownername", flickr_uid),
                 "thumb": f"https://live.staticflickr.com/{p['server']}/{p['id']}_{p['secret']}_q.jpg",
-                "flickr_url": f"https://www.flickr.com/photos/{FLICKR_USER_ID}/{p['id']}",
+                "flickr_url": f"https://www.flickr.com/photos/{flickr_uid}/{p['id']}",
             })
 
         if page >= data["photos"]["pages"]:
@@ -2571,16 +2592,23 @@ def clear_all(admin=Depends(require_admin)):
 
 # ── Feature 1: Photo metadata from Flickr ────────────────────────────────────
 
-def _flickr_oauth_sign(url: str, params: dict) -> dict:
-    """Sign a Flickr API request using OAuth 1.0a."""
+def _flickr_oauth_sign(url: str, params: dict, creds: dict | None = None) -> dict:
+    """Sign a Flickr API request using OAuth 1.0a.
+    creds: { oauth_token, oauth_secret, user_id } — from get_flickr_credentials()
+    """
     import hmac
     import hashlib
     import time
     import urllib.parse
 
+    if creds is None:
+        creds = get_flickr_credentials()
+    if not creds:
+        raise HTTPException(500, "Flickr OAuth not configured")
+
     oauth_params = {
         "oauth_consumer_key": FLICKR_API_KEY,
-        "oauth_token": FLICKR_OAUTH_TOKEN,
+        "oauth_token": creds["oauth_token"],
         "oauth_signature_method": "HMAC-SHA1",
         "oauth_timestamp": str(int(time.time())),
         "oauth_nonce": uuid.uuid4().hex,
@@ -2592,7 +2620,7 @@ def _flickr_oauth_sign(url: str, params: dict) -> dict:
         for k, v in sorted(all_params.items())
     )
     base_string = f"GET&{urllib.parse.quote(url, '')}&{urllib.parse.quote(sorted_params, '')}"
-    signing_key = f"{urllib.parse.quote(FLICKR_SECRET, '')}&{urllib.parse.quote(FLICKR_OAUTH_SECRET, '')}"
+    signing_key = f"{urllib.parse.quote(FLICKR_SECRET, '')}&{urllib.parse.quote(creds['oauth_secret'], '')}"
     sig = base64.b64encode(
         hmac.new(signing_key.encode(), base_string.encode(), hashlib.sha1).digest()
     ).decode()
@@ -2714,8 +2742,8 @@ async def _backfill_metadata_task(job_id: str) -> None:
 @app.post("/backfill-metadata")
 async def backfill_metadata(background_tasks: BackgroundTasks, admin=Depends(require_admin)):
     """Backfill Flickr metadata (date, geo, tags, description) for all photos."""
-    if not all([FLICKR_API_KEY, FLICKR_OAUTH_TOKEN, FLICKR_OAUTH_SECRET, FLICKR_USER_ID]):
-        raise HTTPException(500, "Flickr OAuth env vars not configured")
+    if not FLICKR_API_KEY or not get_flickr_credentials():
+        raise HTTPException(500, "Flickr OAuth not configured")
     job_id = str(uuid.uuid4())
     jobs[job_id] = {"status": "running", "progress": 0, "total": 0, "message": "Starting metadata backfill..."}
     background_tasks.add_task(_backfill_metadata_task, job_id)

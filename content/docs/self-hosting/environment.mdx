@@ -10,9 +10,9 @@ description: All configuration options for Kindred.
 | `DATABASE_URL` | Yes | PostgreSQL connection string with pgvector |
 | `FLICKR_API_KEY` | Yes | Flickr API key |
 | `FLICKR_SECRET` | Yes | Flickr API secret |
-| `FLICKR_OAUTH_TOKEN` | No | Generated via OAuth flow in the web UI |
-| `FLICKR_OAUTH_SECRET` | No | Generated via OAuth flow in the web UI |
-| `FLICKR_USER_ID` | No | Your Flickr user ID (auto-detected) |
+| `FLICKR_OAUTH_TOKEN` | No | Legacy fallback. Automatically stored in the database when you connect Flickr via the web UI |
+| `FLICKR_OAUTH_SECRET` | No | Legacy fallback. Automatically stored in the database when you connect Flickr via the web UI |
+| `FLICKR_USER_ID` | No | Legacy fallback. Automatically stored in the database when you connect Flickr via the web UI |
 | `API_KEY` | Recommended | API key for authenticating requests. Generate with `openssl rand -hex 32` |
 | `SCAN_SECRET` | No | Secret for the automated scan endpoint |
 
