@@ -1,0 +1,52 @@
+---
+title: Introduction
+description: Kindred is a self-hosted family photo library with automatic face recognition, clustering, and organization.
+---
+
+## What is Kindred?
+
+Kindred turns your Flickr photo library into something a household can actually use. It automatically detects faces, pets, and vehicles in your photos, clusters them into people and animals, and lets you browse by person, location, event, or timeline.
+
+Unlike cloud photo services, Kindred runs on your own server. Your photos stay on Flickr — Kindred just indexes and organizes them. No photo data is stored on the Kindred server itself.
+
+## Features
+
+- **Face recognition** — ArcFace-powered detection and clustering, automatically groups photos by person
+- **Pet & vehicle detection** — YOLOv8 detects animals and vehicles
+- **Visual search** — CLIP-powered text search ("kids at the beach") and similar-photo search
+- **Timeline & locations** — Browse photos by date or on a map
+- **Events** — Automatic event detection from time/location clusters
+- **Review mode** — Keyboard-driven triage for quickly naming and organizing people
+- **Manual tagging** — Draw bounding boxes to tag missed faces
+- **Custom avatars** — Pick the best photo and crop for each person's card
+- **Duplicates** — Find and manage duplicate photos
+- **Color search** — Find photos by dominant color
+- **OCR** — Detect text in photos
+
+## Architecture
+
+```
+Flickr (photo storage)
+   |
+   v
+Kindred Backend (FastAPI + PostgreSQL/pgvector)
+   |                    |
+   v                    v
+Kindred Web (Next.js)   Kindred iOS (SwiftUI)
+```
+
+- **Backend** — Python FastAPI service with InsightFace, YOLOv8, and CLIP models. Runs in Docker.
+- **Database** — PostgreSQL with pgvector for embedding similarity search
+- **Web frontend** — Next.js app, can be deployed on Vercel or self-hosted
+- **iOS app** — Native SwiftUI app connecting to your backend
+- **Photo storage** — Flickr. Kindred never stores your photos, only metadata and embeddings.
+
+## Quick start
+
+1. [Check requirements](/docs/getting-started/requirements)
+2. [Install and deploy](/docs/getting-started/installation)
+3. [Set up Flickr API access](/docs/getting-started/flickr-setup)
+
+## License
+
+Kindred is open source under the [AGPL-3.0 license](https://www.gnu.org/licenses/agpl-3.0.en.html).

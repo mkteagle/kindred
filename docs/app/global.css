@@ -1,0 +1,35 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+html {
+  scrollbar-gutter: stable;
+}
+
+html:has(body[data-scroll-locked]) {
+  scrollbar-gutter: auto;
+}
+
+#nd-docs-layout {
+  --fd-sidebar-width: 200px !important;
+  grid-template-columns: 0px var(--fd-sidebar-col) minmax(0, 1fr) var(--fd-toc-width) 0px !important;
+}
+
+#nd-sidebar p {
+  font-size: 0.6875rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+  opacity: 0.45 !important;
+}
+
+/* Kindred warm/earthy dark theme */
+.dark, [data-theme="dark"] {
+  --color-fd-primary: #c9551c !important;
+  --color-fd-primary-foreground: #fff !important;
+  --color-fd-background: #1a1410 !important;
+  --color-fd-card: #221c16 !important;
+  --color-fd-border: #3d2e22 !important;
+  --color-fd-muted-foreground: #7d553f !important;
+  --color-fd-foreground: #f0e8e0 !important;
+}

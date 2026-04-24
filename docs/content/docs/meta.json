@@ -1,0 +1,20 @@
+{
+  "title": "Docs",
+  "pages": [
+    "index",
+    "---Getting Started---",
+    "getting-started/requirements",
+    "getting-started/installation",
+    "getting-started/flickr-setup",
+    "---Self-Hosting---",
+    "self-hosting/docker",
+    "self-hosting/vps",
+    "self-hosting/environment",
+    "self-hosting/vercel",
+    "---Mobile---",
+    "mobile/config",
+    "---Reference---",
+    "reference/api",
+    "reference/architecture"
+  ]
+}

@@ -1,0 +1,59 @@
+import type { Metadata } from "next";
+import { Providers } from "./providers";
+import { Topbar } from "./topbar";
+import { SyncProgress } from "@/components/sync-progress";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: {
+    default: "Kindred — Private Family Photo Library",
+    template: "%s | Kindred",
+  },
+  description: "A calmer home for family photos, with people, places, and moments organized for the whole household.",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"),
+  openGraph: {
+    type: "website",
+    siteName: "Kindred",
+    title: "Kindred — Private Family Photo Library",
+    description: "A calmer home for family photos, with people, places, and moments organized for the whole household.",
+    url: process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Kindred — Private Family Photo Library",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary",
+    title: "Kindred — Private Family Photo Library",
+    description: "A calmer home for family photos.",
+  },
+  icons: {
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.png", sizes: "32x32", type: "image/png" },
+    ],
+    apple: "/favicon.png",
+  },
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body>
+        <Providers>
+          <Topbar />
+          <SyncProgress />
+          {children}
+        </Providers>
+      </body>
+    </html>
+  );
+}

@@ -1,0 +1,70 @@
+---
+title: API Reference
+description: Kindred backend API endpoints.
+---
+
+## Authentication
+
+All endpoints (except `/health` and `/app-config`) require an API key:
+
+```
+X-API-Key: your-api-key
+```
+
+Or as a query parameter: `?api_key=your-api-key`
+
+## Clusters
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/clusters/{category}/summary` | List all clusters with counts and avatars |
+| GET | `/clusters/{category}/{cluster_id}` | Full detail for a cluster |
+| GET | `/clusters/{category}/unmatched` | Unclustered detections |
+| GET | `/clusters/named` | Named clusters for dropdowns |
+| POST | `/clusters/label` | Name a cluster |
+| POST | `/clusters/merge` | Merge two clusters |
+| POST | `/clusters/assign` | Assign detection to cluster |
+| POST | `/clusters/dismiss` | Dismiss a cluster |
+| POST | `/clusters/dismiss-detection` | Dismiss a single detection |
+| POST | `/clusters/remove-detections` | Remove detections from cluster |
+| POST | `/clusters/set-avatar` | Set custom avatar/cover for cluster |
+
+Categories: `people`, `pets`, `vehicles`
+
+## Photos
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/photos/{photo_id}/detections` | All detections in a photo |
+| GET | `/photos/{photo_id}/metadata` | Photo metadata |
+| POST | `/photos/{photo_id}/tag` | Manually tag a face/object |
+| GET | `/photos/together` | Photos containing multiple people |
+| GET | `/photos/appears-with` | People who appear with a person |
+
+## Search
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/search` | CLIP text search |
+| GET | `/search/face` | Find similar faces |
+
+## Scanning
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/analyze` | Start a photo scan |
+| GET | `/jobs/active` | Check scan progress |
+| GET | `/syncs` | Scan history |
+
+## Other
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/stats` | Library statistics |
+| GET | `/health` | Health check |
+| GET | `/app-config` | Mobile app configuration (public) |
+| GET | `/timeline` | Photos by month |
+| GET | `/locations` | Photos by location |
+| GET | `/events` | Auto-detected events |
+| GET | `/objects` | Object categories |
+| GET | `/scenes` | Visual scene groups |

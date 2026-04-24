@@ -1,0 +1,36 @@
+---
+title: Flickr Setup
+description: How to get Flickr API credentials for Kindred.
+---
+
+## Get API credentials
+
+1. Go to [Flickr API Keys](https://www.flickr.com/services/api/keys/)
+2. Click **Apply for a Non-Commercial Key**
+3. Fill in the application details:
+   - **Name**: Kindred
+   - **Description**: Private family photo organization
+4. You'll receive an **API Key** and **Secret**
+
+## Configure OAuth
+
+Kindred uses OAuth to access your Flickr account. The web app handles the OAuth flow — just sign in through the UI and authorize Kindred to access your photos.
+
+Add your API credentials to `backend/.env`:
+
+```bash
+FLICKR_API_KEY=your_api_key_here
+FLICKR_SECRET=your_secret_here
+```
+
+The OAuth tokens (`FLICKR_OAUTH_TOKEN` and `FLICKR_OAUTH_SECRET`) are generated automatically when you sign in through the web UI for the first time.
+
+## Permissions
+
+Kindred requests **delete** permission level from Flickr. This is needed to:
+
+- Read your photos and metadata
+- Upload new photos (optional)
+- Delete photos from Flickr (optional, only when you explicitly request it)
+
+If you're not comfortable with delete permissions, you can modify the OAuth scope in the code, but upload and delete features won't work.
