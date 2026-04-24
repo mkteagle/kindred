@@ -1,0 +1,63 @@
+---
+title: Installation
+description: Clone, configure, and deploy Kindred.
+---
+
+## 1. Clone the repository
+
+```bash
+git clone https://github.com/mkteagle/kindred.git
+cd kindred
+```
+
+## 2. Set up the backend
+
+```bash
+cd backend
+cp .env.example .env
+```
+
+Edit `.env` with your database credentials, Flickr API keys, and a generated API key:
+
+```bash
+# Generate a random API key
+openssl rand -hex 32
+```
+
+See [Environment Variables](/docs/self-hosting/environment) for all available options.
+
+## 3. Start the backend
+
+```bash
+docker compose up -d
+```
+
+This starts the FastAPI backend and nginx reverse proxy. The API will be available at `http://your-server:80`.
+
+## 4. Deploy the web frontend
+
+### Option A: Vercel (recommended)
+
+See [Vercel Deployment](/docs/self-hosting/vercel).
+
+### Option B: Self-hosted
+
+```bash
+cd ..  # back to repo root
+pnpm install
+pnpm build
+pnpm start
+```
+
+Set the environment variables from `.env.example` before building.
+
+## 5. First scan
+
+Once both services are running, sign in via the web UI and trigger your first photo scan from the Sync page. Kindred will:
+
+1. Fetch your Flickr photos
+2. Run face, pet, and vehicle detection
+3. Generate CLIP embeddings for search
+4. Cluster detected faces into people
+
+The first scan takes a while depending on your library size. Progress is shown in the UI.

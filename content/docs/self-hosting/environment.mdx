@@ -1,0 +1,46 @@
+---
+title: Environment Variables
+description: All configuration options for Kindred.
+---
+
+## Backend (`backend/.env`)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string with pgvector |
+| `FLICKR_API_KEY` | Yes | Flickr API key |
+| `FLICKR_SECRET` | Yes | Flickr API secret |
+| `FLICKR_OAUTH_TOKEN` | No | Generated via OAuth flow in the web UI |
+| `FLICKR_OAUTH_SECRET` | No | Generated via OAuth flow in the web UI |
+| `FLICKR_USER_ID` | No | Your Flickr user ID (auto-detected) |
+| `API_KEY` | Recommended | API key for authenticating requests. Generate with `openssl rand -hex 32` |
+| `SCAN_SECRET` | No | Secret for the automated scan endpoint |
+
+## Frontend (`.env` or `.env.local`)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `BACKEND_URL` | Yes | URL of your Kindred backend (e.g. `https://api.your-domain.com`) |
+| `API_KEY` | Yes | Must match the `API_KEY` in backend config |
+| `COOKIE_SECRET` | Yes | Encryption key for auth cookies. Generate with `openssl rand -hex 32` |
+| `NEXT_PUBLIC_BASE_URL` | No | Public URL of the web app (for OpenGraph metadata) |
+
+## Example
+
+### Backend
+
+```bash
+DATABASE_URL=postgresql://kindred:your-password@db.example.com:5432/kindred
+FLICKR_API_KEY=abc123
+FLICKR_SECRET=def456
+API_KEY=a1b2c3d4e5f6...
+```
+
+### Frontend
+
+```bash
+BACKEND_URL=https://api.your-domain.com
+API_KEY=a1b2c3d4e5f6...
+COOKIE_SECRET=your-random-hex-string
+NEXT_PUBLIC_BASE_URL=https://photos.your-domain.com
+```

@@ -1,0 +1,30 @@
+---
+title: Vercel Deployment
+description: Deploy the Kindred web frontend on Vercel.
+---
+
+## Setup
+
+1. Fork or clone the [Kindred repo](https://github.com/mkteagle/kindred)
+2. Import the project in [Vercel](https://vercel.com/new)
+3. Set the **Root Directory** to the repo root (not `docs/`)
+4. Add environment variables:
+
+| Variable | Value |
+|----------|-------|
+| `BACKEND_URL` | `https://api.your-domain.com` (your VPS backend) |
+| `API_KEY` | Your backend API key |
+| `COOKIE_SECRET` | A random 32-byte hex string |
+| `NEXT_PUBLIC_BASE_URL` | Your Vercel domain |
+
+5. Deploy
+
+## Custom domain
+
+In Vercel project settings, add your custom domain under **Domains**. Vercel handles SSL automatically.
+
+## Environment
+
+Vercel provides the Node.js runtime. The web frontend is a standard Next.js app with no special build requirements.
+
+The frontend proxies all API requests through `/api/backend/` to your self-hosted backend, adding the API key server-side so it's never exposed to the browser.

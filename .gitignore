@@ -9,3 +9,5 @@ backend/data/
 backend/.venv/
 __pycache__
 *.pyc
+tsconfig.tsbuildinfo
+.source/

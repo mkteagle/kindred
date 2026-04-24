@@ -1,0 +1,54 @@
+---
+title: Mobile App Configuration
+description: Connect the Kindred iOS app to your self-hosted backend.
+---
+
+## Setup
+
+The Kindred iOS app connects to your self-hosted backend. On first launch, you'll need to configure:
+
+1. **Backend URL** — The URL of your Kindred backend (e.g. `https://api.your-domain.com`)
+2. **API Key** — The same API key configured in your backend's `.env`
+
+## Config endpoint
+
+Your backend exposes a public config endpoint at `/app-config` that the iOS app uses to verify the connection and discover available features:
+
+```bash
+curl https://api.your-domain.com/app-config
+```
+
+```json
+{
+  "api_version": "1.0",
+  "app_name": "Kindred",
+  "features": {
+    "flickr_integration": true,
+    "face_detection": true,
+    "pet_detection": true,
+    "vehicle_detection": true
+  },
+  "auth": {
+    "method": "api_key",
+    "header": "X-API-Key"
+  }
+}
+```
+
+This endpoint requires no authentication.
+
+## Authentication
+
+All other API requests require the `X-API-Key` header:
+
+```
+X-API-Key: your-api-key-here
+```
+
+The iOS app stores this securely in the device Keychain.
+
+## Troubleshooting
+
+- **Connection failed** — Verify your backend URL is accessible from the internet. Check firewall rules.
+- **401 Unauthorized** — Verify your API key matches the one in `backend/.env`.
+- **SSL errors** — Ensure your backend has a valid HTTPS certificate (use Caddy for automatic HTTPS).

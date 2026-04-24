@@ -1,0 +1,76 @@
+---
+title: VPS Setup
+description: Deploy Kindred's backend on a VPS.
+---
+
+## Recommended providers
+
+Any Linux VPS with 4GB+ RAM works. Affordable options:
+
+| Provider | Plan | RAM | Cost |
+|----------|------|-----|------|
+| Hetzner | CPX11 | 2GB | ~$4/mo |
+| Hetzner | CPX21 | 4GB | ~$7/mo |
+| DigitalOcean | Basic | 4GB | $24/mo |
+| Oracle Cloud | Ampere A1 | 4GB | Free tier |
+
+## Initial server setup
+
+```bash
+# SSH into your VPS
+ssh root@your-server-ip
+
+# Install Docker
+curl -fsSL https://get.docker.com | sh
+
+# Install Docker Compose plugin
+apt install docker-compose-plugin
+
+# Clone the repo
+git clone https://github.com/mkteagle/kindred.git
+cd kindred/backend
+
+# Configure
+cp .env.example .env
+nano .env  # Add your credentials
+```
+
+## HTTPS with Caddy (recommended)
+
+Replace the nginx service with Caddy for automatic HTTPS:
+
+```bash
+apt install caddy
+```
+
+Create `/etc/caddy/Caddyfile`:
+
+```
+your-domain.com {
+    reverse_proxy localhost:8000
+}
+```
+
+```bash
+systemctl enable caddy
+systemctl start caddy
+```
+
+Then remove the nginx service from `docker-compose.yml` and expose port 8000 directly on the backend service.
+
+## Firewall
+
+```bash
+ufw allow 22    # SSH
+ufw allow 80    # HTTP
+ufw allow 443   # HTTPS
+ufw enable
+```
+
+## Updating
+
+```bash
+cd /root/kindred/backend
+git pull
+docker compose restart backend
+```

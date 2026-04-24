@@ -1,0 +1,84 @@
+---
+title: Docker Deployment
+description: Run the Kindred backend with Docker Compose.
+---
+
+## Docker Compose
+
+The backend ships with a `docker-compose.yml` that runs two services:
+
+- **backend** — FastAPI app with face detection models
+- **nginx** — Reverse proxy on port 80
+
+```yaml
+services:
+  backend:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+      - ./main.py:/app/main.py
+    env_file: .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    expose:
+      - "8000"
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+```
+
+## Commands
+
+```bash
+# Start
+docker compose up -d
+
+# View logs
+docker compose logs -f backend
+
+# Restart after code changes
+docker compose restart backend
+
+# Rebuild after dependency changes
+docker compose up -d --build
+```
+
+## Updating
+
+The `main.py` file is volume-mounted, so you can update the backend code without rebuilding:
+
+```bash
+# Pull latest code
+git pull
+
+# Restart to pick up changes
+docker compose restart backend
+```
+
+If `requirements.txt` changes, rebuild the image:
+
+```bash
+docker compose up -d --build
+```
+
+## Database
+
+Kindred uses PostgreSQL with the pgvector extension. You can use any PostgreSQL provider:
+
+- [Railway](https://railway.app) — managed PostgreSQL with pgvector
+- [Neon](https://neon.tech) — serverless PostgreSQL with pgvector
+- Self-hosted PostgreSQL with `CREATE EXTENSION vector`
+
+Set the connection string in `backend/.env`:
+
+```bash
+DATABASE_URL=postgresql://user:password@host:5432/kindred
+```

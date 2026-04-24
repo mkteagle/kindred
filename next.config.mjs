@@ -1,5 +1,9 @@
+import { createMDX } from 'fumadocs-mdx/next';
+
+const withMDX = createMDX();
+
 /** @type {import('next').NextConfig} */
-const nextConfig = {
+const config = {
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "live.staticflickr.com" },
@@ -8,4 +12,4 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+export default withMDX(config);

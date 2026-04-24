@@ -1,0 +1,59 @@
+---
+title: Architecture
+description: How Kindred's components fit together.
+---
+
+## System overview
+
+```
+┌─────────────┐     ┌──────────────────────────┐     ┌──────────┐
+│  Flickr     │────▶│  Kindred Backend          │────▶│ PostgreSQL│
+│  (photos)   │     │  FastAPI + Docker          │     │ + pgvector│
+└─────────────┘     └──────────────────────────┘     └──────────┘
+                       │              │
+                       ▼              ▼
+                 ┌──────────┐  ┌──────────┐
+                 │  Web UI  │  │  iOS App  │
+                 │  Next.js │  │  SwiftUI  │
+                 └──────────┘  └──────────┘
+```
+
+## Backend
+
+The backend is a single Python FastAPI service that handles:
+
+- **Photo scanning** — Fetches photos from Flickr, runs detection models
+- **Face detection** — InsightFace (ArcFace) at 960px resolution
+- **Pet/vehicle detection** — YOLOv8
+- **Embedding generation** — CLIP ViT-B-32 for text/image search
+- **Clustering** — DBSCAN + agglomerative clustering for face grouping
+- **API** — RESTful endpoints for the web and mobile clients
+
+All models run on CPU. No GPU required.
+
+## Database
+
+PostgreSQL with the pgvector extension stores:
+
+- **Detections** — Face/pet/vehicle bounding boxes, confidence scores, base64 chips
+- **Embeddings** — 512-dimensional vectors for face recognition and CLIP search
+- **Clusters** — Groupings of detections into people/animals
+- **Metadata** — Photo dates, locations, text (OCR), colors
+
+## Web frontend
+
+Next.js app that proxies all API requests through a server-side route (`/api/backend/`). This keeps the API key server-side and allows deployment on Vercel without CORS issues.
+
+## iOS app
+
+Native SwiftUI app that connects directly to the backend using the API key stored in the device Keychain.
+
+## Photo storage
+
+Kindred **never stores your photos**. Photos remain on Flickr. The backend only stores:
+
+- Metadata (titles, dates, locations)
+- Detection chips (small base64 face/object crops for display)
+- Embeddings (for search and clustering)
+
+If you delete the Kindred database, your photos on Flickr are unaffected.

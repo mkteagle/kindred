@@ -1,8 +1,4 @@
 import type { Metadata } from "next";
-import { Providers } from "./providers";
-import { Topbar } from "./topbar";
-import { SyncProgress } from "@/components/sync-progress";
-import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
@@ -47,13 +43,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
-        <Providers>
-          <Topbar />
-          <SyncProgress />
-          {children}
-        </Providers>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

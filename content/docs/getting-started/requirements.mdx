@@ -1,0 +1,36 @@
+---
+title: Requirements
+description: What you need to run Kindred.
+---
+
+## Server requirements
+
+Kindred's backend runs face detection and embedding models, so it needs a server with reasonable specs:
+
+- **CPU**: 2+ cores (face detection is CPU-intensive)
+- **RAM**: 4GB minimum, 8GB recommended
+- **Disk**: 10GB for Docker images and model weights
+- **OS**: Linux (Ubuntu 22.04+ recommended)
+
+A $5-10/month VPS from providers like Hetzner, DigitalOcean, or Oracle Cloud works well.
+
+## Software
+
+- **Docker** and **Docker Compose** — for running the backend
+- **Node.js 20+** and **pnpm** — for building the web frontend
+- A **Flickr account** with API access
+
+## Flickr API
+
+Kindred connects to Flickr to scan and organize your photos. You'll need:
+
+1. A Flickr account
+2. A Flickr API key and secret ([apply here](https://www.flickr.com/services/api/keys/))
+3. OAuth tokens for your account (generated during setup)
+
+See [Flickr Setup](/docs/getting-started/flickr-setup) for the full walkthrough.
+
+## Optional
+
+- **Vercel account** — for deploying the web frontend (or self-host with Node.js)
+- **Domain name** — for HTTPS access to your backend
