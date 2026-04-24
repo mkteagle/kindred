@@ -40,6 +40,12 @@ From the Settings page, admins can:
 - Remove members (immediately revokes access)
 - View and revoke active invite codes
 
+## Photo uploads
+
+Photo uploads go to the Flickr account configured in the backend's `.env` file (`FLICKR_OAUTH_TOKEN` and `FLICKR_USER_ID`). This is typically the admin's Flickr account. All household members browse the same library from this account.
+
+If your household has multiple Flickr accounts (e.g. one per family member), the admin can change which account is configured in the backend environment. Support for multiple linked Flickr accounts per household is planned for a future release.
+
 ## How it works
 
 - Members authenticate with username/password
