@@ -5,7 +5,20 @@ description: Connect the Kindred iOS app to your self-hosted backend.
 
 ## Setup
 
-The Kindred iOS app connects to your self-hosted backend. On first launch, you'll need to configure:
+The Kindred iOS app connects to your self-hosted backend. There are two ways to configure it:
+
+### QR code (recommended)
+
+1. Open the Kindred web app and click your avatar in the top-right
+2. Select **Mobile setup**
+3. Enter your backend URL and API key
+4. Scan the QR code with the Kindred iOS app
+
+The QR code encodes your backend URL and API key so the app can connect instantly.
+
+### Manual configuration
+
+On first launch, you'll need to enter:
 
 1. **Backend URL** — The URL of your Kindred backend (e.g. `https://api.your-domain.com`)
 2. **API Key** — The same API key configured in your backend's `.env`

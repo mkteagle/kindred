@@ -35,28 +35,19 @@ cp .env.example .env
 nano .env  # Add your credentials
 ```
 
-## HTTPS with Caddy (recommended)
+## HTTPS
 
-Replace the nginx service with Caddy for automatic HTTPS:
+The included `docker-compose.yml` uses **Caddy** as the reverse proxy, which automatically provisions and renews SSL certificates from Let's Encrypt.
 
-```bash
-apt install caddy
-```
-
-Create `/etc/caddy/Caddyfile`:
+Create a `Caddyfile` in the backend directory with your domain:
 
 ```
 your-domain.com {
-    reverse_proxy localhost:8000
+    reverse_proxy backend:8000
 }
 ```
 
-```bash
-systemctl enable caddy
-systemctl start caddy
-```
-
-Then remove the nginx service from `docker-compose.yml` and expose port 8000 directly on the backend service.
+That's it — Caddy handles everything else. No manual certificate management needed.
 
 ## Firewall
 
