@@ -64,6 +64,37 @@ export async function getTokenFromCookieStore(): Promise<Record<string, string> 
   return decryptToken(flickrToken.value);
 }
 
+// ── Session helpers (household accounts) ────────────────────────────────────
+
+export interface SessionData {
+  session_token: string;
+  user_id: string;
+  username: string;
+  display_name: string;
+  role: "admin" | "member";
+  auth_method: "flickr" | "password";
+}
+
+export function getSessionFromRequest(req: Request): SessionData | null {
+  const cookieHeader = req.headers.get("cookie") || "";
+  const parsed = parseCookiesFromHeader(cookieHeader);
+  if (!parsed.kindred_session) return null;
+  const data = decryptToken(parsed.kindred_session);
+  if (!data || !data.session_token) return null;
+  return data as unknown as SessionData;
+}
+
+export async function getSessionFromCookieStore(): Promise<SessionData | null> {
+  const cookieStore = await cookies();
+  const session = cookieStore.get("kindred_session");
+  if (!session?.value) return null;
+  const data = decryptToken(session.value);
+  if (!data || !data.session_token) return null;
+  return data as unknown as SessionData;
+}
+
+// ── Flickr API helpers ──────────────────────────────────────────────────────
+
 export function signedFlickrUrl(
   method: string,
   params: Record<string, string | number>,

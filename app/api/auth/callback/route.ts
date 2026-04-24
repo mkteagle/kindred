@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { oauth, decryptToken, encryptToken } from "@/lib/oauth";
 
 const ACCESS_TOKEN_URL = "https://www.flickr.com/services/oauth/access_token";
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
+const API_KEY = process.env.API_KEY || "";
 
 export async function GET(req: NextRequest) {
   try {
@@ -76,6 +78,52 @@ export async function GET(req: NextRequest) {
     };
     const encrypted = encryptToken(tokenData as Record<string, unknown>);
 
+    // Create or login the admin user on the backend
+    const backendHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    if (API_KEY) backendHeaders["X-API-Key"] = API_KEY;
+
+    let backendUser: { user: { id: string; username: string; display_name: string; role: string }; session: { token: string } };
+
+    // Try setup first (first-time admin creation)
+    const setupResp = await fetch(`${BACKEND_URL}/auth/setup`, {
+      method: "POST",
+      headers: backendHeaders,
+      body: JSON.stringify({
+        username: username || userId,
+        display_name: fullname || username || userId,
+        flickr_user_id: userId,
+      }),
+    });
+
+    if (setupResp.ok) {
+      backendUser = await setupResp.json();
+    } else {
+      // Admin already exists — login instead
+      const loginResp = await fetch(`${BACKEND_URL}/auth/flickr-login`, {
+        method: "POST",
+        headers: backendHeaders,
+        body: JSON.stringify({ flickr_user_id: userId }),
+      });
+      if (!loginResp.ok) {
+        const err = await loginResp.json().catch(() => ({}));
+        return NextResponse.redirect(
+          new URL(`/login?error=${encodeURIComponent((err as Record<string, string>).detail || "auth_failed")}`, req.url)
+        );
+      }
+      backendUser = await loginResp.json();
+    }
+
+    // Set the session cookie
+    const sessionData = {
+      session_token: backendUser.session.token,
+      user_id: backendUser.user.id,
+      username: backendUser.user.username,
+      display_name: backendUser.user.display_name,
+      role: backendUser.user.role,
+      auth_method: "flickr",
+    };
+    const encryptedSession = encryptToken(sessionData as Record<string, unknown>);
+
     const response = NextResponse.redirect(new URL("/", req.url));
     response.cookies.set("flickr_token", encrypted, {
       path: "/",
@@ -83,6 +131,13 @@ export async function GET(req: NextRequest) {
       secure: true,
       sameSite: "lax",
       maxAge: 31536000,
+    });
+    response.cookies.set("kindred_session", encryptedSession, {
+      path: "/",
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      maxAge: 2592000, // 30 days
     });
     response.cookies.set("flickr_req", "", {
       path: "/",

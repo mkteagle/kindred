@@ -9,6 +9,7 @@ insightface==0.7.3
 onnxruntime==1.18.0
 pydantic==2.7.1
 psycopg2-binary==2.9.9
+bcrypt==4.2.0
 pgvector==0.3.6
 open-clip-torch>=2.26.0
 pytesseract==0.3.13

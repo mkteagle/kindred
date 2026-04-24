@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionFromRequest } from "@/lib/oauth";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 const API_KEY = process.env.API_KEY || "";
@@ -15,6 +16,12 @@ async function handleRequest(
 
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (API_KEY) headers["X-API-Key"] = API_KEY;
+
+    // Forward session token from cookie to backend
+    const session = getSessionFromRequest(req);
+    if (session?.session_token) {
+      headers["X-Session-Token"] = session.session_token;
+    }
 
     const opts: RequestInit = {
       method: req.method,

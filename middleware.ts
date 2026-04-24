@@ -2,13 +2,15 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 export function middleware(request: NextRequest) {
-  const token = request.cookies.get("flickr_token");
+  const session = request.cookies.get("kindred_session");
+  const flickrToken = request.cookies.get("flickr_token");
   const { pathname } = request.nextUrl;
 
-  // Allow: landing page, login, API routes, static files
+  // Allow: landing page, login, join, API routes, docs, static files
   if (
     pathname === "/" ||
     pathname === "/login" ||
+    pathname === "/join" ||
     pathname.startsWith("/api/") ||
     pathname.startsWith("/docs") ||
     pathname.startsWith("/_next") ||
@@ -22,8 +24,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // If no token, redirect to login
-  if (!token) {
+  // Allow if either session cookie or legacy flickr token exists
+  if (!session && !flickrToken) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 

@@ -15,9 +15,13 @@ import asyncio
 import base64
 import os
 
+import secrets
+import bcrypt
+
 import psycopg2
 from psycopg2.extras import RealDictCursor, execute_values
 from pgvector.psycopg2 import register_vector
+from datetime import datetime, timedelta, timezone
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 FLICKR_API_KEY = os.environ.get("FLICKR_API_KEY", "")
@@ -31,26 +35,55 @@ API_KEY = os.environ.get("API_KEY", "")
 app = FastAPI(title="Kindred API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-from fastapi import Request as FastAPIRequest
+from fastapi import Request as FastAPIRequest, Depends
 from starlette.middleware.base import BaseHTTPMiddleware
 
-class APIKeyMiddleware(BaseHTTPMiddleware):
+AUTH_SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/app-config",
+                   "/auth/setup", "/auth/login", "/auth/register"}
+
+class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: FastAPIRequest, call_next):
-        # Skip auth for health check and scan/auto (uses its own secret)
-        if request.url.path in ("/health", "/docs", "/openapi.json", "/app-config"):
+        from fastapi.responses import JSONResponse
+        path = request.url.path
+        # Skip auth for public endpoints
+        if path in AUTH_SKIP_PATHS or path.startswith("/docs"):
             return await call_next(request)
-        if request.url.path == "/scan/auto":
+        if path == "/scan/auto":
             return await call_next(request)
-        # Check API key
+
+        # Try session token first (web users)
+        session_token = request.headers.get("X-Session-Token")
+        if session_token:
+            user = validate_session(session_token)
+            if user:
+                request.state.user = {**user, "auth_method": "session"}
+                return await call_next(request)
+            return JSONResponse(status_code=401, content={"detail": "Invalid or expired session"})
+
+        # Fall back to API key (mobile/external)
         if API_KEY:
             key = request.headers.get("X-API-Key") or request.query_params.get("api_key")
-            if key != API_KEY:
-                from fastapi.responses import JSONResponse
-                return JSONResponse(status_code=401, content={"detail": "Invalid or missing API key"})
-        return await call_next(request)
+            if key == API_KEY:
+                request.state.user = {"user_id": None, "role": "admin", "username": "api", "auth_method": "api_key"}
+                return await call_next(request)
 
-if API_KEY:
-    app.add_middleware(APIKeyMiddleware)
+        return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+
+app.add_middleware(AuthMiddleware)
+
+# ── Role dependencies ────────────────────────────────────────────────────────
+
+def get_current_user(request: FastAPIRequest):
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+def require_admin(request: FastAPIRequest):
+    user = get_current_user(request)
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
 
 @app.on_event("startup")
 def create_new_tables():
@@ -105,6 +138,43 @@ def create_new_tables():
             cur.execute("""
                 ALTER TABLE clusters ADD COLUMN IF NOT EXISTS cover_crop JSONB
             """)
+            # ── Household accounts ───────────────────────────────────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    username TEXT UNIQUE NOT NULL,
+                    display_name TEXT NOT NULL,
+                    password_hash TEXT,
+                    role TEXT NOT NULL DEFAULT 'member',
+                    flickr_user_id TEXT,
+                    created_at TIMESTAMPTZ DEFAULT now(),
+                    updated_at TIMESTAMPTZ DEFAULT now()
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS sessions (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    token TEXT UNIQUE NOT NULL,
+                    expires_at TIMESTAMPTZ NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT now()
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token)")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS invites (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    code TEXT UNIQUE NOT NULL,
+                    created_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    role TEXT NOT NULL DEFAULT 'member',
+                    used_by UUID REFERENCES users(id),
+                    expires_at TIMESTAMPTZ NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT now()
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_invites_code ON invites(code)")
+            # Clean up expired sessions
+            cur.execute("DELETE FROM sessions WHERE expires_at < now()")
         conn.commit()
         conn.close()
     except Exception as e:
@@ -129,6 +199,46 @@ def db_query(sql, params=None, fetch=True):
         return result
     finally:
         conn.close()
+
+# ── Auth helpers ─────────────────────────────────────────────────────────────
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+def verify_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
+
+def create_session(user_id: str) -> dict:
+    token = secrets.token_hex(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+    db_query(
+        "INSERT INTO sessions (user_id, token, expires_at) VALUES (%s, %s, %s)",
+        (user_id, token, expires_at),
+        fetch=False,
+    )
+    return {"token": token, "expires_at": expires_at.isoformat()}
+
+def validate_session(token: str) -> dict | None:
+    rows = db_query(
+        """SELECT u.id as user_id, u.username, u.display_name, u.role, u.flickr_user_id
+           FROM sessions s JOIN users u ON s.user_id = u.id
+           WHERE s.token = %s AND s.expires_at > now()""",
+        (token,),
+    )
+    if not rows:
+        return None
+    r = rows[0]
+    return {
+        "user_id": str(r["user_id"]),
+        "username": r["username"],
+        "display_name": r["display_name"],
+        "role": r["role"],
+        "flickr_user_id": r.get("flickr_user_id"),
+    }
+
+def generate_invite_code() -> str:
+    chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no I/O/0/1 to avoid confusion
+    return "".join(secrets.choice(chars) for _ in range(8))
 
 # ── Lazy model init ───────────────────────────────────────────────────────────
 _face_app = None
@@ -334,9 +444,12 @@ def health():
 @app.get("/app-config")
 def get_app_config():
     """Public config endpoint for mobile app setup. No auth required."""
+    rows = db_query("SELECT COUNT(*) as cnt FROM users")
+    setup_complete = rows[0]["cnt"] > 0 if rows else False
     return {
         "api_version": "1.0",
         "app_name": "Kindred",
+        "setup_complete": setup_complete,
         "features": {
             "flickr_integration": bool(FLICKR_API_KEY),
             "face_detection": True,
@@ -349,8 +462,204 @@ def get_app_config():
         },
     }
 
+# ── Auth endpoints ───────────────────────────────────────────────────────────
+
+class SetupRequest(BaseModel):
+    username: str
+    display_name: str
+    flickr_user_id: str
+
+@app.post("/auth/setup")
+def auth_setup(req: SetupRequest):
+    """First-run admin creation. Only works if no users exist."""
+    rows = db_query("SELECT COUNT(*) as cnt FROM users")
+    if rows and rows[0]["cnt"] > 0:
+        raise HTTPException(409, "Setup already complete — admin user exists")
+    user_rows = db_query(
+        """INSERT INTO users (username, display_name, role, flickr_user_id)
+           VALUES (%s, %s, 'admin', %s) RETURNING id, username, display_name, role""",
+        (req.username, req.display_name, req.flickr_user_id),
+    )
+    user = user_rows[0]
+    session = create_session(str(user["id"]))
+    return {
+        "user": {"id": str(user["id"]), "username": user["username"],
+                 "display_name": user["display_name"], "role": user["role"]},
+        "session": session,
+    }
+
+class FlickrLoginRequest(BaseModel):
+    flickr_user_id: str
+
+@app.post("/auth/flickr-login")
+def auth_flickr_login(req: FlickrLoginRequest):
+    """Admin re-login via Flickr OAuth. Finds admin by flickr_user_id."""
+    rows = db_query(
+        "SELECT id, username, display_name, role FROM users WHERE flickr_user_id = %s AND role = 'admin'",
+        (req.flickr_user_id,),
+    )
+    if not rows:
+        raise HTTPException(401, "No admin account for this Flickr user")
+    user = rows[0]
+    session = create_session(str(user["id"]))
+    return {
+        "user": {"id": str(user["id"]), "username": user["username"],
+                 "display_name": user["display_name"], "role": user["role"]},
+        "session": session,
+    }
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+@app.post("/auth/login")
+def auth_login(req: LoginRequest):
+    """Member login with username/password."""
+    rows = db_query(
+        "SELECT id, username, display_name, role, password_hash FROM users WHERE username = %s",
+        (req.username,),
+    )
+    if not rows or not rows[0]["password_hash"]:
+        raise HTTPException(401, "Invalid username or password")
+    user = rows[0]
+    if not verify_password(req.password, user["password_hash"]):
+        raise HTTPException(401, "Invalid username or password")
+    session = create_session(str(user["id"]))
+    return {
+        "user": {"id": str(user["id"]), "username": user["username"],
+                 "display_name": user["display_name"], "role": user["role"]},
+        "session": session,
+    }
+
+class RegisterRequest(BaseModel):
+    invite_code: str
+    username: str
+    display_name: str
+    password: str
+
+@app.post("/auth/register")
+def auth_register(req: RegisterRequest):
+    """Member registration with invite code."""
+    invites = db_query(
+        "SELECT id, role FROM invites WHERE code = %s AND used_by IS NULL AND expires_at > now()",
+        (req.invite_code.upper(),),
+    )
+    if not invites:
+        raise HTTPException(400, "Invalid or expired invite code")
+    invite = invites[0]
+    if len(req.password) < 6:
+        raise HTTPException(400, "Password must be at least 6 characters")
+    pw_hash = hash_password(req.password)
+    try:
+        user_rows = db_query(
+            """INSERT INTO users (username, display_name, password_hash, role)
+               VALUES (%s, %s, %s, %s) RETURNING id, username, display_name, role""",
+            (req.username, req.display_name, pw_hash, invite["role"]),
+        )
+    except Exception as e:
+        if "unique" in str(e).lower():
+            raise HTTPException(409, "Username already taken")
+        raise
+    user = user_rows[0]
+    db_query("UPDATE invites SET used_by = %s WHERE id = %s", (str(user["id"]), str(invite["id"])), fetch=False)
+    session = create_session(str(user["id"]))
+    return {
+        "user": {"id": str(user["id"]), "username": user["username"],
+                 "display_name": user["display_name"], "role": user["role"]},
+        "session": session,
+    }
+
+@app.post("/auth/logout")
+def auth_logout(request: FastAPIRequest):
+    """Invalidate the current session."""
+    token = request.headers.get("X-Session-Token")
+    if token:
+        db_query("DELETE FROM sessions WHERE token = %s", (token,), fetch=False)
+    return {"ok": True}
+
+@app.get("/auth/me")
+def auth_me(request: FastAPIRequest):
+    """Return current user info from session."""
+    user = getattr(request.state, "user", None)
+    if not user or not user.get("user_id"):
+        return {"loggedIn": False}
+    return {
+        "loggedIn": True,
+        "userId": user["user_id"],
+        "username": user["username"],
+        "display_name": user["display_name"],
+        "role": user["role"],
+        "auth_method": user.get("auth_method", "session"),
+    }
+
+# ── Household management endpoints (admin-only) ─────────────────────────────
+
+@app.get("/users")
+def list_users(admin=Depends(require_admin)):
+    rows = db_query("SELECT id, username, display_name, role, flickr_user_id, created_at FROM users ORDER BY created_at")
+    return {"users": [{"id": str(r["id"]), "username": r["username"], "display_name": r["display_name"],
+                        "role": r["role"], "flickr_user_id": r.get("flickr_user_id"), "created_at": r["created_at"].isoformat() if r["created_at"] else None}
+                       for r in rows]}
+
+class UpdateUserRequest(BaseModel):
+    display_name: Optional[str] = None
+    role: Optional[str] = None
+
+@app.patch("/users/{user_id}")
+def update_user(user_id: str, req: UpdateUserRequest, admin=Depends(require_admin)):
+    sets, params = [], []
+    if req.display_name is not None:
+        sets.append("display_name = %s")
+        params.append(req.display_name)
+    if req.role is not None:
+        if req.role not in ("admin", "member"):
+            raise HTTPException(400, "Role must be 'admin' or 'member'")
+        sets.append("role = %s")
+        params.append(req.role)
+    if not sets:
+        raise HTTPException(400, "Nothing to update")
+    sets.append("updated_at = now()")
+    params.append(user_id)
+    db_query(f"UPDATE users SET {', '.join(sets)} WHERE id = %s", params, fetch=False)
+    return {"ok": True}
+
+@app.delete("/users/{user_id}")
+def delete_user(user_id: str, request: FastAPIRequest, admin=Depends(require_admin)):
+    if admin["user_id"] == user_id:
+        raise HTTPException(400, "Cannot delete yourself")
+    db_query("DELETE FROM users WHERE id = %s", (user_id,), fetch=False)
+    return {"ok": True}
+
+@app.post("/invites")
+def create_invite(request: FastAPIRequest, admin=Depends(require_admin)):
+    code = generate_invite_code()
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    db_query(
+        "INSERT INTO invites (code, created_by, expires_at) VALUES (%s, %s, %s)",
+        (code, admin["user_id"], expires_at),
+        fetch=False,
+    )
+    return {"code": code, "expires_at": expires_at.isoformat()}
+
+@app.get("/invites")
+def list_invites(admin=Depends(require_admin)):
+    rows = db_query(
+        "SELECT id, code, role, expires_at, created_at FROM invites WHERE used_by IS NULL AND expires_at > now() ORDER BY created_at DESC"
+    )
+    return {"invites": [{"id": str(r["id"]), "code": r["code"], "role": r["role"],
+                          "expires_at": r["expires_at"].isoformat() if r["expires_at"] else None,
+                          "created_at": r["created_at"].isoformat() if r["created_at"] else None}
+                         for r in rows]}
+
+@app.delete("/invites/{invite_id}")
+def revoke_invite(invite_id: str, admin=Depends(require_admin)):
+    db_query("DELETE FROM invites WHERE id = %s", (invite_id,), fetch=False)
+    return {"ok": True}
+
+# ── Analysis endpoints ───────────────────────────────────────────────────────
+
 @app.post("/analyze")
-async def analyze_photos(req: AnalyzeRequest, background_tasks: BackgroundTasks):
+async def analyze_photos(req: AnalyzeRequest, background_tasks: BackgroundTasks, admin=Depends(require_admin)):
     job_id = str(uuid.uuid4())
     jobs[job_id] = {
         "status": "running", "progress": 0,
@@ -361,7 +670,7 @@ async def analyze_photos(req: AnalyzeRequest, background_tasks: BackgroundTasks)
     return {"job_id": job_id}
 
 @app.post("/process-photo")
-async def process_photo(req: ProcessPhotoRequest):
+async def process_photo(req: ProcessPhotoRequest, admin=Depends(require_admin)):
     """Process a single newly-uploaded photo through the full ML pipeline.
 
     Accepts photo_id and optional photo_url. If photo_url is not provided,
@@ -928,7 +1237,7 @@ def run_clustering(category: str, distance_threshold: float = 0.80):
     invalidate_cache()
 
 @app.post("/cluster")
-def cluster(req: ClusterRequest):
+def cluster(req: ClusterRequest, admin=Depends(require_admin)):
     rows = db_query(
         "SELECT id FROM detections WHERE category = %s AND embedding IS NOT NULL",
         (req.category,)
@@ -969,7 +1278,7 @@ def get_named_clusters(category: str = "people"):
     return {"clusters": results}
 
 @app.post("/clusters/clean-species")
-def clean_species(category: str = "pets"):
+def clean_species(category: str = "pets", admin=Depends(require_admin)):
     """Clean named clusters by removing wrong-species detections, then recluster."""
     removed = _clean_named_clusters_by_subtype(category)
     if removed > 0:
@@ -1224,7 +1533,7 @@ def _get_clusters_response(category: str):
     }
 
 @app.post("/clusters/label")
-def label_cluster(req: LabelRequest):
+def label_cluster(req: LabelRequest, admin=Depends(require_admin)):
     db_query("""
         INSERT INTO clusters (id, category, label, label_source) VALUES (%s, %s, %s, 'human')
         ON CONFLICT (id, category) DO UPDATE SET label = EXCLUDED.label, label_source = 'human'
@@ -1237,7 +1546,7 @@ def label_cluster(req: LabelRequest):
     return {"ok": True}
 
 @app.post("/clusters/merge")
-def merge_clusters(req: MergeRequest):
+def merge_clusters(req: MergeRequest, admin=Depends(require_admin)):
     # Move all detections from source cluster to target cluster and pin them
     db_query("""
         UPDATE detection_clusters SET cluster_id = %s, pinned = true
@@ -1281,7 +1590,7 @@ class SetAvatarRequest(BaseModel):
 
 
 @app.post("/clusters/set-avatar")
-def set_cluster_avatar(req: SetAvatarRequest):
+def set_cluster_avatar(req: SetAvatarRequest, admin=Depends(require_admin)):
     """Set custom avatar detection and/or cover photo for a cluster."""
     # Build SET clause dynamically so we only update fields that were provided
     sets = []
@@ -1317,7 +1626,7 @@ class DismissRequest(BaseModel):
     cluster_id: str
 
 @app.post("/clusters/remove-detections")
-def remove_detections(req: RemoveDetectionsRequest):
+def remove_detections(req: RemoveDetectionsRequest, admin=Depends(require_admin)):
     """Remove detections from a cluster (undo bad merges). Each gets its own new cluster."""
     conn = get_db()
     try:
@@ -1343,7 +1652,7 @@ class DismissDetectionRequest(BaseModel):
     detection_id: str
 
 @app.post("/clusters/assign")
-def assign_detection(req: AssignDetectionRequest):
+def assign_detection(req: AssignDetectionRequest, admin=Depends(require_admin)):
     """Assign an unmatched detection to an existing cluster."""
     conn = get_db()
     try:
@@ -1364,7 +1673,7 @@ def assign_detection(req: AssignDetectionRequest):
     return {"ok": True}
 
 @app.post("/clusters/dismiss-detection")
-def dismiss_single_detection(req: DismissDetectionRequest):
+def dismiss_single_detection(req: DismissDetectionRequest, admin=Depends(require_admin)):
     """Dismiss a single detection — store its embedding and delete it."""
     conn = get_db()
     try:
@@ -1394,7 +1703,7 @@ class DeleteDetectionRequest(BaseModel):
     detection_id: str
 
 @app.post("/detections/delete")
-def delete_detection(req: DeleteDetectionRequest):
+def delete_detection(req: DeleteDetectionRequest, admin=Depends(require_admin)):
     """Remove a misclassified detection (e.g. human detected as cow).
     Keeps the detection row with rejected=true so the scan won't re-detect it."""
     conn = get_db()
@@ -1415,7 +1724,7 @@ def delete_detection(req: DeleteDetectionRequest):
     return {"ok": True}
 
 @app.post("/clusters/dismiss")
-def dismiss_cluster(req: DismissRequest):
+def dismiss_cluster(req: DismissRequest, admin=Depends(require_admin)):
     """Dismiss a face group — stores the average face so similar faces are auto-rejected forever."""
     conn = get_db()
     try:
@@ -1896,7 +2205,7 @@ class EventDismissRequest(BaseModel):
     event_key: str
 
 @app.post("/events/label")
-def label_event(req: EventLabelRequest):
+def label_event(req: EventLabelRequest, admin=Depends(require_admin)):
     """Name an event."""
     db_query("""
         INSERT INTO event_labels (event_key, name) VALUES (%s, %s)
@@ -1906,7 +2215,7 @@ def label_event(req: EventLabelRequest):
     return {"ok": True}
 
 @app.post("/events/dismiss")
-def dismiss_event(req: EventDismissRequest):
+def dismiss_event(req: EventDismissRequest, admin=Depends(require_admin)):
     """Dismiss an event so it doesn't show up."""
     db_query("""
         INSERT INTO event_labels (event_key, name) VALUES (%s, '__dismissed__')
@@ -1920,7 +2229,7 @@ class EventMergeRequest(BaseModel):
     target_key: str
 
 @app.post("/events/merge")
-def merge_events(req: EventMergeRequest):
+def merge_events(req: EventMergeRequest, admin=Depends(require_admin)):
     """Merge source event into target by dismissing source. Photos naturally regroup on next cache refresh."""
     # Dismiss the source event
     db_query("""
@@ -1998,7 +2307,7 @@ class FlickrDeleteRequest(BaseModel):
     photo_ids: list[str]
 
 @app.post("/flickr/delete")
-async def delete_flickr_photos(req: FlickrDeleteRequest):
+async def delete_flickr_photos(req: FlickrDeleteRequest, admin=Depends(require_admin)):
     """Delete photos from Flickr and clean up local DB records."""
     import urllib.parse
 
@@ -2139,7 +2448,7 @@ async def auto_scan(background_tasks: BackgroundTasks, secret: str = ""):
     return {"message": f"Auto-scan started with {len(all_photos)} photos", "job_id": job_id, "count": len(all_photos)}
 
 @app.post("/backfill-clip")
-async def backfill_clip(background_tasks: BackgroundTasks):
+async def backfill_clip(background_tasks: BackgroundTasks, admin=Depends(require_admin)):
     """Backfill CLIP embeddings for pet/vehicle detections that have NULL embeddings."""
     job_id = str(uuid.uuid4())
     jobs[job_id] = {"status": "running", "progress": 0, "total": 0, "message": "Starting CLIP backfill..."}
@@ -2193,7 +2502,7 @@ async def _backfill_clip(job_id: str):
     jobs[job_id]["message"] = f"Backfilled {updated} CLIP embeddings"
 
 @app.post("/backfill-photo-clips")
-async def backfill_photo_clips(background_tasks: BackgroundTasks):
+async def backfill_photo_clips(background_tasks: BackgroundTasks, admin=Depends(require_admin)):
     """Backfill CLIP embeddings for all photos that don't have one yet."""
     job_id = str(uuid.uuid4())
     jobs[job_id] = {"status": "running", "progress": 0, "total": 0, "message": "Starting photo CLIP backfill..."}
@@ -2254,7 +2563,7 @@ def get_syncs():
     return [dict(r) for r in rows]
 
 @app.delete("/embeddings")
-def clear_all():
+def clear_all(admin=Depends(require_admin)):
     db_query("DELETE FROM detection_clusters", fetch=False)
     db_query("DELETE FROM clusters", fetch=False)
     db_query("DELETE FROM detections", fetch=False)
@@ -2403,7 +2712,7 @@ async def _backfill_metadata_task(job_id: str) -> None:
 
 
 @app.post("/backfill-metadata")
-async def backfill_metadata(background_tasks: BackgroundTasks):
+async def backfill_metadata(background_tasks: BackgroundTasks, admin=Depends(require_admin)):
     """Backfill Flickr metadata (date, geo, tags, description) for all photos."""
     if not all([FLICKR_API_KEY, FLICKR_OAUTH_TOKEN, FLICKR_OAUTH_SECRET, FLICKR_USER_ID]):
         raise HTTPException(500, "Flickr OAuth env vars not configured")
@@ -2564,7 +2873,7 @@ class ManualTagRequest(BaseModel):
 
 
 @app.post("/photos/{photo_id}/tag")
-async def manual_tag_photo(photo_id: str, req: ManualTagRequest):
+async def manual_tag_photo(photo_id: str, req: ManualTagRequest, admin=Depends(require_admin)):
     """Manually tag a face/object in a photo by providing a bounding box."""
     import cv2
 
@@ -2781,7 +3090,7 @@ def get_duplicates(threshold: float = Query(0.05, ge=0.0, le=1.0)):
 # ── Feature 3: Scene recategorization ────────────────────────────────────────
 
 @app.post("/scenes/move")
-def move_scene(req: SceneMoveRequest):
+def move_scene(req: SceneMoveRequest, admin=Depends(require_admin)):
     """Override a photo's scene classification."""
     # Remove old scene assignment if present
     db_query(
@@ -2874,7 +3183,7 @@ async def _backfill_ocr_task(job_id: str) -> None:
 
 
 @app.post("/backfill-ocr")
-async def backfill_ocr(background_tasks: BackgroundTasks):
+async def backfill_ocr(background_tasks: BackgroundTasks, admin=Depends(require_admin)):
     """Backfill OCR text detection for all existing photos."""
     job_id = str(uuid.uuid4())
     jobs[job_id] = {"status": "running", "progress": 0, "total": 0, "message": "Starting OCR backfill..."}
@@ -3011,7 +3320,7 @@ async def _backfill_colors_task(job_id: str) -> None:
 
 
 @app.post("/backfill-colors")
-async def backfill_colors(background_tasks: BackgroundTasks):
+async def backfill_colors(background_tasks: BackgroundTasks, admin=Depends(require_admin)):
     """Backfill dominant color extraction for all existing photos."""
     job_id = str(uuid.uuid4())
     jobs[job_id] = {"status": "running", "progress": 0, "total": 0, "message": "Starting color backfill..."}

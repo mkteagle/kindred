@@ -1,0 +1,49 @@
+---
+title: Household Accounts
+description: Invite family members to browse your photo library with their own accounts.
+---
+
+## Overview
+
+Kindred supports household accounts so family members can browse the photo library without needing their own Flickr account. The admin (who connected Flickr) has full control, while members get read-only access.
+
+## Roles
+
+| Role | Capabilities |
+|------|-------------|
+| **Admin** | Connect Flickr, run scans, label/merge/dismiss clusters, delete photos, manage members, create invites |
+| **Member** | Browse all photos, search, view clusters, timeline, locations, events |
+
+## Inviting members
+
+1. Go to **Settings** (gear icon in the user menu)
+2. Click **Create invite**
+3. Share the invite code or link with a family member
+
+Invite codes are 8 characters, expire after 7 days, and can only be used once.
+
+## Member registration
+
+Members can register at `/join` or use the direct invite link:
+
+```
+https://your-kindred.com/join?code=ABC12345
+```
+
+They'll create a username, display name, and password. No Flickr account needed.
+
+## Managing members
+
+From the Settings page, admins can:
+
+- View all household members
+- Remove members (immediately revokes access)
+- View and revoke active invite codes
+
+## How it works
+
+- Members authenticate with username/password
+- Sessions are stored in the database and expire after 30 days
+- The admin authenticates via Flickr OAuth (same as before)
+- All data is shared — members see the same photos, clusters, and labels
+- Destructive actions (scan, delete, label, merge) are admin-only at the API level

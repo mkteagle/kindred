@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { QRCodeSVG } from "qrcode.react";
 import { Spinner } from "@/components/ui";
 import type { User, SyncLog, Stats, SearchResult } from "@/types";
 import { BACKEND, CATEGORIES, fmt, toBackendCategory } from "@/lib/constants";
@@ -131,6 +132,7 @@ export function Topbar() {
     }
     setScanning(false);
   };
+  const [qrOpen, setQrOpen] = useState(false);
   const isExploreActive = EXPLORE_LINKS.some((l) => pathname === l.href);
 
   if (authLoading) {
@@ -193,6 +195,14 @@ export function Topbar() {
 
           {/* Right actions */}
           <div className="nb-actions">
+            {/* Docs link — always visible */}
+            <Link href="/docs" className="nb-icon-btn" aria-label="Documentation" title="Documentation">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
+              </svg>
+            </Link>
+
             {/* Notifications — only when connected */}
             {user && <div className="nb-dropdown" ref={notifRef}>
               <button className="nb-icon-btn" aria-label="Notifications"
@@ -271,8 +281,8 @@ export function Topbar() {
               )}
             </div>}
 
-            {/* Upload trigger — only when connected */}
-            {user && (
+            {/* Upload trigger — admin only */}
+            {user && user.role === "admin" && (
               <Link href="/upload" className="nb-icon-btn" aria-label="Upload photos" title="Upload photos">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                   strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -299,27 +309,51 @@ export function Topbar() {
               <div className="nb-dropdown" ref={userRef}>
                 <button className="nb-avatar"
                   onClick={() => { setUserMenuOpen(!userMenuOpen); setExploreOpen(false); }}>
-                  {(user.fullname || user.username || "?").charAt(0).toUpperCase()}
+                  {(user.display_name || user.fullname || user.username || "?").charAt(0).toUpperCase()}
                 </button>
                 {userMenuOpen && (
                   <div className="nb-popover nb-popover-right" style={{ minWidth: 200 }}>
                     <div className="nb-user-header">
                       <div className="nb-avatar nb-avatar-lg">
-                        {(user.fullname || user.username || "?").charAt(0).toUpperCase()}
+                        {(user.display_name || user.fullname || user.username || "?").charAt(0).toUpperCase()}
                       </div>
                       <div>
-                        <strong>{user.fullname || user.username}</strong>
+                        <strong>{user.display_name || user.fullname || user.username}</strong>
                         <span>@{user.username}</span>
                       </div>
                     </div>
                     <div className="nb-popover-divider" />
-                    <button className="nb-popover-action" onClick={startScan} disabled={scanning}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
-                      </svg>
-                      {scanning ? "Scanning..." : "Scan new photos"}
-                    </button>
+                    {user.role === "admin" && (
+                      <button className="nb-popover-action" onClick={startScan} disabled={scanning}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+                        </svg>
+                        {scanning ? "Scanning..." : "Scan new photos"}
+                      </button>
+                    )}
+                    {user.role === "admin" && (
+                      <button className="nb-popover-action" onClick={() => { setQrOpen(true); setUserMenuOpen(false); }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/>
+                          <rect x="2" y="14" width="8" height="8" rx="1"/><rect x="14" y="14" width="4" height="4"/>
+                          <line x1="22" y1="14" x2="22" y2="18"/><line x1="18" y1="22" x2="22" y2="22"/>
+                        </svg>
+                        Mobile setup
+                      </button>
+                    )}
+                    {user.role === "admin" && (
+                      <Link href="/settings" className="nb-popover-action" onClick={() => setUserMenuOpen(false)}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="3"/>
+                          <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+                        </svg>
+                        Settings
+                      </Link>
+                    )}
+                    <div className="nb-popover-divider" />
                     <button className="nb-popover-action" onClick={logout}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -339,7 +373,89 @@ export function Topbar() {
       </header>
 
       {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} />}
+      {qrOpen && <MobileSetupDialog onClose={() => setQrOpen(false)} />}
     </>
+  );
+}
+
+/* ── Mobile Setup QR Dialog ────────────────────────────────────────── */
+
+function MobileSetupDialog({ onClose }: { onClose: () => void }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [backendUrl, setBackendUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    dialogRef.current?.showModal();
+    // Fetch the backend URL from the app-config endpoint
+    fetch(`${BACKEND}/app-config`)
+      .then((r) => r.json())
+      .then((cfg) => {
+        // The actual backend URL is the origin we're proxying to — use window location as the base
+        setBackendUrl(cfg.backend_url || window.location.origin);
+        setLoaded(true);
+      })
+      .catch(() => {
+        setBackendUrl(window.location.origin);
+        setLoaded(true);
+      });
+  }, []);
+
+  const configPayload = JSON.stringify({
+    kindred: true,
+    url: backendUrl,
+    key: apiKey || undefined,
+  });
+
+  return (
+    <dialog ref={dialogRef} className="confirm qr-dialog"
+      onClose={onClose}
+      onClick={(e) => { if (e.target === dialogRef.current) onClose(); }}>
+      <div className="confirm-body">
+        <h3>Mobile Setup</h3>
+        <p>Scan this QR code with the Kindred iOS app to connect to your server.</p>
+
+        <div className="qr-fields">
+          <label className="qr-field">
+            <span>Backend URL</span>
+            <input
+              type="url"
+              value={backendUrl}
+              onChange={(e) => setBackendUrl(e.target.value)}
+              placeholder="https://api.your-domain.com"
+            />
+          </label>
+          <label className="qr-field">
+            <span>API Key</span>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="Paste your API key"
+            />
+          </label>
+        </div>
+
+        {backendUrl && (
+          <div className="qr-code-wrap">
+            <QRCodeSVG
+              value={configPayload}
+              size={200}
+              bgColor="#fffdf8"
+              fgColor="#2a201b"
+              level="M"
+              marginSize={2}
+            />
+          </div>
+        )}
+
+        {!loaded && <Spinner />}
+      </div>
+      <div className="confirm-actions">
+        <button className="button ghost" onClick={onClose}>Close</button>
+      </div>
+    </dialog>
   );
 }
 

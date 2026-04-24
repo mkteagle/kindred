@@ -11,6 +11,8 @@
     "self-hosting/vps",
     "self-hosting/environment",
     "self-hosting/vercel",
+    "---Household---",
+    "household/accounts",
     "---Mobile---",
     "mobile/config",
     "---Reference---",

@@ -1,12 +1,41 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
 import { BrandMark } from "@/components/ui";
 
 function LoginContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const error = searchParams.get("error");
+  const [tab, setTab] = useState<"flickr" | "member">("flickr");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [loginError, setLoginError] = useState("");
+
+  const handleMemberLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setLoginError("");
+    try {
+      const resp = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        setLoginError(data.detail || data.error || "Login failed");
+        return;
+      }
+      router.push("/");
+    } catch {
+      setLoginError("Connection error");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="login-screen">
@@ -16,36 +45,83 @@ function LoginContent() {
         </div>
         <h1>Welcome back.</h1>
         <p>
-          Sign in with your Flickr account to access your private family photo
-          library. Only authorized family members can use Kindred.
+          Sign in to access your family photo library.
         </p>
-        {error === "denied" && (
-          <p
-            style={{
-              color: "#ff6b6b",
-              background: "rgba(255, 107, 107, .12)",
-              border: "1px solid rgba(255, 107, 107, .3)",
-              borderRadius: 8,
-              padding: "12px 16px",
-              margin: "0 0 20px",
-              maxWidth: 590,
-              fontSize: 15,
-            }}
-          >
-            Access denied. Your Flickr account is not authorized to use this app.
+
+        {(error === "denied" || loginError) && (
+          <p className="login-error">
+            {error === "denied"
+              ? "Access denied. Your Flickr account is not authorized."
+              : loginError}
           </p>
         )}
-        <div>
+
+        <div className="login-tabs">
           <button
-            className="button primary"
-            style={{ fontSize: 16, minHeight: 50, padding: "0 28px" }}
-            onClick={() => {
-              window.location.href = "/api/auth/flickr";
-            }}
+            className={`login-tab ${tab === "flickr" ? "is-active" : ""}`}
+            onClick={() => setTab("flickr")}
           >
-            Sign in with Flickr
+            Admin
+          </button>
+          <button
+            className={`login-tab ${tab === "member" ? "is-active" : ""}`}
+            onClick={() => setTab("member")}
+          >
+            Family member
           </button>
         </div>
+
+        {tab === "flickr" ? (
+          <div>
+            <button
+              className="button primary"
+              style={{ fontSize: 16, minHeight: 50, padding: "0 28px" }}
+              onClick={() => {
+                window.location.href = "/api/auth/flickr";
+              }}
+            >
+              Sign in with Flickr
+            </button>
+            <p className="login-hint">
+              For the account owner who connected the Flickr library.
+            </p>
+          </div>
+        ) : (
+          <form onSubmit={handleMemberLogin} className="login-form">
+            <label className="login-field">
+              <span>Username</span>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+                required
+              />
+            </label>
+            <label className="login-field">
+              <span>Password</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </label>
+            <button
+              className="button primary"
+              type="submit"
+              disabled={loading}
+              style={{ fontSize: 16, minHeight: 50, width: "100%" }}
+            >
+              {loading ? "Signing in..." : "Sign in"}
+            </button>
+            <p className="login-hint">
+              Got an invite code?{" "}
+              <a href="/join" className="login-link">Create an account</a>
+            </p>
+          </form>
+        )}
       </div>
     </div>
   );
