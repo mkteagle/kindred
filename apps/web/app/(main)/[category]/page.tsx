@@ -354,7 +354,14 @@ export default function CategoryPage() {
   const [activeCategory, setActiveCategory] = useState(categoryParam);
   const backendCat = toBackendCategory(activeCategory);
   const [search, setSearch] = useState("");
+  const [debouncedFilter, setDebouncedFilter] = useState("");
   const groupByVisual = searchParams.get("group") === "visual";
+
+  // Debounce filter input for server-side search
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedFilter(search.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [search]);
   const [clustering, setClustering] = useState(false);
   const [gridSelecting, setGridSelecting] = useState(false);
   const [gridSelected, setGridSelected] = useState<Set<string>>(new Set());
@@ -489,12 +496,13 @@ export default function CategoryPage() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery<ClustersSummaryResponse>({
-    queryKey: ["clusters-summary", activeCategory, groupByVisual],
+    queryKey: ["clusters-summary", activeCategory, groupByVisual, debouncedFilter],
     queryFn: ({ pageParam = 0, signal }) => {
       const params = new URLSearchParams();
       params.set("limit", String(PAGE_SIZE));
       params.set("offset", String(pageParam));
       if (groupByVisual) params.set("sort_visual", "true");
+      if (debouncedFilter) params.set("q", debouncedFilter);
       return fetch(`${BACKEND}/clusters/${backendCat}/summary?${params}`, { signal })
         .then((r) => r.json());
     },
@@ -773,26 +781,7 @@ export default function CategoryPage() {
         .filter((c): c is ClusterSummary => c !== undefined);
     }
 
-    const needle = search.trim().toLowerCase();
-    if (!needle) return ordered;
-    return ordered.filter((cluster) => {
-      const label = (cluster.label || `unnamed ${activeInfo.singular}`).toLowerCase();
-      // Substring match
-      if (label.includes(needle)) return true;
-      // Prefix match on any word
-      if (label.split(/\s+/).some((w) => w.startsWith(needle))) return true;
-      // Fuzzy: check if enough characters overlap (covers mike/michael, jen/jennifer)
-      if (needle.length >= 3) {
-        const shorter = needle.length < label.length ? needle : label;
-        const longer = needle.length < label.length ? label : needle;
-        let matches = 0;
-        for (let i = 0; i < shorter.length - 1; i++) {
-          if (longer.includes(shorter.slice(i, i + 2))) matches++;
-        }
-        if (matches / (shorter.length - 1) > 0.5) return true;
-      }
-      return false;
-    });
+    return ordered;
   }, [summary?.clusters, search, activeInfo.singular]);
 
   const namedClusters = sorted.filter((c) => c.label);

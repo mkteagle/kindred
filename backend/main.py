@@ -1489,15 +1489,40 @@ def get_clusters(category: str):
     return _get_clusters_response(category)
 
 @app.get("/clusters/{category}/summary")
-def get_clusters_summary(category: str, sort_visual: bool = False, limit: int = 30, offset: int = 0):
-    """Lightweight summary — single query, no N+1. sort_visual groups unnamed by visual similarity."""
-    rows = db_query("""
+def get_clusters_summary(category: str, sort_visual: bool = False, limit: int = 30, offset: int = 0, q: str = ""):
+    """Lightweight summary — single query, no N+1. sort_visual groups unnamed by visual similarity.
+    Optional q parameter for fuzzy name search using pg_trgm similarity."""
+
+    # If searching, filter cluster IDs by name first
+    filtered_ids = None
+    if q.strip():
+        search_q = q.strip()
+        name_rows = db_query("""
+            SELECT id FROM clusters
+            WHERE category = %s AND label IS NOT NULL AND (
+                label ILIKE %s
+                OR similarity(LOWER(label), LOWER(%s)) > 0.15
+                OR LOWER(label) LIKE LOWER(%s)
+            )
+            ORDER BY similarity(LOWER(label), LOWER(%s)) DESC
+        """, (category, f"%{search_q}%", search_q, f"{search_q}%", search_q))
+        filtered_ids = [r["id"] for r in name_rows]
+        if not filtered_ids:
+            return {"clusters": [], "noise_count": 0}
+
+    base_filter = "dc.category = %s AND dc.cluster_id != '-1'"
+    params = [category]
+    if filtered_ids is not None:
+        base_filter += " AND dc.cluster_id = ANY(%s)"
+        params.append(filtered_ids)
+
+    rows = db_query(f"""
         WITH ranked AS (
             SELECT dc.cluster_id, d.id, d.photo_id, d.det_score, d.chip, d.thumb_url, d.photo_url,
                    ROW_NUMBER() OVER (PARTITION BY dc.cluster_id ORDER BY d.det_score DESC) as rn
             FROM detection_clusters dc
             JOIN detections d ON d.id = dc.detection_id
-            WHERE dc.category = %s AND dc.cluster_id != '-1'
+            WHERE {base_filter}
         ),
         agg AS (
             SELECT cluster_id,
@@ -1509,7 +1534,7 @@ def get_clusters_summary(category: str, sort_visual: bool = False, limit: int = 
         FROM agg a
         JOIN ranked r ON r.cluster_id = a.cluster_id AND r.rn = 1
         ORDER BY a.det_count DESC
-    """, (category,))
+    """, params)
 
     labels_rows = db_query("""
         SELECT id, label, avatar_detection_id, cover_photo_id, cover_crop
