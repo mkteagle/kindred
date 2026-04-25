@@ -187,8 +187,10 @@ struct LoginView: View {
                     session.restoreSession(token: response.session.token, user: response.user)
                 }
                 await APIClient.shared.setSessionToken(response.session.token)
+            } catch let error as APIClient.APIError {
+                authError = "Flickr login failed: \(error.localizedDescription)"
             } catch {
-                authError = "Flickr login failed. Make sure your account is set up as admin."
+                authError = "Flickr login failed: \(error.localizedDescription)"
             }
             isFlickrLoggingIn = false
         }

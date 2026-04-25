@@ -550,9 +550,13 @@ def get_app_config():
             "vehicle_detection": True,
         },
         "auth": {
-            "method": "api_key",
-            "header": "X-API-Key",
+            "method": "session",
+            "header": "X-Session-Token",
         },
+        "flickr": {
+            "consumer_key": FLICKR_API_KEY,
+            "consumer_secret": FLICKR_SECRET,
+        } if FLICKR_API_KEY else None,
     }
 
 # ── Auth endpoints ───────────────────────────────────────────────────────────
@@ -787,6 +791,30 @@ def update_user(user_id: str, req: UpdateUserRequest, admin=Depends(require_admi
     sets.append("updated_at = now()")
     params.append(user_id)
     db_query(f"UPDATE users SET {', '.join(sets)} WHERE id = %s", params, fetch=False)
+    return {"ok": True}
+
+class ChangePasswordRequest(BaseModel):
+    current_password: Optional[str] = None
+    new_password: str
+
+@app.post("/auth/change-password")
+def change_password(req: ChangePasswordRequest, user=Depends(get_current_user)):
+    """Change the current user's password. If no password was set (Flickr-only admin), current_password is optional."""
+    if len(req.new_password) < 6:
+        raise HTTPException(400, "Password must be at least 6 characters")
+    rows = db_query("SELECT password_hash FROM users WHERE id = %s", (user["user_id"],))
+    if not rows:
+        raise HTTPException(404, "User not found")
+    existing_hash = rows[0]["password_hash"]
+    # If user already has a password, verify the current one
+    if existing_hash and req.current_password:
+        if not verify_password(req.current_password, existing_hash):
+            raise HTTPException(401, "Current password is incorrect")
+    elif existing_hash and not req.current_password:
+        raise HTTPException(400, "Current password is required")
+    new_hash = hash_password(req.new_password)
+    db_query("UPDATE users SET password_hash = %s, updated_at = now() WHERE id = %s",
+             (new_hash, user["user_id"]), fetch=False)
     return {"ok": True}
 
 @app.delete("/users/{user_id}")

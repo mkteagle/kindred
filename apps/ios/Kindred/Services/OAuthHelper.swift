@@ -2,10 +2,31 @@ import Foundation
 import CommonCrypto
 
 /// Manual OAuth 1.0a signing implementation using CommonCrypto HMAC-SHA1.
-/// No third-party dependencies required.
+/// Flickr consumer key and secret are loaded from the backend /app-config endpoint.
 enum OAuthHelper {
-    static let consumerKey = "fa5af95d3e1bb89ae21fccce1a68d9c0"
-    static let consumerSecret = "cea057bf2a18628f"
+    /// Loaded from backend — call `loadConfig()` before first use
+    static var consumerKey = ""
+    static var consumerSecret = ""
+
+    private static var configLoaded = false
+
+    /// Fetch Flickr consumer credentials from the backend's /app-config endpoint.
+    static func loadConfig(from baseURL: String) async {
+        guard !configLoaded else { return }
+        guard let url = URL(string: "\(baseURL)/app-config") else { return }
+
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let flickr = json["flickr"] as? [String: Any] {
+                consumerKey = flickr["consumer_key"] as? String ?? ""
+                consumerSecret = flickr["consumer_secret"] as? String ?? ""
+                configLoaded = true
+            }
+        } catch {
+            print("[OAuthHelper] Failed to load config: \(error)")
+        }
+    }
 
     // MARK: - HMAC-SHA1
 
@@ -109,7 +130,6 @@ enum OAuthHelper {
     ) -> String {
         var oauthParameters = oauthParams(token: token, callback: callback, verifier: verifier)
 
-        // All params for signature base string (oauth + additional query/body params)
         let allParams = oauthParameters + additionalParams
 
         let baseString = signatureBaseString(

@@ -4,6 +4,11 @@ import SwiftUI
 struct KindredApp: App {
     init() {
         configureAppearance()
+        SyncManager.shared.configure()
+        // Load Flickr consumer credentials from backend
+        Task {
+            await OAuthHelper.loadConfig(from: "https://kindred-api.mkteagle.com")
+        }
     }
 
     var body: some Scene {

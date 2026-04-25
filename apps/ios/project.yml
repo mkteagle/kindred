@@ -39,3 +39,8 @@ targets:
             CFBundleURLName: com.kindlingsignal.kindred
         NSPhotoLibraryUsageDescription: Kindred needs access to your photo library to upload and manage photos.
         NSPhotoLibraryAddUsageDescription: Kindred needs access to save photos to your library.
+        UIBackgroundModes:
+          - fetch
+          - processing
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.kindlingsignal.kindred.sync
