@@ -39,7 +39,7 @@ from fastapi import Request as FastAPIRequest, Depends
 from starlette.middleware.base import BaseHTTPMiddleware
 
 AUTH_SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/app-config",
-                   "/auth/setup", "/auth/login", "/auth/register"}
+                   "/auth/setup", "/auth/login", "/auth/register", "/auth/flickr-login"}
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: FastAPIRequest, call_next):
