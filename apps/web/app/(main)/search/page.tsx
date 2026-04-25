@@ -50,6 +50,11 @@ function SearchContent() {
           placeholder="Describe what you're looking for..."
           autoFocus
         />
+        {input && (
+          <button className="search-clear" type="button" onClick={() => setInput("")} aria-label="Clear search">
+            &times;
+          </button>
+        )}
       </label>
 
       {debouncedQ.length > 2 && isLoading && (

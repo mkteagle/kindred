@@ -776,8 +776,22 @@ export default function CategoryPage() {
     const needle = search.trim().toLowerCase();
     if (!needle) return ordered;
     return ordered.filter((cluster) => {
-      const label = cluster.label || `unnamed ${activeInfo.singular}`;
-      return label.toLowerCase().includes(needle);
+      const label = (cluster.label || `unnamed ${activeInfo.singular}`).toLowerCase();
+      // Substring match
+      if (label.includes(needle)) return true;
+      // Prefix match on any word
+      if (label.split(/\s+/).some((w) => w.startsWith(needle))) return true;
+      // Fuzzy: check if enough characters overlap (covers mike/michael, jen/jennifer)
+      if (needle.length >= 3) {
+        const shorter = needle.length < label.length ? needle : label;
+        const longer = needle.length < label.length ? label : needle;
+        let matches = 0;
+        for (let i = 0; i < shorter.length - 1; i++) {
+          if (longer.includes(shorter.slice(i, i + 2))) matches++;
+        }
+        if (matches / (shorter.length - 1) > 0.5) return true;
+      }
+      return false;
     });
   }, [summary?.clusters, search, activeInfo.singular]);
 
@@ -853,6 +867,11 @@ export default function CategoryPage() {
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={`Find a named ${activeInfo.singular}`}
               />
+              {search && (
+                <button className="search-clear" type="button" onClick={() => setSearch("")} aria-label="Clear search">
+                  &times;
+                </button>
+              )}
             </label>
           </div>
 
