@@ -590,7 +590,7 @@ export default function PhotoDetailPage() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               ref={imgRef}
-              src={data.photo_url}
+              src={`${BACKEND}/photos/${photoId}/image?size=h`}
               alt={data.photo_title || ""}
               onLoad={handleImageLoad}
               draggable={false}

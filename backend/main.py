@@ -2978,6 +2978,85 @@ def get_photo_metadata(photo_id: str):
     return row
 
 
+@app.get("/photos/{photo_id}/image")
+async def proxy_photo_image(photo_id: str, size: str = "b", user=Depends(get_current_user)):
+    """Proxy a Flickr photo through the backend so family members can view
+    full-resolution private photos without their own Flickr account.
+
+    Size suffixes: s=75sq, q=150sq, t=100, m=240, n=320, z=640, c=800, b=1024, h=1600, k=2048, o=original
+    Default 'b' (1024px) is good for viewing. Use 'o' for original quality.
+    """
+    import urllib.parse
+
+    flickr_creds = get_flickr_credentials()
+    if not FLICKR_API_KEY or not flickr_creds:
+        raise HTTPException(500, "Flickr not configured")
+
+    # Get photo info from Flickr API to build the correct URL
+    flickr_url = "https://api.flickr.com/services/rest"
+    params = {
+        "method": "flickr.photos.getSizes",
+        "photo_id": photo_id,
+        "format": "json",
+        "nojsoncallback": "1",
+    }
+    oauth_params = _flickr_oauth_sign(flickr_url, params)
+    auth_header = "OAuth " + ", ".join(
+        f'{k}="{urllib.parse.quote(str(v), "")}"'
+        for k, v in oauth_params.items()
+    )
+    qs = urllib.parse.urlencode(params)
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(f"{flickr_url}?{qs}", headers={"Authorization": auth_header})
+        data = resp.json()
+
+    if data.get("stat") != "ok":
+        raise HTTPException(404, f"Photo not found: {data.get('message', '')}")
+
+    sizes = data.get("sizes", {}).get("size", [])
+    if not sizes:
+        raise HTTPException(404, "No sizes available for this photo")
+
+    # Map size param to Flickr size labels
+    size_map = {
+        "s": "Square", "q": "Large Square", "t": "Thumbnail",
+        "m": "Small", "n": "Small 320", "z": "Medium 640",
+        "c": "Medium 800", "b": "Large", "h": "Large 1600",
+        "k": "Large 2048", "o": "Original",
+    }
+    target_label = size_map.get(size, "Large")
+
+    # Find the requested size, fall back to largest available
+    image_url = None
+    for s in sizes:
+        if s.get("label") == target_label:
+            image_url = s.get("source")
+            break
+    if not image_url:
+        # Fall back to largest available
+        image_url = sizes[-1].get("source")
+
+    if not image_url:
+        raise HTTPException(404, "Could not determine image URL")
+
+    # Fetch the actual image and stream it back
+    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+        img_resp = await client.get(image_url)
+        if img_resp.status_code != 200:
+            raise HTTPException(502, "Failed to fetch image from Flickr")
+
+    content_type = img_resp.headers.get("content-type", "image/jpeg")
+    return StreamingResponse(
+        iter([img_resp.content]),
+        media_type=content_type,
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "Content-Disposition": f"inline; filename={photo_id}.jpg",
+        },
+    )
+
+
 # ── Photo detections & manual tagging ─────────────────────────────────────────
 
 
