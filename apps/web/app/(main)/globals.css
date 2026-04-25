@@ -4317,3 +4317,70 @@ dialog::backdrop { background: rgba(18, 18, 24, .6); backdrop-filter: blur(6px);
   border: 1px dashed var(--line-dark);
   border-radius: 10px;
 }
+
+.settings-key-reveal {
+  background: var(--pine-light, #e8f4f3);
+  border: 1px solid var(--pine, #23606a);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.settings-key-reveal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.settings-key-reveal-header strong {
+  font-size: 15px;
+  color: var(--pine, #23606a);
+}
+
+.settings-key-dismiss {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 0 4px;
+}
+
+.settings-key-warning {
+  font-size: 13px;
+  color: #b45309;
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+
+.settings-key-value {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg, #fff);
+  border: 1px solid var(--line-dark);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+}
+
+.settings-key-value code {
+  flex: 1;
+  font-size: 13px;
+  font-family: "SF Mono", "Fira Code", monospace;
+  word-break: break-all;
+  color: var(--text-primary);
+}
+
+.settings-key-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.settings-key-hint code {
+  background: var(--bg, #fff);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 11px;
+}

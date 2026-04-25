@@ -22,22 +22,35 @@ interface Invite {
   created_at: string;
 }
 
+interface ApiKey {
+  id: string;
+  key_prefix: string;
+  name: string;
+  last_used_at: string | null;
+  created_at: string | null;
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const [users, setUsers] = useState<HouseholdUser[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<{ userId: string; role: string } | null>(null);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [generatingKey, setGeneratingKey] = useState(false);
+  const [revealedKey, setRevealedKey] = useState<string | null>(null);
+  const [keyCopied, setKeyCopied] = useState(false);
 
   useEffect(() => {
     Promise.all([
       fetch("/api/auth/me").then((r) => r.json()),
       fetch(`${BACKEND}/users`).then((r) => r.json()),
       fetch(`${BACKEND}/invites`).then((r) => r.json()),
+      fetch(`${BACKEND}/api-keys`).then((r) => r.json()),
     ])
-      .then(([me, usersData, invitesData]) => {
+      .then(([me, usersData, invitesData, keysData]) => {
         if (!me.loggedIn || me.role !== "admin") {
           router.push("/");
           return;
@@ -45,6 +58,7 @@ export default function SettingsPage() {
         setCurrentUser({ userId: me.userId, role: me.role });
         setUsers(usersData.users || []);
         setInvites(invitesData.invites || []);
+        setApiKeys(keysData.keys || []);
       })
       .catch(() => router.push("/"))
       .finally(() => setLoading(false));
@@ -81,12 +95,72 @@ export default function SettingsPage() {
     setTimeout(() => setCopied(null), 2000);
   };
 
+  const generateApiKey = async () => {
+    setGeneratingKey(true);
+    try {
+      const resp = await fetch(`${BACKEND}/api-keys`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Default" }),
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        setRevealedKey(data.api_key);
+        setApiKeys((prev) => [data.key, ...prev]);
+      }
+    } finally {
+      setGeneratingKey(false);
+    }
+  };
+
+  const rollApiKey = async (id: string) => {
+    if (!window.confirm("Regenerate this API key? The old key will stop working immediately.")) return;
+    const resp = await fetch(`${BACKEND}/api-keys/${id}/roll`, { method: "POST" });
+    const data = await resp.json();
+    if (resp.ok) {
+      setRevealedKey(data.api_key);
+      setApiKeys((prev) => prev.map((k) => (k.id === id ? data.key : k)));
+    }
+  };
+
+  const deleteApiKey = async (id: string) => {
+    if (!window.confirm("Delete this API key? Any apps using it will lose access.")) return;
+    await fetch(`${BACKEND}/api-keys/${id}`, { method: "DELETE" });
+    setApiKeys((prev) => prev.filter((k) => k.id !== id));
+  };
+
+  const copyApiKey = (key: string) => {
+    navigator.clipboard.writeText(key);
+    setKeyCopied(true);
+    setTimeout(() => setKeyCopied(false), 2000);
+  };
+
   if (loading) {
     return <div className="settings-page"><Spinner /></div>;
   }
 
   return (
     <div className="settings-page">
+      {/* Revealed API key banner */}
+      {revealedKey && (
+        <div className="settings-key-reveal">
+          <div className="settings-key-reveal-header">
+            <strong>Your new API key</strong>
+            <button className="settings-key-dismiss" onClick={() => setRevealedKey(null)}>&times;</button>
+          </div>
+          <p className="settings-key-warning">Copy this key now — it will not be shown again.</p>
+          <div className="settings-key-value">
+            <code>{revealedKey}</code>
+            <button className="settings-copy" onClick={() => copyApiKey(revealedKey)}>
+              {keyCopied ? "Copied!" : "Copy"}
+            </button>
+          </div>
+          <p className="settings-key-hint">
+            Add this to your backend <code>.env</code> file as <code>API_KEY</code>, or use it in the iOS app settings.
+          </p>
+        </div>
+      )}
+
       <div className="settings-section">
         <div className="settings-header">
           <h2>Household Members</h2>
@@ -110,6 +184,41 @@ export default function SettingsPage() {
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-header">
+          <h2>API Keys</h2>
+          <button className="button primary" onClick={generateApiKey} disabled={generatingKey} style={{ fontSize: 13, minHeight: 36 }}>
+            {generatingKey ? "Generating..." : "Generate new key"}
+          </button>
+        </div>
+        {apiKeys.length === 0 ? (
+          <p className="settings-empty">No API keys. Generate one to connect mobile apps or external tools.</p>
+        ) : (
+          <div className="settings-list">
+            {apiKeys.map((k) => (
+              <div key={k.id} className="settings-row">
+                <div className="settings-code">{k.key_prefix}...&bull;&bull;&bull;&bull;</div>
+                <div className="settings-info">
+                  <strong>{k.name}</strong>
+                  <span>
+                    Created {k.created_at ? new Date(k.created_at).toLocaleDateString() : "—"}
+                    {k.last_used_at && ` · Last used ${new Date(k.last_used_at).toLocaleDateString()}`}
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="settings-copy" onClick={() => rollApiKey(k.id)}>
+                    Roll
+                  </button>
+                  <button className="settings-remove" onClick={() => deleteApiKey(k.id)}>
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="settings-section">

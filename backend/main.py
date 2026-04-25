@@ -61,9 +61,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return JSONResponse(status_code=401, content={"detail": "Invalid or expired session"})
 
         # Fall back to API key (mobile/external)
-        if API_KEY:
-            key = request.headers.get("X-API-Key") or request.query_params.get("api_key")
-            if key == API_KEY:
+        key = request.headers.get("X-API-Key") or request.query_params.get("api_key")
+        if key:
+            # Check DB-stored hashed API keys first
+            if key.startswith("knd_"):
+                api_user = validate_api_key(key)
+                if api_user:
+                    request.state.user = {**api_user, "auth_method": "api_key"}
+                    return await call_next(request)
+            # Legacy: check static env var for backward compat during migration
+            if API_KEY and key == API_KEY:
                 request.state.user = {"user_id": None, "role": "admin", "username": "api", "auth_method": "api_key"}
                 return await call_next(request)
 
@@ -178,6 +185,19 @@ def create_new_tables():
                 )
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_invites_code ON invites(code)")
+            # ── API keys ────────────────────────────────────────────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS api_keys (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    key_hash TEXT NOT NULL,
+                    key_prefix TEXT NOT NULL,
+                    name TEXT NOT NULL DEFAULT 'Default',
+                    last_used_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ DEFAULT now()
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id)")
             # Clean up expired sessions
             cur.execute("DELETE FROM sessions WHERE expires_at < now()")
         conn.commit()
@@ -244,6 +264,53 @@ def validate_session(token: str) -> dict | None:
 def generate_invite_code() -> str:
     chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no I/O/0/1 to avoid confusion
     return "".join(secrets.choice(chars) for _ in range(8))
+
+def generate_api_key() -> tuple[str, str, str]:
+    """Generate a new API key. Returns (raw_key, key_hash, key_prefix)."""
+    raw_key = f"knd_{secrets.token_hex(32)}"
+    key_hash = bcrypt.hashpw(raw_key.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    key_prefix = raw_key[:12]
+    return raw_key, key_hash, key_prefix
+
+def create_api_key(user_id: str, name: str = "Default") -> tuple[str, dict]:
+    """Create and store a new API key. Returns (raw_key, key_record)."""
+    raw_key, key_hash, key_prefix = generate_api_key()
+    rows = db_query(
+        """INSERT INTO api_keys (user_id, key_hash, key_prefix, name)
+           VALUES (%s, %s, %s, %s) RETURNING id, key_prefix, name, created_at""",
+        (user_id, key_hash, key_prefix, name),
+    )
+    record = rows[0]
+    return raw_key, {
+        "id": str(record["id"]),
+        "key_prefix": record["key_prefix"],
+        "name": record["name"],
+        "created_at": record["created_at"].isoformat() if record["created_at"] else None,
+    }
+
+def validate_api_key(raw_key: str) -> dict | None:
+    """Validate an API key against hashed values in DB. Returns user dict or None."""
+    rows = db_query(
+        """SELECT ak.id as key_id, ak.key_hash, ak.key_prefix,
+                  u.id as user_id, u.username, u.display_name, u.role, u.flickr_user_id
+           FROM api_keys ak JOIN users u ON ak.user_id = u.id"""
+    )
+    for row in rows:
+        if bcrypt.checkpw(raw_key.encode("utf-8"), row["key_hash"].encode("utf-8")):
+            # Update last_used_at (fire and forget)
+            try:
+                db_query("UPDATE api_keys SET last_used_at = now() WHERE id = %s",
+                         (str(row["key_id"]),), fetch=False)
+            except Exception:
+                pass
+            return {
+                "user_id": str(row["user_id"]),
+                "username": row["username"],
+                "display_name": row["display_name"],
+                "role": row["role"],
+                "flickr_user_id": row.get("flickr_user_id"),
+            }
+    return None
 
 def get_flickr_credentials() -> dict | None:
     """Get Flickr OAuth credentials from admin user in DB, falling back to env vars."""
@@ -510,10 +577,14 @@ def auth_setup(req: SetupRequest):
     )
     user = user_rows[0]
     session = create_session(str(user["id"]))
+    # Auto-generate an API key for the admin
+    raw_key, key_record = create_api_key(str(user["id"]), name="Default")
     return {
         "user": {"id": str(user["id"]), "username": user["username"],
                  "display_name": user["display_name"], "role": user["role"]},
         "session": session,
+        "api_key": raw_key,
+        "api_key_info": key_record,
     }
 
 class FlickrLoginRequest(BaseModel):
@@ -627,6 +698,64 @@ def auth_me(request: FastAPIRequest):
         "display_name": user["display_name"],
         "role": user["role"],
         "auth_method": user.get("auth_method", "session"),
+    }
+
+# ── API key management endpoints ──────────────────────────────────────────────
+
+class CreateApiKeyRequest(BaseModel):
+    name: str = "Default"
+
+@app.post("/api-keys")
+def create_api_key_endpoint(req: CreateApiKeyRequest, user=Depends(get_current_user)):
+    """Generate a new API key. The raw key is returned once and never stored."""
+    raw_key, key_record = create_api_key(user["user_id"], name=req.name)
+    return {
+        "api_key": raw_key,
+        "key": key_record,
+        "warning": "Save this key now — it will not be shown again.",
+    }
+
+@app.get("/api-keys")
+def list_api_keys(user=Depends(get_current_user)):
+    """List API keys for the current user (prefix only, not the full key)."""
+    rows = db_query(
+        """SELECT id, key_prefix, name, last_used_at, created_at
+           FROM api_keys WHERE user_id = %s ORDER BY created_at DESC""",
+        (user["user_id"],),
+    )
+    return {"keys": [{
+        "id": str(r["id"]),
+        "key_prefix": r["key_prefix"],
+        "name": r["name"],
+        "last_used_at": r["last_used_at"].isoformat() if r["last_used_at"] else None,
+        "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+    } for r in rows]}
+
+@app.delete("/api-keys/{key_id}")
+def delete_api_key(key_id: str, user=Depends(get_current_user)):
+    """Delete an API key."""
+    db_query("DELETE FROM api_keys WHERE id = %s AND user_id = %s",
+             (key_id, user["user_id"]), fetch=False)
+    return {"ok": True}
+
+@app.post("/api-keys/{key_id}/roll")
+def roll_api_key(key_id: str, user=Depends(get_current_user)):
+    """Regenerate an API key. Old key is invalidated, new raw key is returned once."""
+    rows = db_query("SELECT name FROM api_keys WHERE id = %s AND user_id = %s",
+                    (key_id, user["user_id"]))
+    if not rows:
+        raise HTTPException(404, "API key not found")
+    name = rows[0]["name"]
+    raw_key, key_hash, key_prefix = generate_api_key()
+    db_query(
+        "UPDATE api_keys SET key_hash = %s, key_prefix = %s, last_used_at = NULL, created_at = now() WHERE id = %s",
+        (key_hash, key_prefix, key_id), fetch=False,
+    )
+    return {
+        "api_key": raw_key,
+        "key": {"id": key_id, "key_prefix": key_prefix, "name": name,
+                "last_used_at": None, "created_at": datetime.now(timezone.utc).isoformat()},
+        "warning": "Save this key now — it will not be shown again.",
     }
 
 # ── Household management endpoints (admin-only) ─────────────────────────────

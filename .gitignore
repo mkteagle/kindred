@@ -1,3 +1,4 @@
+# Web
 node_modules
 .next
 dist
@@ -5,9 +6,18 @@ dist
 .env
 .env.local
 .env.production.local
+tsconfig.tsbuildinfo
+.source/
+
+# Backend
 backend/data/
 backend/.venv/
 __pycache__
 *.pyc
-tsconfig.tsbuildinfo
-.source/
+
+# iOS
+apps/ios/*.xcodeproj
+apps/ios/*.xcworkspace
+apps/ios/DerivedData/
+apps/ios/build/
+*.xcuserdata
