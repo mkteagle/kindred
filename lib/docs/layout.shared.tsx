@@ -12,6 +12,10 @@ export function baseOptions(): BaseLayoutProps {
     },
     links: [
       {
+        text: 'Kindred',
+        url: '/',
+      },
+      {
         text: 'GitHub',
         url: 'https://github.com/mkteagle/kindred',
         external: true,

@@ -9,10 +9,12 @@ export default function MainLayout({
   children: React.ReactNode;
 }) {
   return (
-    <Providers>
-      <Topbar />
-      <SyncProgress />
-      {children}
-    </Providers>
+    <div className="main-app">
+      <Providers>
+        <Topbar />
+        <SyncProgress />
+        {children}
+      </Providers>
+    </div>
   );
 }

@@ -10,8 +10,7 @@ export default function DocsRootLayout({
     <RootProvider
       theme={{
         defaultTheme: 'dark',
-        forcedTheme: 'dark',
-        enableSystem: false,
+        enableSystem: true,
       }}
     >
       {children}

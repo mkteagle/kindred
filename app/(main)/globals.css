@@ -36,7 +36,7 @@ body {
   overflow-x: hidden;
 }
 
-body {
+body:has(.main-app) {
   background:
     linear-gradient(90deg, rgba(74, 40, 26, .04) 1px, transparent 1px) 0 0 / 74px 74px,
     linear-gradient(180deg, #fbf4e7 0%, #f7ebd4 48%, #f3e1c9 100%);
