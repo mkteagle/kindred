@@ -55,7 +55,7 @@ struct CategoryStats: Codable {
 // MARK: - Search
 
 struct SearchResult: Codable, Identifiable {
-    var id: String { photo_id }
+    var id: String { photo_id + (match_cluster_id ?? "") }
     let photo_id: String
     let distance: Float
     let photo_url: String
@@ -63,6 +63,10 @@ struct SearchResult: Codable, Identifiable {
     let flickr_url: String?
     let photo_title: String?
     let owner: String?
+    let match_type: String?
+    let match_name: String?
+    let match_cluster_id: String?
+    let match_category: String?
 }
 
 // MARK: - Scenes / Objects

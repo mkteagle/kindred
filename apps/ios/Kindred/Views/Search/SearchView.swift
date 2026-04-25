@@ -11,7 +11,7 @@ struct SearchView: View {
                 HStack(spacing: 12) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(KindredTheme.pine)
-                    TextField("Describe what you're looking for...", text: $viewModel.query)
+                    TextField("Search people, places, things...", text: $viewModel.query)
                         .font(.system(.body, design: .rounded))
                         .textFieldStyle(.plain)
                         .autocorrectionDisabled()
@@ -35,7 +35,8 @@ struct SearchView: View {
                 .background(KindredTheme.warmCardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: KindredTheme.cardRadius))
                 .shadow(color: KindredTheme.cardShadow, radius: 4, x: 0, y: 2)
-                .padding()
+                .padding(.horizontal)
+                .padding(.vertical, 10)
 
                 // Results
                 if viewModel.isSearching {
@@ -46,21 +47,47 @@ struct SearchView: View {
                 } else if viewModel.hasSearched && viewModel.results.isEmpty {
                     ContentUnavailableView.search(text: viewModel.query)
                 } else if !viewModel.results.isEmpty {
-                    // Results count
-                    HStack {
-                        Text("\(viewModel.results.count) results for \"\(viewModel.query)\"")
-                            .font(.system(.caption, design: .rounded, weight: .medium))
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-                    .padding(.bottom, 4)
-
                     ScrollView {
-                        let items = viewModel.results.map { PhotoGridItem(from: $0) }
-                        PhotoGridView(photoURLs: items) { item in
-                            selectedPhoto = item
+                        VStack(alignment: .leading, spacing: 16) {
+                            // Matched people/clusters section
+                            let personResults = viewModel.results.filter { $0.match_type == "person" }
+                            let uniqueClusters = uniqueMatchedClusters(from: personResults)
+
+                            if !uniqueClusters.isEmpty {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text("People")
+                                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                                        .foregroundStyle(.secondary)
+                                        .padding(.horizontal)
+
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(spacing: 12) {
+                                            ForEach(uniqueClusters, id: \.clusterId) { match in
+                                                matchedPersonCard(match: match, photoCount: personResults.filter { $0.match_cluster_id == match.clusterId }.count)
+                                            }
+                                        }
+                                        .padding(.horizontal)
+                                    }
+                                }
+                            }
+
+                            // Photo results
+                            let photoResults = viewModel.results.filter { $0.match_type != "person" }
+                            if !photoResults.isEmpty || !personResults.isEmpty {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text(photoResults.isEmpty ? "\(personResults.count) photos" : "\(viewModel.results.count) results")
+                                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                                        .foregroundStyle(.secondary)
+                                        .padding(.horizontal)
+
+                                    let items = viewModel.results.map { PhotoGridItem(from: $0) }
+                                    PhotoGridView(photoURLs: items) { item in
+                                        selectedPhoto = item
+                                    }
+                                }
+                            }
                         }
+                        .padding(.top, 4)
                     }
                 } else {
                     // Empty state
@@ -72,7 +99,7 @@ struct SearchView: View {
                         Text("Search your photos")
                             .font(.system(.title3, design: .rounded, weight: .semibold))
                             .foregroundStyle(KindredTheme.darkAccent)
-                        Text("Describe what you're looking for using natural language. Try \"sunset over water\", \"birthday cake\", or \"dog playing in snow\".")
+                        Text("Try names like \"Jen\" or \"Mike\", or describe a scene like \"sunset\" or \"birthday cake\".")
                             .font(.system(.subheadline, design: .rounded))
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -89,7 +116,7 @@ struct SearchView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(KindredTheme.warmBackground.ignoresSafeArea())
+            .background(KindredTheme.warmBackground.ignoresSafeArea())
             .navigationTitle("Search")
             .sheet(item: $selectedPhoto) { item in
                 FullScreenPhotoView(item: item)
@@ -99,5 +126,66 @@ struct SearchView: View {
             }
         }
         .tint(KindredTheme.pine)
+    }
+
+    // MARK: - Helpers
+
+    struct MatchedCluster {
+        let clusterId: String
+        let name: String
+        let category: String
+        let thumbURL: String?
+    }
+
+    private func uniqueMatchedClusters(from results: [SearchResult]) -> [MatchedCluster] {
+        var seen = Set<String>()
+        var clusters: [MatchedCluster] = []
+        for r in results {
+            guard let cid = r.match_cluster_id, !seen.contains(cid) else { continue }
+            seen.insert(cid)
+            clusters.append(MatchedCluster(
+                clusterId: cid,
+                name: r.match_name ?? "Unknown",
+                category: r.match_category ?? "people",
+                thumbURL: r.thumb_url
+            ))
+        }
+        return clusters
+    }
+
+    private func matchedPersonCard(match: MatchedCluster, photoCount: Int) -> some View {
+        VStack(spacing: 6) {
+            if let urlStr = match.thumbURL, let url = URL(string: urlStr) {
+                AsyncImage(url: url) { phase in
+                    if case .success(let image) = phase {
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 72, height: 72)
+                            .clipShape(Circle())
+                    } else {
+                        Circle()
+                            .fill(KindredTheme.pine.opacity(0.15))
+                            .frame(width: 72, height: 72)
+                    }
+                }
+            } else {
+                Circle()
+                    .fill(KindredTheme.pine.opacity(0.15))
+                    .frame(width: 72, height: 72)
+                    .overlay {
+                        Image(systemName: "person.fill")
+                            .foregroundStyle(KindredTheme.pine.opacity(0.5))
+                    }
+            }
+            Text(match.name)
+                .font(.system(.caption, design: .rounded, weight: .semibold))
+                .foregroundStyle(KindredTheme.darkAccent)
+                .lineLimit(1)
+            Text("\(photoCount) photos")
+                .font(.system(.caption2, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+        .frame(width: 90)
     }
 }
