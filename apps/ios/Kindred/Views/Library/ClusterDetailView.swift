@@ -31,7 +31,7 @@ struct ClusterDetailView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(KindredTheme.warmBackground.ignoresSafeArea())
         .navigationTitle(cluster.label ?? "Unknown")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {

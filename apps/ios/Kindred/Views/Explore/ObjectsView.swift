@@ -61,7 +61,7 @@ struct ObjectsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(KindredTheme.warmBackground.ignoresSafeArea())
         .navigationTitle("Objects")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $selectedPhoto) { item in
             FullScreenPhotoView(item: item)
         }

@@ -74,6 +74,7 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
         let request = BGProcessingTaskRequest(identifier: Self.backgroundTaskId)
         request.requiresNetworkConnectivity = true
         request.requiresExternalPower = false
+        // Allow sync on cellular, not just wifi
         // Schedule for within the next hour
         request.earliestBeginDate = Date(timeIntervalSinceNow: 60 * 15)
 

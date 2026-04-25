@@ -1,5 +1,4 @@
 import SwiftUI
-import AuthenticationServices
 
 struct SettingsView: View {
     @State private var viewModel = SettingsViewModel()
@@ -7,41 +6,58 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                // Logo header
-                Section {
-                    VStack(spacing: 8) {
-                        Image(systemName: "heart.text.square.fill")
-                            .font(.system(size: 36, weight: .light))
-                            .foregroundStyle(KindredTheme.pine)
-                        Text("Kindred")
-                            .font(.system(.title2, design: .rounded, weight: .bold))
-                            .foregroundStyle(KindredTheme.darkAccent)
-                        Text("Family Photo Library")
-                            .font(.system(.caption, design: .rounded, weight: .medium))
-                            .foregroundStyle(.secondary)
+            ScrollView {
+                VStack(spacing: 16) {
+                    // Account card
+                    accountCard
+
+                    // System status card
+                    systemCard
+
+                    // Sync card
+                    syncCard
+
+                    // About card
+                    aboutCard
+
+                    // Sign out
+                    Button(role: .destructive) {
+                        showLogoutConfirm = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                            Text("Sign Out")
+                                .font(.system(.body, design: .rounded, weight: .medium))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .listRowBackground(Color.clear)
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                    .alert("Sign Out", isPresented: $showLogoutConfirm) {
+                        Button("Sign Out", role: .destructive) {
+                            viewModel.logout()
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("Are you sure you want to sign out?")
+                    }
                 }
-
-                // Account
-                accountSection
-
-                // Sync
-                syncSection
-
-                // System
-                systemSection
-
-                // About
-                aboutSection
+                .padding()
             }
-            .scrollContentBackground(.hidden)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(KindredTheme.warmBackground.ignoresSafeArea())
+            .background(KindredTheme.warmBackground.ignoresSafeArea())
             .navigationTitle("Settings")
+            .toolbarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Image("KindredLogo")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 32, height: 32)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+            }
             .task {
                 await viewModel.checkHealth()
                 await viewModel.loadSyncs()
@@ -51,12 +67,20 @@ struct SettingsView: View {
         .tint(KindredTheme.pine)
     }
 
-    // MARK: - Account
+    // MARK: - Account Card
 
-    private var accountSection: some View {
-        Section {
+    private var accountCard: some View {
+        VStack(spacing: 0) {
             if let user = viewModel.session.currentUser {
-                HStack {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(KindredTheme.pine)
+                            .frame(width: 48, height: 48)
+                        Text(String(user.display_name.prefix(1)).uppercased())
+                            .font(.system(.title3, design: .rounded, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(user.display_name)
                             .font(.system(.headline, design: .rounded, weight: .semibold))
@@ -65,38 +89,55 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Image(systemName: "checkmark.circle.fill")
+                    Image(systemName: "checkmark.seal.fill")
                         .foregroundStyle(KindredTheme.pine)
+                        .font(.title3)
                 }
+                .padding()
             }
-
-            Button(role: .destructive) {
-                showLogoutConfirm = true
-            } label: {
-                Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                    .font(.system(.body, design: .rounded))
-            }
-            .alert("Sign Out", isPresented: $showLogoutConfirm) {
-                Button("Sign Out", role: .destructive) {
-                    viewModel.logout()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Are you sure you want to sign out?")
-            }
-        } header: {
-            Text("Account")
-                .font(.system(.caption, design: .rounded, weight: .semibold))
         }
+        .background(KindredTheme.warmCardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
-    // MARK: - Sync
+    // MARK: - System Card
 
-    private var syncSection: some View {
-        Section {
+    private var systemCard: some View {
+        VStack(spacing: 0) {
+            settingsRow(icon: "server.rack", title: "Backend", trailing: {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(viewModel.isHealthy ? Color.green : .red)
+                        .frame(width: 8, height: 8)
+                    Text(viewModel.isHealthy ? "Online" : "Offline")
+                        .font(.system(.caption, design: .rounded, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+            })
+
+            Divider().padding(.leading, 48)
+
+            settingsRow(icon: "link", title: "API", trailing: {
+                Text("kindred-api.mkteagle.com")
+                    .font(.system(.caption, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            })
+        }
+        .background(KindredTheme.warmCardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: - Sync Card
+
+    private var syncCard: some View {
+        VStack(spacing: 0) {
             if let activeJob = viewModel.activeJob {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     HStack {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .foregroundStyle(KindredTheme.pine)
+                            .frame(width: 24)
                         Text("Scan Running")
                             .font(.system(.subheadline, design: .rounded, weight: .semibold))
                             .foregroundStyle(KindredTheme.pine)
@@ -109,129 +150,114 @@ struct SettingsView: View {
                         .font(.system(.caption, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
+                .padding()
+
+                Divider().padding(.leading, 48)
             }
 
             if let lastSync = viewModel.lastSyncDate {
-                HStack {
-                    Text("Last Sync")
-                        .font(.system(.body, design: .rounded))
-                    Spacer()
+                settingsRow(icon: "clock.arrow.circlepath", title: "Last Sync", trailing: {
                     Text(lastSync)
                         .font(.system(.caption, design: .rounded))
                         .foregroundStyle(.secondary)
-                }
+                })
             }
 
             if !viewModel.syncs.isEmpty {
+                Divider().padding(.leading, 48)
+
                 NavigationLink {
                     syncHistoryView
                 } label: {
-                    Label("Sync History", systemImage: "clock.arrow.circlepath")
-                        .font(.system(.body, design: .rounded))
+                    settingsRow(icon: "list.bullet.clipboard", title: "Sync History", trailing: {
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    })
                 }
+                .buttonStyle(.plain)
             }
-        } header: {
-            Text("Sync")
-                .font(.system(.caption, design: .rounded, weight: .semibold))
         }
+        .background(KindredTheme.warmCardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
-    // MARK: - System
+    // MARK: - About Card
 
-    private var systemSection: some View {
-        Section {
-            HStack {
-                Text("Backend Status")
-                    .font(.system(.body, design: .rounded))
-                Spacer()
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(viewModel.isHealthy ? KindredTheme.pine : .red)
-                        .frame(width: 8, height: 8)
-                    Text(viewModel.isHealthy ? "Online" : "Offline")
-                        .font(.system(.caption, design: .rounded, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            HStack {
-                Text("API Endpoint")
-                    .font(.system(.body, design: .rounded))
-                Spacer()
-                Text("kindred-api.mkteagle.com")
+    private var aboutCard: some View {
+        VStack(spacing: 0) {
+            settingsRow(icon: "info.circle", title: "Version", trailing: {
+                Text("1.0.0")
                     .font(.system(.caption, design: .rounded))
                     .foregroundStyle(.secondary)
-            }
-        } header: {
-            Text("System")
-                .font(.system(.caption, design: .rounded, weight: .semibold))
+            })
+
+            Divider().padding(.leading, 48)
+
+            settingsRow(icon: "heart.fill", title: "Built by", trailing: {
+                Text("Kindling Signal")
+                    .font(.system(.caption, design: .rounded))
+                    .foregroundStyle(.secondary)
+            })
         }
+        .background(KindredTheme.warmCardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
-    // MARK: - About
+    // MARK: - Settings Row Helper
 
-    private var aboutSection: some View {
-        Section {
-            HStack {
-                Text("Version")
-                    .font(.system(.body, design: .rounded))
-                Spacer()
-                Text("1.0.0")
-                    .font(.system(.body, design: .rounded))
-                    .foregroundStyle(.secondary)
-            }
-            HStack {
-                Text("Built by")
-                    .font(.system(.body, design: .rounded))
-                Spacer()
-                Text("Kindling Signal")
-                    .font(.system(.body, design: .rounded))
-                    .foregroundStyle(.secondary)
-            }
-        } header: {
-            Text("About")
-                .font(.system(.caption, design: .rounded, weight: .semibold))
+    private func settingsRow<Trailing: View>(icon: String, title: String, @ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .foregroundStyle(KindredTheme.pine)
+                .frame(width: 24)
+            Text(title)
+                .font(.system(.body, design: .rounded))
+            Spacer()
+            trailing()
         }
+        .padding(.horizontal)
+        .padding(.vertical, 12)
     }
 
     // MARK: - Sync History
 
     private var syncHistoryView: some View {
-        List(viewModel.syncs) { sync in
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(sync.status.capitalized)
-                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                        .foregroundStyle(sync.status == "completed" ? KindredTheme.pine : sync.status == "failed" ? .red : .primary)
-                    Spacer()
-                    if let total = sync.total_photos {
-                        Text("\(total) photos")
-                            .font(.system(.caption, design: .rounded))
-                            .foregroundStyle(.secondary)
+        ScrollView {
+            LazyVStack(spacing: 8) {
+                ForEach(viewModel.syncs) { sync in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(sync.status == "completed" ? Color.green : sync.status == "failed" ? .red : KindredTheme.pine)
+                                    .frame(width: 8, height: 8)
+                                Text(sync.status.capitalized)
+                                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                            }
+                            if let started = sync.started_at {
+                                Text(started)
+                                    .font(.system(.caption, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        if let total = sync.total_photos {
+                            Text("\(total) photos")
+                                .font(.system(.caption, design: .rounded, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                }
-                if let started = sync.started_at {
-                    Text(started)
-                        .font(.system(.caption, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
-                if let faces = sync.new_faces, faces > 0 {
-                    Text("\(faces) new faces")
-                        .font(.system(.caption2, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
-                if let error = sync.error {
-                    Text(error)
-                        .font(.system(.caption2, design: .rounded))
-                        .foregroundStyle(.red)
+                    .padding()
+                    .background(KindredTheme.warmCardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
             }
-            .padding(.vertical, 2)
+            .padding()
         }
-        .scrollContentBackground(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(KindredTheme.warmBackground.ignoresSafeArea())
         .navigationTitle("Sync History")
+        .navigationBarTitleDisplayMode(.inline)
     }
-
 }

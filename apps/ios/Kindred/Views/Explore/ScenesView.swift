@@ -61,7 +61,7 @@ struct ScenesView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(KindredTheme.warmBackground.ignoresSafeArea())
         .navigationTitle("Landmarks")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $selectedPhoto) { item in
             FullScreenPhotoView(item: item)
         }

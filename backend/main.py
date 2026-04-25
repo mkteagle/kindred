@@ -2052,7 +2052,7 @@ def search_photos(q: str, limit: int = 50):
         FROM clusters c
         WHERE c.label IS NOT NULL AND (
             c.label ILIKE %s
-            OR similarity(LOWER(c.label), LOWER(%s)) > 0.2
+            OR similarity(LOWER(c.label), LOWER(%s)) > 0.15
             OR LOWER(c.label) LIKE LOWER(%s)
         )
         ORDER BY prefix_match DESC, sim DESC, LENGTH(c.label) ASC
