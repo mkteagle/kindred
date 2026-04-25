@@ -4,8 +4,8 @@ struct LibraryView: View {
     @State private var viewModel = LibraryViewModel()
 
     private let columns = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 6),
+        GridItem(.flexible(), spacing: 6),
     ]
 
     var body: some View {
@@ -26,12 +26,12 @@ struct LibraryView: View {
                 if viewModel.isLoading {
                     // Skeleton loading
                     ScrollView {
-                        LazyVGrid(columns: columns, spacing: 12) {
+                        LazyVGrid(columns: columns, spacing: 6) {
                             ForEach(0..<6, id: \.self) { _ in
                                 SkeletonCard()
                             }
                         }
-                        .padding(.horizontal)
+                        .padding(.horizontal, 8)
                         .padding(.top, 4)
                     }
                 } else if let error = viewModel.error {
@@ -57,11 +57,11 @@ struct LibraryView: View {
                                     StatBadge(value: groups, label: "Groups")
                                 }
                             }
-                            .padding(.horizontal)
+                            .padding(.horizontal, 8)
                             .padding(.bottom, 8)
                         }
 
-                        LazyVGrid(columns: columns, spacing: 12) {
+                        LazyVGrid(columns: columns, spacing: 6) {
                             ForEach(viewModel.clusters) { cluster in
                                 NavigationLink(value: cluster) {
                                     ClusterCard(
@@ -77,7 +77,7 @@ struct LibraryView: View {
                                 .buttonStyle(.plain)
                             }
                         }
-                        .padding(.horizontal)
+                        .padding(.horizontal, 8)
                     }
                     .refreshable {
                         await viewModel.loadClusters()
@@ -128,27 +128,23 @@ struct ClusterCard: View {
     @State private var nameInput = ""
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Cover photo with face pip overlay
-            ZStack(alignment: .bottomLeading) {
-                // Use the full photo as cover, not the face chip
-                let coverURL = cluster.photo_url ?? cluster.thumb_url ?? cluster.avatar
-                if let urlStr = coverURL, let url = URL(string: urlStr) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(height: 160)
-                                .clipped()
-                        default:
-                            skeletonCover
-                        }
+        // Cover photo with face pip overlay — fixed aspect ratio
+        ZStack(alignment: .bottomLeading) {
+            let coverURL = cluster.photo_url ?? cluster.thumb_url ?? cluster.avatar
+            if let urlStr = coverURL, let url = URL(string: urlStr) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    default:
+                        skeletonCover
                     }
-                } else {
-                    placeholderCover
                 }
+            } else {
+                placeholderCover
+            }
 
                 // Face detection pip in bottom-right
                 if let avatarURL = cluster.avatar, let url = URL(string: avatarURL) {
@@ -190,9 +186,11 @@ struct ClusterCard: View {
                     )
                 )
             }
-            .clipShape(RoundedRectangle(cornerRadius: KindredTheme.cardRadius))
-        }
-        .shadow(color: KindredTheme.cardShadow, radius: 4, x: 0, y: 2)
+        .frame(maxWidth: .infinity)
+        .aspectRatio(3/4, contentMode: .fill)
+        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: KindredTheme.cardRadius))
+        .shadow(color: KindredTheme.cardShadow, radius: 2, x: 0, y: 1)
         .onLongPressGesture {
             nameInput = cluster.label ?? ""
             showRename = true
@@ -211,25 +209,11 @@ struct ClusterCard: View {
     }
 
     private var skeletonCover: some View {
-        RoundedRectangle(cornerRadius: KindredTheme.cardRadius)
-            .fill(KindredTheme.warmCardBackground)
-            .frame(height: 160)
-            .overlay {
-                RoundedRectangle(cornerRadius: KindredTheme.cardRadius)
-                    .fill(
-                        LinearGradient(
-                            colors: [KindredTheme.warmCardBackground, KindredTheme.warmCardBackground.opacity(0.5), KindredTheme.warmCardBackground],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-            }
+        Color(KindredTheme.warmCardBackground)
     }
 
     private var placeholderCover: some View {
-        RoundedRectangle(cornerRadius: KindredTheme.cardRadius)
-            .fill(KindredTheme.pine.opacity(0.1))
-            .frame(height: 160)
+        KindredTheme.pine.opacity(0.1)
             .overlay {
                 Image(systemName: category.icon)
                     .font(.system(size: 28, weight: .light))
@@ -244,26 +228,24 @@ struct SkeletonCard: View {
     @State private var shimmer = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            RoundedRectangle(cornerRadius: KindredTheme.cardRadius)
-                .fill(KindredTheme.warmCardBackground)
-                .frame(height: 160)
-                .overlay {
-                    RoundedRectangle(cornerRadius: KindredTheme.cardRadius)
-                        .fill(
-                            LinearGradient(
-                                colors: [.clear, .white.opacity(0.3), .clear],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
+        RoundedRectangle(cornerRadius: KindredTheme.cardRadius)
+            .fill(KindredTheme.warmCardBackground)
+            .aspectRatio(3/4, contentMode: .fill)
+            .overlay {
+                RoundedRectangle(cornerRadius: KindredTheme.cardRadius)
+                    .fill(
+                        LinearGradient(
+                            colors: [.clear, .white.opacity(0.3), .clear],
+                            startPoint: .leading,
+                            endPoint: .trailing
                         )
-                        .offset(x: shimmer ? 200 : -200)
-                        .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: false), value: shimmer)
-                }
-                .clipped()
-        }
-        .shadow(color: KindredTheme.cardShadow, radius: 4, x: 0, y: 2)
-        .onAppear { shimmer = true }
+                    )
+                    .offset(x: shimmer ? 200 : -200)
+                    .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: false), value: shimmer)
+            }
+            .clipped()
+            .shadow(color: KindredTheme.cardShadow, radius: 2, x: 0, y: 1)
+            .onAppear { shimmer = true }
     }
 }
 
