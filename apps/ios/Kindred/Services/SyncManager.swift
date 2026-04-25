@@ -133,6 +133,13 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
         for (index, asset) in toSync.enumerated() {
             if Task.isCancelled { break }
 
+            // Skip if already uploaded (race condition guard)
+            if PhotoLibraryManager.shared.isUploaded(localIdentifier: asset.localIdentifier) {
+                syncedCount += 1
+                syncProgress = Float(index + 1) / Float(totalToSync)
+                continue
+            }
+
             do {
                 let (data, filename, contentType) = try await getAssetData(asset)
                 let title = asset.creationDate.map { formatDate($0) } ?? "Photo \(index + 1)"

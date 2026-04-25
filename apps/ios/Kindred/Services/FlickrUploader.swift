@@ -94,10 +94,26 @@ final class FlickrUploader: NSObject {
         totalProgress = 0
         lastError = nil
 
-        for (index, asset) in assets.enumerated() {
+        // Filter out already-uploaded assets
+        let toUpload = assets.filter { !PhotoLibraryManager.shared.isUploaded(localIdentifier: $0.localIdentifier) }
+        totalCount = toUpload.count
+
+        if toUpload.isEmpty {
+            isUploading = false
+            return
+        }
+
+        for (index, asset) in toUpload.enumerated() {
             let mediaLabel = asset.mediaType == .video ? "Video" : "Photo"
-            currentAssetTitle = "\(mediaLabel) \(index + 1) of \(assets.count)"
+            currentAssetTitle = "\(mediaLabel) \(index + 1) of \(toUpload.count)"
             currentProgress = 0
+
+            // Double-check in case another upload finished this one concurrently
+            if PhotoLibraryManager.shared.isUploaded(localIdentifier: asset.localIdentifier) {
+                uploadedCount += 1
+                totalProgress = Float(index + 1) / Float(toUpload.count)
+                continue
+            }
 
             do {
                 let (data, filename, contentType) = try await getOriginalAssetData(asset)
@@ -116,7 +132,7 @@ final class FlickrUploader: NSObject {
                 lastError = "Failed to upload \(mediaLabel.lowercased()) \(index + 1): \(error.localizedDescription)"
             }
 
-            totalProgress = Float(index + 1) / Float(assets.count)
+            totalProgress = Float(index + 1) / Float(toUpload.count)
         }
 
         isUploading = false
