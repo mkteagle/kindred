@@ -2,7 +2,6 @@ import SwiftUI
 
 struct LibraryView: View {
     @State private var viewModel = LibraryViewModel()
-    @State private var selectedPhotoItem: PhotoGridItem?
 
     private let columns = [
         GridItem(.flexible(), spacing: 12),
@@ -21,28 +20,20 @@ struct LibraryView: View {
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
+                .padding(.vertical, 8)
 
-                // Stats bar
-                if let stats = viewModel.categoryStats(for: viewModel.selectedCategory) {
-                    HStack(spacing: 10) {
-                        StatBadge(value: stats.detections, label: "Detections", icon: "eye.fill")
-                        StatBadge(value: stats.photos, label: "Photos", icon: "photo.fill")
-                        if let groups = stats.groups {
-                            StatBadge(value: groups, label: "Groups", icon: "rectangle.stack.fill")
-                        }
-                    }
-                    .padding(.horizontal)
-                    .padding(.bottom, 12)
-                }
-
-                // Cluster grid
+                // Content
                 if viewModel.isLoading {
-                    Spacer()
-                    ProgressView("Loading...")
-                        .font(.system(.body, design: .rounded))
-                    Spacer()
+                    // Skeleton loading
+                    ScrollView {
+                        LazyVGrid(columns: columns, spacing: 12) {
+                            ForEach(0..<6, id: \.self) { _ in
+                                SkeletonCard()
+                            }
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 4)
+                    }
                 } else if let error = viewModel.error {
                     ContentUnavailableView(
                         "Error",
@@ -53,10 +44,23 @@ struct LibraryView: View {
                     ContentUnavailableView(
                         "No \(viewModel.selectedCategory.displayName)",
                         systemImage: viewModel.selectedCategory.icon,
-                        description: Text("No \(viewModel.selectedCategory.displayName.lowercased()) found yet. Sync your Flickr library to get started.")
+                        description: Text("Sync your library to get started.")
                     )
                 } else {
                     ScrollView {
+                        // Stats row
+                        if let stats = viewModel.categoryStats(for: viewModel.selectedCategory) {
+                            HStack(spacing: 10) {
+                                StatBadge(value: stats.detections, label: "Detections")
+                                StatBadge(value: stats.photos, label: "Photos")
+                                if let groups = stats.groups {
+                                    StatBadge(value: groups, label: "Groups")
+                                }
+                            }
+                            .padding(.horizontal)
+                            .padding(.bottom, 8)
+                        }
+
                         LazyVGrid(columns: columns, spacing: 12) {
                             ForEach(viewModel.clusters) { cluster in
                                 NavigationLink(value: cluster) {
@@ -73,7 +77,7 @@ struct LibraryView: View {
                                 .buttonStyle(.plain)
                             }
                         }
-                        .padding()
+                        .padding(.horizontal)
                     }
                     .refreshable {
                         await viewModel.loadClusters()
@@ -81,9 +85,18 @@ struct LibraryView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(KindredTheme.warmBackground.ignoresSafeArea())
+            .background(KindredTheme.warmBackground.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Image("KindredLogo")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 32, height: 32)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+            }
             .navigationTitle("Library")
-            .toolbarTitleDisplayMode(.large)
+            .toolbarTitleDisplayMode(.inline)
             .navigationDestination(for: ClusterSummary.self) { cluster in
                 ClusterDetailView(
                     cluster: cluster,
@@ -105,7 +118,7 @@ struct LibraryView: View {
     }
 }
 
-// MARK: - Cluster Card
+// MARK: - Cluster Card (cover photo + face pip)
 
 struct ClusterCard: View {
     let cluster: ClusterSummary
@@ -116,43 +129,62 @@ struct ClusterCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Cover photo with name overlay
+            // Cover photo with face pip overlay
             ZStack(alignment: .bottomLeading) {
-                if let avatarURL = cluster.avatar ?? cluster.thumb_url,
-                   let url = URL(string: avatarURL) {
+                // Use the full photo as cover, not the face chip
+                let coverURL = cluster.photo_url ?? cluster.thumb_url ?? cluster.avatar
+                if let urlStr = coverURL, let url = URL(string: urlStr) {
                     AsyncImage(url: url) { phase in
                         switch phase {
                         case .success(let image):
                             image
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(height: 150)
+                                .frame(height: 160)
                                 .clipped()
                         default:
-                            placeholderAvatar
+                            skeletonCover
                         }
                     }
                 } else {
-                    placeholderAvatar
+                    placeholderCover
                 }
 
-                // Name overlay at bottom
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(cluster.label ?? "Unknown")
-                        .font(.system(.subheadline, design: .rounded, weight: .bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
+                // Face detection pip in bottom-right
+                if let avatarURL = cluster.avatar, let url = URL(string: avatarURL) {
+                    AsyncImage(url: url) { phase in
+                        if case .success(let image) = phase {
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 36, height: 36)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(.white, lineWidth: 2))
+                                .shadow(color: .black.opacity(0.3), radius: 3, x: 0, y: 1)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .padding(8)
+                }
 
-                    Text("\(cluster.photo_count) photos")
-                        .font(.system(.caption2, design: .rounded, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.85))
+                // Name + count overlay at bottom
+                HStack {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(cluster.label ?? "Unknown")
+                            .font(.system(.subheadline, design: .rounded, weight: .bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                        Text("\(cluster.photo_count) photos")
+                            .font(.system(.caption2, design: .rounded, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.85))
+                    }
+                    Spacer()
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     LinearGradient(
-                        colors: [.clear, KindredTheme.darkAccent.opacity(0.75)],
+                        colors: [.clear, .black.opacity(0.55)],
                         startPoint: .top,
                         endPoint: .bottom
                     )
@@ -160,7 +192,7 @@ struct ClusterCard: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: KindredTheme.cardRadius))
         }
-        .kindredCardStyle()
+        .shadow(color: KindredTheme.cardShadow, radius: 4, x: 0, y: 2)
         .onLongPressGesture {
             nameInput = cluster.label ?? ""
             showRename = true
@@ -178,15 +210,60 @@ struct ClusterCard: View {
         }
     }
 
-    private var placeholderAvatar: some View {
+    private var skeletonCover: some View {
         RoundedRectangle(cornerRadius: KindredTheme.cardRadius)
-            .fill(KindredTheme.pine.opacity(0.12))
-            .frame(height: 150)
+            .fill(KindredTheme.warmCardBackground)
+            .frame(height: 160)
+            .overlay {
+                RoundedRectangle(cornerRadius: KindredTheme.cardRadius)
+                    .fill(
+                        LinearGradient(
+                            colors: [KindredTheme.warmCardBackground, KindredTheme.warmCardBackground.opacity(0.5), KindredTheme.warmCardBackground],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+            }
+    }
+
+    private var placeholderCover: some View {
+        RoundedRectangle(cornerRadius: KindredTheme.cardRadius)
+            .fill(KindredTheme.pine.opacity(0.1))
+            .frame(height: 160)
             .overlay {
                 Image(systemName: category.icon)
-                    .font(.system(size: 32, weight: .light))
-                    .foregroundStyle(KindredTheme.pine.opacity(0.5))
+                    .font(.system(size: 28, weight: .light))
+                    .foregroundStyle(KindredTheme.pine.opacity(0.4))
             }
+    }
+}
+
+// MARK: - Skeleton Card
+
+struct SkeletonCard: View {
+    @State private var shimmer = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            RoundedRectangle(cornerRadius: KindredTheme.cardRadius)
+                .fill(KindredTheme.warmCardBackground)
+                .frame(height: 160)
+                .overlay {
+                    RoundedRectangle(cornerRadius: KindredTheme.cardRadius)
+                        .fill(
+                            LinearGradient(
+                                colors: [.clear, .white.opacity(0.3), .clear],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .offset(x: shimmer ? 200 : -200)
+                        .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: false), value: shimmer)
+                }
+                .clipped()
+        }
+        .shadow(color: KindredTheme.cardShadow, radius: 4, x: 0, y: 2)
+        .onAppear { shimmer = true }
     }
 }
 
@@ -195,12 +272,11 @@ struct ClusterCard: View {
 struct StatBadge: View {
     let value: Int
     let label: String
-    var icon: String = ""
 
     var body: some View {
-        VStack(spacing: 3) {
+        VStack(spacing: 2) {
             Text("\(value)")
-                .font(.system(.headline, design: .rounded, weight: .bold))
+                .font(.system(.subheadline, design: .rounded, weight: .bold))
                 .monospacedDigit()
                 .foregroundStyle(KindredTheme.pine)
             Text(label)
@@ -208,10 +284,9 @@ struct StatBadge: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .background(KindredTheme.warmCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .shadow(color: KindredTheme.cardShadow, radius: 3, x: 0, y: 1)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
