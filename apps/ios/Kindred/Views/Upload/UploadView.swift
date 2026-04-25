@@ -3,9 +3,11 @@ import Photos
 
 struct UploadView: View {
     @State private var viewModel = UploadViewModel()
+    @State private var syncManager = SyncManager.shared
     @State private var showFreeSpaceConfirm = false
     @State private var freedCount = 0
     @State private var showFreedAlert = false
+    @State private var showCleanup = false
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 4)
 
@@ -24,8 +26,8 @@ struct UploadView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(KindredTheme.warmBackground.ignoresSafeArea())
-            .navigationTitle("Upload")
+            .background(KindredTheme.warmBackground.ignoresSafeArea())
+            .navigationTitle("Backup")
             .task {
                 await viewModel.requestAccess()
             }
@@ -39,13 +41,11 @@ struct UploadView: View {
         ContentUnavailableView {
             Label("Photo Access", systemImage: "photo.on.rectangle")
         } description: {
-            Text("Kindred needs access to your photo library to upload photos and videos to Flickr.")
+            Text("Kindred needs access to your photo library to back up photos and videos.")
                 .font(.system(.body, design: .rounded))
         } actions: {
             Button("Grant Access") {
-                Task {
-                    await viewModel.requestAccess()
-                }
+                Task { await viewModel.requestAccess() }
             }
             .buttonStyle(.borderedProminent)
             .tint(KindredTheme.pine)
@@ -72,55 +72,189 @@ struct UploadView: View {
     // MARK: - Authorized View
 
     private var authorizedView: some View {
-        VStack(spacing: 0) {
-            if viewModel.isUploading {
-                uploadProgressView
+        ScrollView {
+            VStack(spacing: 16) {
+                // Sync status card
+                syncStatusCard
+
+                // Storage summary + cleanup
+                storageCard
+
+                // Upload progress (if active)
+                if viewModel.isUploading {
+                    uploadProgressCard
+                }
+
+                // Not backed up section
+                if !viewModel.photoManager.notUploadedPhotos.isEmpty {
+                    notBackedUpSection
+                }
+
+                // All backed up state
+                if viewModel.photoManager.notUploadedPhotos.isEmpty && !viewModel.photoManager.isLoading {
+                    VStack(spacing: 12) {
+                        Image(systemName: "checkmark.icloud.fill")
+                            .font(.system(size: 48, weight: .light))
+                            .foregroundStyle(KindredTheme.pine)
+                        Text("All Backed Up")
+                            .font(.system(.title3, design: .rounded, weight: .semibold))
+                            .foregroundStyle(KindredTheme.darkAccent)
+                        Text("Every photo and video on this device is safely backed up.")
+                            .font(.system(.subheadline, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.vertical, 40)
+                }
             }
+            .padding()
+        }
+        .refreshable {
+            await viewModel.refreshPhotos()
+        }
+    }
 
-            // Storage summary
-            storageSummaryView
+    // MARK: - Sync Status Card
 
-            // Selection toolbar
-            if !viewModel.photoManager.notUploadedPhotos.isEmpty {
-                selectionToolbar
-            }
-
-            // Photo grid
-            if viewModel.photoManager.isLoading {
-                Spacer()
-                ProgressView("Scanning photos...")
-                    .font(.system(.body, design: .rounded))
-                Spacer()
-            } else if viewModel.photoManager.notUploadedPhotos.isEmpty {
-                ContentUnavailableView(
-                    "All Backed Up",
-                    systemImage: "checkmark.icloud",
-                    description: Text("All your device photos have been uploaded to Flickr.")
-                )
-            } else {
-                ScrollView {
-                    LazyVGrid(columns: columns, spacing: 2) {
-                        ForEach(viewModel.photoManager.notUploadedPhotos, id: \.localIdentifier) { asset in
-                            PhotoAssetCell(
-                                asset: asset,
-                                isSelected: viewModel.selectedAssets.contains(asset.localIdentifier)
-                            )
-                            .onTapGesture {
-                                viewModel.toggleSelection(asset.localIdentifier)
-                            }
-                        }
+    private var syncStatusCard: some View {
+        VStack(spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Auto Backup")
+                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                        .foregroundStyle(KindredTheme.darkAccent)
+                    if let lastSync = syncManager.lastSyncDate {
+                        Text("Last sync \(lastSync, style: .relative) ago")
+                            .font(.system(.caption, design: .rounded))
+                            .foregroundStyle(.secondary)
                     }
                 }
-                .refreshable {
-                    await viewModel.refreshPhotos()
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { syncManager.autoSyncEnabled },
+                    set: { syncManager.setAutoSync($0) }
+                ))
+                .tint(KindredTheme.pine)
+            }
+
+            if syncManager.isSyncing {
+                VStack(spacing: 6) {
+                    HStack {
+                        Text("Syncing...")
+                            .font(.system(.caption, design: .rounded, weight: .medium))
+                            .foregroundStyle(KindredTheme.pine)
+                        Spacer()
+                        Text("\(syncManager.syncedCount)/\(syncManager.totalToSync)")
+                            .font(.system(.caption, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                    ProgressView(value: syncManager.syncProgress)
+                        .tint(KindredTheme.pine)
                 }
+            } else if !syncManager.autoSyncEnabled {
+                Button {
+                    Task { await syncManager.syncNewPhotos() }
+                } label: {
+                    Label("Sync Now", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.system(.subheadline, design: .rounded, weight: .medium))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 40)
+                }
+                .buttonStyle(.bordered)
+                .tint(KindredTheme.pine)
+            }
+
+            if let error = syncManager.syncError {
+                Text(error)
+                    .font(.system(.caption, design: .rounded))
+                    .foregroundStyle(.red)
             }
         }
+        .padding()
+        .background(KindredTheme.warmCardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: - Storage Card
+
+    private var storageCard: some View {
+        VStack(spacing: 12) {
+            // Progress ring + stats
+            HStack(spacing: 20) {
+                // Circular progress
+                ZStack {
+                    Circle()
+                        .stroke(KindredTheme.pine.opacity(0.15), lineWidth: 6)
+                    Circle()
+                        .trim(from: 0, to: backupProgress)
+                        .stroke(KindredTheme.pine, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                    Text("\(Int(backupProgress * 100))%")
+                        .font(.system(.caption2, design: .rounded, weight: .bold))
+                        .foregroundStyle(KindredTheme.pine)
+                }
+                .frame(width: 52, height: 52)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(viewModel.photoManager.uploadedCount) backed up")
+                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                        .foregroundStyle(KindredTheme.darkAccent)
+                    Text("\(viewModel.photoManager.notUploadedPhotos.count) remaining · \(viewModel.photoManager.totalDevicePhotos) total")
+                        .font(.system(.caption, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            // Free up space button
+            if viewModel.photoManager.uploadedCount > 0 {
+                Button {
+                    showFreeSpaceConfirm = true
+                } label: {
+                    HStack {
+                        Image(systemName: "arrow.up.trash")
+                        Text("Free up \(viewModel.formattedSavings)")
+                            .font(.system(.subheadline, design: .rounded, weight: .medium))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 40)
+                }
+                .buttonStyle(.bordered)
+                .tint(.orange)
+            }
+        }
+        .padding()
+        .background(KindredTheme.warmCardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .alert("Free Up Space", isPresented: $showFreeSpaceConfirm) {
+            Button("Delete \(viewModel.photoManager.uploadedCount) Local Copies", role: .destructive) {
+                Task {
+                    do {
+                        freedCount = try await viewModel.freeUpSpace()
+                        showFreedAlert = true
+                    } catch {}
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Remove \(viewModel.photoManager.uploadedCount) items from this device that are already backed up to Flickr? This saves \(viewModel.formattedSavings).\n\nThey'll stay safe in your Kindred library.")
+        }
+        .alert("Space Freed", isPresented: $showFreedAlert) {
+            Button("OK") {}
+        } message: {
+            Text("Removed \(freedCount) items from your device. They're still safe in your Kindred library on Flickr.")
+        }
+    }
+
+    private var backupProgress: CGFloat {
+        let total = viewModel.photoManager.totalDevicePhotos
+        guard total > 0 else { return 0 }
+        return CGFloat(viewModel.photoManager.uploadedCount) / CGFloat(total)
     }
 
     // MARK: - Upload Progress
 
-    private var uploadProgressView: some View {
+    private var uploadProgressCard: some View {
         VStack(spacing: 8) {
             HStack {
                 Text("Uploading...")
@@ -131,14 +265,11 @@ struct UploadView: View {
                     .font(.system(.caption, design: .rounded, weight: .medium))
                     .foregroundStyle(.secondary)
             }
-
             ProgressView(value: viewModel.uploadProgress)
                 .tint(KindredTheme.pine)
-
             Text(viewModel.currentPhotoTitle)
                 .font(.system(.caption, design: .rounded))
                 .foregroundStyle(.secondary)
-
             if let error = viewModel.uploadError {
                 Text(error)
                     .font(.system(.caption, design: .rounded))
@@ -147,95 +278,66 @@ struct UploadView: View {
         }
         .padding()
         .background(KindredTheme.warmCardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
-    // MARK: - Storage Summary
+    // MARK: - Not Backed Up Section
 
-    private var storageSummaryView: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(viewModel.photoManager.uploadedCount) backed up")
-                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+    private var notBackedUpSection: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Text("Not Backed Up")
+                    .font(.system(.headline, design: .rounded, weight: .bold))
                     .foregroundStyle(KindredTheme.darkAccent)
-                Text("\(viewModel.photoManager.notUploadedPhotos.count) not uploaded")
-                    .font(.system(.caption, design: .rounded))
+                Spacer()
+                Text("\(viewModel.photoManager.notUploadedPhotos.count)")
+                    .font(.system(.subheadline, design: .rounded, weight: .medium))
                     .foregroundStyle(.secondary)
             }
 
-            Spacer()
-
-            if viewModel.photoManager.uploadedCount > 0 {
-                Button {
-                    showFreeSpaceConfirm = true
-                } label: {
-                    Label("Free \(viewModel.formattedSavings)", systemImage: "trash")
-                        .font(.system(.caption, design: .rounded, weight: .medium))
+            // Selection controls
+            HStack {
+                Button(viewModel.selectedAssets.isEmpty ? "Select All" : "Deselect") {
+                    if viewModel.selectedAssets.isEmpty {
+                        viewModel.selectAll()
+                    } else {
+                        viewModel.clearSelection()
+                    }
                 }
-                .buttonStyle(.bordered)
-                .tint(.orange)
+                .font(.system(.caption, design: .rounded, weight: .medium))
+
+                Spacer()
+
+                if !viewModel.selectedAssets.isEmpty {
+                    Text("\(viewModel.selectedAssets.count) selected")
+                        .font(.system(.caption, design: .rounded))
+                        .foregroundStyle(.secondary)
+
+                    Button {
+                        Task { await viewModel.uploadSelected() }
+                    } label: {
+                        Label("Upload", systemImage: "icloud.and.arrow.up")
+                            .font(.system(.caption, design: .rounded, weight: .semibold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(KindredTheme.pine)
+                    .disabled(viewModel.isUploading)
+                }
             }
-        }
-        .padding()
-        .background(KindredTheme.warmCardBackground)
-        .alert("Free Up Space", isPresented: $showFreeSpaceConfirm) {
-            Button("Delete Local Copies", role: .destructive) {
-                Task {
-                    do {
-                        freedCount = try await viewModel.freeUpSpace()
-                        showFreedAlert = true
-                    } catch {
-                        // Error handled in view model
+
+            // Photo grid
+            LazyVGrid(columns: columns, spacing: 2) {
+                ForEach(viewModel.photoManager.notUploadedPhotos, id: \.localIdentifier) { asset in
+                    PhotoAssetCell(
+                        asset: asset,
+                        isSelected: viewModel.selectedAssets.contains(asset.localIdentifier)
+                    )
+                    .onTapGesture {
+                        viewModel.toggleSelection(asset.localIdentifier)
                     }
                 }
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Delete \(viewModel.photoManager.uploadedCount) photos from this device that are already backed up to Flickr? This saves \(viewModel.formattedSavings).")
         }
-        .alert("Space Freed", isPresented: $showFreedAlert) {
-            Button("OK") {}
-        } message: {
-            Text("Deleted \(freedCount) photos from your device. They are still safe on Flickr.")
-        }
-    }
-
-    // MARK: - Selection Toolbar
-
-    private var selectionToolbar: some View {
-        HStack {
-            Button(viewModel.selectedAssets.isEmpty ? "Select All" : "Deselect All") {
-                if viewModel.selectedAssets.isEmpty {
-                    viewModel.selectAll()
-                } else {
-                    viewModel.clearSelection()
-                }
-            }
-            .font(.system(.subheadline, design: .rounded))
-
-            Spacer()
-
-            if !viewModel.selectedAssets.isEmpty {
-                Text("\(viewModel.selectedAssets.count) selected")
-                    .font(.system(.caption, design: .rounded, weight: .medium))
-                    .foregroundStyle(.secondary)
-
-                Button {
-                    Task {
-                        await viewModel.uploadSelected()
-                    }
-                } label: {
-                    Label("Upload", systemImage: "icloud.and.arrow.up")
-                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(KindredTheme.pine)
-                .disabled(viewModel.isUploading)
-            }
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(KindredTheme.warmBackground.ignoresSafeArea())
     }
 }
 

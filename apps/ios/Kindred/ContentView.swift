@@ -19,7 +19,7 @@ struct ContentView: View {
 
             UploadView()
                 .tabItem {
-                    Label("Upload", systemImage: "icloud.and.arrow.up.fill")
+                    Label("Backup", systemImage: "arrow.clockwise.icloud.fill")
                 }
                 .tag(2)
 
