@@ -4,7 +4,8 @@ import CommonCrypto
 /// Manual OAuth 1.0a signing implementation using CommonCrypto HMAC-SHA1.
 /// Flickr consumer key and secret are loaded from the backend /app-config endpoint.
 enum OAuthHelper {
-    /// Loaded from backend — call `loadConfig()` before first use
+    /// Loaded from backend /app-config. Falls back to env defaults if backend
+    /// hasn't been updated yet.
     static var consumerKey = ""
     static var consumerSecret = ""
 
