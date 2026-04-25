@@ -2032,23 +2032,128 @@ def appears_with(cluster_id: str, limit: int = 15):
 
     return {"appears_with": [dict(r) for r in rows]}
 
+# Nickname / diminutive dictionary for fuzzy name search
+_NICKNAMES: dict[str, list[str]] = {
+    "michael": ["mike", "mikey", "mick", "mickey"],
+    "jennifer": ["jen", "jenny", "jenn"],
+    "william": ["will", "bill", "billy", "willy", "liam"],
+    "robert": ["rob", "bob", "bobby", "robbie", "robby", "bert"],
+    "richard": ["rich", "rick", "dick", "ricky"],
+    "james": ["jim", "jimmy", "jamie"],
+    "john": ["jack", "johnny", "jon"],
+    "joseph": ["joe", "joey"],
+    "thomas": ["tom", "tommy"],
+    "charles": ["charlie", "chuck", "chas"],
+    "christopher": ["chris", "topher", "kit"],
+    "daniel": ["dan", "danny"],
+    "matthew": ["matt", "matty"],
+    "anthony": ["tony"],
+    "david": ["dave", "davey"],
+    "andrew": ["andy", "drew"],
+    "joshua": ["josh"],
+    "nicholas": ["nick", "nicky"],
+    "jonathan": ["jon", "jonny"],
+    "benjamin": ["ben", "benny", "benji"],
+    "samuel": ["sam", "sammy"],
+    "alexander": ["alex", "xander"],
+    "stephen": ["steve", "stevie"],
+    "steven": ["steve", "stevie"],
+    "timothy": ["tim", "timmy"],
+    "edward": ["ed", "eddie", "ted", "teddy"],
+    "patrick": ["pat", "paddy"],
+    "kenneth": ["ken", "kenny"],
+    "elizabeth": ["liz", "lizzy", "beth", "betty", "eliza", "liza"],
+    "katherine": ["kate", "kathy", "kat", "katie", "kitty"],
+    "catherine": ["kate", "cathy", "cat", "katie"],
+    "margaret": ["maggie", "meg", "peggy", "marge"],
+    "patricia": ["pat", "patty", "trish"],
+    "jessica": ["jess", "jessie"],
+    "sarah": ["sara"],
+    "rebecca": ["becca", "becky"],
+    "deborah": ["deb", "debbie"],
+    "stephanie": ["steph", "stephie"],
+    "christina": ["chris", "tina", "chrissie"],
+    "christine": ["chris", "tina", "chrissie"],
+    "victoria": ["vicky", "tori"],
+    "samantha": ["sam", "sammy"],
+    "alexandra": ["alex", "lexi", "sandra"],
+    "natalie": ["nat"],
+    "abigail": ["abby", "gail"],
+    "allison": ["ally", "ali"],
+    "ashley": ["ash"],
+    "brittany": ["britt"],
+    "caroline": ["carol", "carrie"],
+    "danielle": ["dani"],
+    "emily": ["em", "emmy"],
+    "gabriella": ["gabby", "gabi"],
+    "heather": ["heath"],
+    "isabella": ["bella", "izzy"],
+    "jacqueline": ["jackie"],
+    "kimberly": ["kim", "kimmy"],
+    "madison": ["maddie", "madi"],
+    "megan": ["meg"],
+    "natasha": ["tasha", "nat"],
+    "olivia": ["liv", "livvy"],
+    "rachel": ["rach"],
+    "sophia": ["sophie"],
+    "theodore": ["ted", "teddy", "theo"],
+    "zachary": ["zach", "zack"],
+    "nathaniel": ["nate", "nathan"],
+    "gregory": ["greg"],
+    "raymond": ["ray"],
+    "lawrence": ["larry"],
+    "gerald": ["gerry", "jerry"],
+    "harold": ["harry", "hal"],
+    "henry": ["hank", "harry"],
+    "jacob": ["jake"],
+    "phillip": ["phil"],
+    "eugene": ["gene"],
+    "francis": ["frank", "frankie"],
+    "frederick": ["fred", "freddy"],
+    "leonard": ["leo", "lenny"],
+    "russell": ["russ"],
+    "walter": ["walt"],
+    "donald": ["don", "donny"],
+    "ronald": ["ron", "ronny"],
+    "dorothy": ["dot", "dotty"],
+    "virginia": ["ginny", "ginger"],
+    "catherine": ["cat", "cathy", "kate"],
+}
+
+def _expand_name_query(query: str) -> list[str]:
+    """Given a search term, return all name variants it could match."""
+    q = query.lower().strip()
+    variants = {q}
+
+    # Build reverse map: nickname → full names
+    for full, nicks in _NICKNAMES.items():
+        all_forms = [full] + nicks
+        if q in all_forms or any(q.startswith(n) or n.startswith(q) for n in all_forms):
+            variants.update(all_forms)
+
+    return list(variants)
+
 @app.get("/search")
 def search_photos(q: str, limit: int = 50):
-    """Search photos — checks named people first, then CLIP visual search."""
+    """Search photos — checks named people first (with nickname matching), then CLIP visual search."""
     if not q.strip():
         raise HTTPException(400, "Query required")
 
     query = q.strip()
     results = []
 
-    # Phase 1: Check named people/clusters
-    name_rows = db_query("""
+    # Phase 1: Check named people/clusters with nickname expansion
+    name_variants = _expand_name_query(query)
+    # Build ILIKE conditions for all variants
+    ilike_conditions = " OR ".join(["c.label ILIKE %s"] * len(name_variants))
+    ilike_params = [f"%{v}%" for v in name_variants]
+    name_rows = db_query(f"""
         SELECT c.id as cluster_id, c.label, c.category
         FROM clusters c
-        WHERE c.label ILIKE %s
+        WHERE {ilike_conditions}
         ORDER BY LENGTH(c.label) ASC
         LIMIT 5
-    """, (f"%{query}%",))
+    """, ilike_params)
 
     if name_rows:
         # Get photos for matching people
