@@ -10,7 +10,6 @@ struct KindredApp: App {
         WindowGroup {
             RootView()
                 .onOpenURL { url in
-                    // Handle kindred://oauth-callback?oauth_token=...&oauth_verifier=...
                     if url.scheme == "kindred" {
                         Task { @MainActor in
                             FlickrAuth.shared.handleCallback(url: url)
@@ -23,14 +22,12 @@ struct KindredApp: App {
     private func configureAppearance() {
         let warmBg = UIColor(KindredTheme.warmBackground)
 
-        // Tab bar — warm background, no translucency
         let tabAppearance = UITabBarAppearance()
         tabAppearance.configureWithOpaqueBackground()
         tabAppearance.backgroundColor = warmBg
         UITabBar.appearance().standardAppearance = tabAppearance
         UITabBar.appearance().scrollEdgeAppearance = tabAppearance
 
-        // Navigation bar — warm background, rounded title font
         let navAppearance = UINavigationBarAppearance()
         navAppearance.configureWithOpaqueBackground()
         navAppearance.backgroundColor = warmBg
@@ -50,16 +47,15 @@ struct KindredApp: App {
         UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
         UINavigationBar.appearance().compactAppearance = navAppearance
 
-        // Table/list background
         UITableView.appearance().backgroundColor = warmBg
     }
 }
 
 struct RootView: View {
-    @State private var flickrAuth = FlickrAuth.shared
+    @State private var session = SessionManager.shared
 
     var body: some View {
-        if flickrAuth.isAuthenticated {
+        if session.isAuthenticated {
             ContentView()
         } else {
             LoginView()

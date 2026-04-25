@@ -8,7 +8,7 @@ final class SettingsViewModel {
     var isHealthy = false
     var error: String?
 
-    var flickrAuth: FlickrAuth { FlickrAuth.shared }
+    var session: SessionManager { SessionManager.shared }
 
     var lastSyncDate: String? {
         guard let last = syncs.first else { return nil }
@@ -43,6 +43,6 @@ final class SettingsViewModel {
     }
 
     func logout() {
-        flickrAuth.logout()
+        session.logout()
     }
 }

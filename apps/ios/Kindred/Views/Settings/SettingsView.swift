@@ -4,7 +4,6 @@ import AuthenticationServices
 struct SettingsView: View {
     @State private var viewModel = SettingsViewModel()
     @State private var showLogoutConfirm = false
-    @State private var authError: String?
 
     var body: some View {
         NavigationStack {
@@ -28,11 +27,7 @@ struct SettingsView: View {
                 }
 
                 // Account
-                if viewModel.flickrAuth.isAuthenticated {
-                    accountSection
-                } else {
-                    loginSection
-                }
+                accountSection
 
                 // Sync
                 syncSection
@@ -56,45 +51,16 @@ struct SettingsView: View {
         .tint(KindredTheme.pine)
     }
 
-    // MARK: - Login
-
-    private var loginSection: some View {
-        Section {
-            Button {
-                login()
-            } label: {
-                HStack {
-                    Image(systemName: "person.badge.plus")
-                        .foregroundStyle(KindredTheme.pine)
-                    Text("Connect Flickr Account")
-                        .font(.system(.body, design: .rounded, weight: .medium))
-                }
-            }
-
-            if let error = authError {
-                Text(error)
-                    .font(.system(.caption, design: .rounded))
-                    .foregroundStyle(.red)
-            }
-        } header: {
-            Text("Account")
-                .font(.system(.caption, design: .rounded, weight: .semibold))
-        } footer: {
-            Text("Sign in with your Flickr account to access your photo library.")
-                .font(.system(.caption2, design: .rounded))
-        }
-    }
-
     // MARK: - Account
 
     private var accountSection: some View {
         Section {
-            if let user = viewModel.flickrAuth.user {
+            if let user = viewModel.session.currentUser {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(user.fullname.isEmpty ? user.username : user.fullname)
+                        Text(user.display_name)
                             .font(.system(.headline, design: .rounded, weight: .semibold))
-                        Text("@\(user.username)")
+                        Text("@\(user.username) · \(user.role)")
                             .font(.system(.caption, design: .rounded))
                             .foregroundStyle(.secondary)
                     }
@@ -116,7 +82,7 @@ struct SettingsView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Are you sure you want to sign out of your Flickr account?")
+                Text("Are you sure you want to sign out?")
             }
         } header: {
             Text("Account")
@@ -268,16 +234,4 @@ struct SettingsView: View {
         .navigationTitle("Sync History")
     }
 
-    // MARK: - Login Action
-
-    private func login() {
-        Task {
-            do {
-                try await viewModel.flickrAuth.authenticate()
-                authError = nil
-            } catch {
-                authError = error.localizedDescription
-            }
-        }
-    }
 }

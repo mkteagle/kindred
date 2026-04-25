@@ -5,17 +5,30 @@ actor APIClient {
     static let shared = APIClient()
 
     private var baseURL = "https://kindred-api.mkteagle.com"
-    /// API key for backend authentication — loaded from Keychain during setup
-    var apiKey: String = ""
+    /// Session token for authenticated requests
+    private var sessionToken: String?
     private let session = URLSession.shared
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
         return d
     }()
 
-    private init() {}
+    private init() {
+        // Load session token from Keychain on init
+        if let token = KeychainHelper.loadString(forKey: "kindred_session_token") {
+            self.sessionToken = token
+        }
+    }
 
-    // MARK: - Generic Request
+    func setSessionToken(_ token: String?) {
+        self.sessionToken = token
+    }
+
+    func setBaseURL(_ url: String) {
+        self.baseURL = url
+    }
+
+    // MARK: - Generic Request (authenticated)
 
     private func request<T: Decodable>(_ path: String, method: String = "GET", body: Data? = nil) async throws -> T {
         guard let url = URL(string: "\(baseURL)\(path)") else {
@@ -26,8 +39,8 @@ actor APIClient {
         req.httpMethod = method
         req.timeoutInterval = 30
 
-        if !apiKey.isEmpty {
-            req.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
+        if let token = sessionToken {
+            req.setValue(token, forHTTPHeaderField: "X-Session-Token")
         }
 
         if let body = body {
@@ -48,12 +61,34 @@ actor APIClient {
         return try decoder.decode(T.self, from: data)
     }
 
-    private func postJSON<B: Encodable, R: Decodable>(_ path: String, body: B) async throws -> R {
+    // MARK: - Public request (no auth required, used for login/register)
+
+    func postPublic<B: Encodable, R: Decodable>(_ path: String, body: B) async throws -> R {
+        guard let url = URL(string: "\(baseURL)\(path)") else {
+            throw APIError.invalidURL
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.httpBody = try JSONEncoder().encode(body)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 30
+
+        let (data, response) = try await session.data(for: req)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.httpError(httpResponse.statusCode)
+        }
+        return try decoder.decode(R.self, from: data)
+    }
+
+    func postJSON<B: Encodable, R: Decodable>(_ path: String, body: B) async throws -> R {
         let data = try JSONEncoder().encode(body)
         return try await request(path, method: "POST", body: data)
     }
 
-    private func postJSONNoResponse<B: Encodable>(_ path: String, body: B) async throws {
+    func postJSONNoResponse<B: Encodable>(_ path: String, body: B) async throws {
         let data = try JSONEncoder().encode(body)
         guard let url = URL(string: "\(baseURL)\(path)") else {
             throw APIError.invalidURL
@@ -64,8 +99,8 @@ actor APIClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.timeoutInterval = 30
 
-        if !apiKey.isEmpty {
-            req.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
+        if let token = sessionToken {
+            req.setValue(token, forHTTPHeaderField: "X-Session-Token")
         }
 
         let (_, response) = try await session.data(for: req)
