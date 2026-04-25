@@ -2,10 +2,12 @@ import SwiftUI
 
 struct LoginView: View {
     @State private var session = SessionManager.shared
+    @State private var flickrAuth = FlickrAuth.shared
     @State private var username = ""
     @State private var password = ""
     @State private var authError: String?
     @State private var isLoggingIn = false
+    @State private var isFlickrLoggingIn = false
     @State private var showJoin = false
 
     var body: some View {
@@ -13,81 +15,122 @@ struct LoginView: View {
             KindredTheme.warmGradient
                 .ignoresSafeArea()
 
-            VStack(spacing: 32) {
-                Spacer()
+            ScrollView {
+                VStack(spacing: 28) {
+                    Spacer()
+                        .frame(height: 40)
 
-                // Logo
-                VStack(spacing: 16) {
-                    Image(systemName: "heart.text.square.fill")
-                        .font(.system(size: 72, weight: .light))
-                        .foregroundStyle(KindredTheme.pine)
-                        .padding(24)
-                        .background(
-                            Circle()
-                                .fill(KindredTheme.pine.opacity(0.1))
-                        )
-
-                    Text("Kindred")
-                        .font(.system(.largeTitle, design: .rounded, weight: .bold))
-                        .foregroundStyle(KindredTheme.darkAccent)
-
-                    Text("Family Photo Library")
-                        .font(.system(.title3, design: .rounded, weight: .medium))
-                        .foregroundStyle(KindredTheme.pine)
-                }
-
-                Spacer()
-
-                // Login form
-                VStack(spacing: 16) {
+                    // Logo — use the real Kindred icon
                     VStack(spacing: 12) {
-                        TextField("Username", text: $username)
-                            .font(.system(.body, design: .rounded))
-                            .textFieldStyle(.plain)
-                            .textContentType(.username)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .padding(14)
-                            .background(KindredTheme.warmCardBackground)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        Image("KindredLogo")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 120, height: 120)
+                            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                            .shadow(color: .black.opacity(0.1), radius: 12, x: 0, y: 4)
 
-                        SecureField("Password", text: $password)
-                            .font(.system(.body, design: .rounded))
-                            .textFieldStyle(.plain)
-                            .textContentType(.password)
-                            .padding(14)
-                            .background(KindredTheme.warmCardBackground)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        Text("Kindred")
+                            .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                            .foregroundStyle(KindredTheme.darkAccent)
+
+                        Text("Family Photo Library")
+                            .font(.system(.title3, design: .rounded, weight: .medium))
+                            .foregroundStyle(KindredTheme.pine)
                     }
-                    .padding(.horizontal, 32)
 
-                    Button {
-                        login()
-                    } label: {
-                        HStack(spacing: 10) {
-                            if isLoggingIn {
-                                ProgressView()
-                                    .tint(.white)
-                            }
-                            Text("Sign In")
-                                .font(.system(.body, design: .rounded, weight: .semibold))
+                    Spacer()
+                        .frame(height: 8)
+
+                    // Login form
+                    VStack(spacing: 16) {
+                        VStack(spacing: 12) {
+                            TextField("Username", text: $username)
+                                .font(.system(.body, design: .rounded))
+                                .textFieldStyle(.plain)
+                                .textContentType(.username)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .padding(14)
+                                .background(KindredTheme.warmCardBackground)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                            SecureField("Password", text: $password)
+                                .font(.system(.body, design: .rounded))
+                                .textFieldStyle(.plain)
+                                .textContentType(.password)
+                                .padding(14)
+                                .background(KindredTheme.warmCardBackground)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
                         }
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(KindredTheme.pine)
-                        .clipShape(RoundedRectangle(cornerRadius: KindredTheme.buttonRadius))
+
+                        Button {
+                            login()
+                        } label: {
+                            HStack(spacing: 10) {
+                                if isLoggingIn {
+                                    ProgressView()
+                                        .tint(.white)
+                                }
+                                Text("Sign In")
+                                    .font(.system(.body, design: .rounded, weight: .semibold))
+                            }
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(KindredTheme.pine)
+                            .clipShape(RoundedRectangle(cornerRadius: KindredTheme.buttonRadius))
+                        }
+                        .disabled(isLoggingIn || username.isEmpty || password.isEmpty)
+
+                        if let error = authError {
+                            Text(error)
+                                .font(.system(.caption, design: .rounded))
+                                .foregroundStyle(.red)
+                        }
                     }
-                    .disabled(isLoggingIn || username.isEmpty || password.isEmpty)
                     .padding(.horizontal, 32)
 
-                    if let error = authError {
-                        Text(error)
+                    // Divider
+                    HStack {
+                        Rectangle().fill(Color.secondary.opacity(0.2)).frame(height: 1)
+                        Text("or")
                             .font(.system(.caption, design: .rounded))
-                            .foregroundStyle(.red)
-                            .padding(.horizontal, 32)
+                            .foregroundStyle(.secondary)
+                        Rectangle().fill(Color.secondary.opacity(0.2)).frame(height: 1)
+                    }
+                    .padding(.horizontal, 40)
+
+                    // Flickr login (admin)
+                    VStack(spacing: 12) {
+                        Button {
+                            flickrLogin()
+                        } label: {
+                            HStack(spacing: 10) {
+                                if isFlickrLoggingIn {
+                                    ProgressView()
+                                        .tint(KindredTheme.pine)
+                                } else {
+                                    Image(systemName: "link.badge.plus")
+                                        .font(.system(.body, design: .rounded, weight: .medium))
+                                }
+                                Text("Sign in with Flickr")
+                                    .font(.system(.body, design: .rounded, weight: .medium))
+                            }
+                            .foregroundStyle(KindredTheme.pine)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(KindredTheme.pine.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: KindredTheme.buttonRadius))
+                        }
+                        .disabled(isFlickrLoggingIn)
+                        .padding(.horizontal, 32)
+
+                        Text("Admin accounts linked to Flickr")
+                            .font(.system(.caption2, design: .rounded))
+                            .foregroundStyle(.secondary)
                     }
 
+                    // Join link
                     Button {
                         showJoin = true
                     } label: {
@@ -95,16 +138,17 @@ struct LoginView: View {
                             .font(.system(.subheadline, design: .rounded))
                             .foregroundStyle(KindredTheme.pine)
                     }
+
+                    Spacer()
+                        .frame(height: 20)
+
+                    Text("Built by Kindling Signal")
+                        .font(.system(.caption2, design: .rounded))
+                        .foregroundStyle(.quaternary)
+                        .padding(.bottom, 16)
                 }
-
-                Spacer()
-                    .frame(height: 40)
-
-                Text("Built by Kindling Signal")
-                    .font(.system(.caption2, design: .rounded))
-                    .foregroundStyle(.quaternary)
-                    .padding(.bottom, 16)
             }
+            .scrollBounceBehavior(.basedOnSize)
         }
         .sheet(isPresented: $showJoin) {
             JoinView()
@@ -122,6 +166,31 @@ struct LoginView: View {
                 authError = "Invalid username or password"
             }
             isLoggingIn = false
+        }
+    }
+
+    private func flickrLogin() {
+        isFlickrLoggingIn = true
+        authError = nil
+
+        Task {
+            do {
+                try await flickrAuth.authenticate()
+                // Flickr auth succeeded — now call backend /auth/flickr-login to get a session
+                let body: [String: String] = [
+                    "flickr_user_id": flickrAuth.user?.userId ?? "",
+                    "flickr_oauth_token": flickrAuth.oauthToken,
+                    "flickr_oauth_secret": flickrAuth.oauthTokenSecret,
+                ]
+                let response: AuthResponse = try await APIClient.shared.postPublic("/auth/flickr-login", body: body)
+                await MainActor.run {
+                    session.restoreSession(token: response.session.token, user: response.user)
+                }
+                await APIClient.shared.setSessionToken(response.session.token)
+            } catch {
+                authError = "Flickr login failed. Make sure your account is set up as admin."
+            }
+            isFlickrLoggingIn = false
         }
     }
 }

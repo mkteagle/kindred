@@ -80,6 +80,12 @@ final class SessionManager {
         await APIClient.shared.setSessionToken(response.session.token)
     }
 
+    // MARK: - Restore (used by Flickr OAuth login flow)
+
+    func restoreSession(token: String, user: UserInfo) {
+        storeSession(token: token, user: user)
+    }
+
     // MARK: - Logout
 
     func logout() {
