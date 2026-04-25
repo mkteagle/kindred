@@ -37,7 +37,8 @@ struct ExploreView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(KindredTheme.warmBackground)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(KindredTheme.warmBackground.ignoresSafeArea())
             .navigationTitle("Explore")
         }
         .tint(KindredTheme.pine)

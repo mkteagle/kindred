@@ -28,7 +28,8 @@ struct ClusterDetailView: View {
                 )
             }
         }
-        .background(KindredTheme.warmBackground)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(KindredTheme.warmBackground.ignoresSafeArea())
         .navigationTitle(cluster.label ?? "Unknown")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {

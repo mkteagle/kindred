@@ -58,7 +58,8 @@ struct ScenesView: View {
                 .listStyle(.insetGrouped)
             }
         }
-        .background(KindredTheme.warmBackground)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(KindredTheme.warmBackground.ignoresSafeArea())
         .navigationTitle("Landmarks")
         .navigationBarTitleDisplayMode(.large)
         .sheet(item: $selectedPhoto) { item in

@@ -23,7 +23,8 @@ struct UploadView: View {
                     requestAccessView
                 }
             }
-            .background(KindredTheme.warmBackground)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(KindredTheme.warmBackground.ignoresSafeArea())
             .navigationTitle("Upload")
             .task {
                 await viewModel.requestAccess()
@@ -233,7 +234,8 @@ struct UploadView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(KindredTheme.warmBackground)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(KindredTheme.warmBackground.ignoresSafeArea())
     }
 }
 

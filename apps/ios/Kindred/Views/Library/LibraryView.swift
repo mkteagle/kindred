@@ -80,7 +80,8 @@ struct LibraryView: View {
                     }
                 }
             }
-            .background(KindredTheme.warmBackground)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(KindredTheme.warmBackground.ignoresSafeArea())
             .navigationTitle("Library")
             .toolbarTitleDisplayMode(.large)
             .navigationDestination(for: ClusterSummary.self) { cluster in

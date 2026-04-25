@@ -58,7 +58,8 @@ struct LocationsView: View {
                 .listStyle(.insetGrouped)
             }
         }
-        .background(KindredTheme.warmBackground)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(KindredTheme.warmBackground.ignoresSafeArea())
         .navigationTitle("Locations")
         .navigationBarTitleDisplayMode(.large)
         .sheet(item: $selectedPhoto) { item in

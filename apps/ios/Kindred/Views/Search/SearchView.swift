@@ -88,7 +88,8 @@ struct SearchView: View {
                         .padding()
                 }
             }
-            .background(KindredTheme.warmBackground)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(KindredTheme.warmBackground.ignoresSafeArea())
             .navigationTitle("Search")
             .sheet(item: $selectedPhoto) { item in
                 FullScreenPhotoView(item: item)

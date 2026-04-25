@@ -44,7 +44,8 @@ struct SettingsView: View {
                 aboutSection
             }
             .scrollContentBackground(.hidden)
-            .background(KindredTheme.warmBackground)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(KindredTheme.warmBackground.ignoresSafeArea())
             .navigationTitle("Settings")
             .task {
                 await viewModel.checkHealth()
@@ -262,7 +263,8 @@ struct SettingsView: View {
             .padding(.vertical, 2)
         }
         .scrollContentBackground(.hidden)
-        .background(KindredTheme.warmBackground)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(KindredTheme.warmBackground.ignoresSafeArea())
         .navigationTitle("Sync History")
     }
 

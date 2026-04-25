@@ -33,5 +33,7 @@
 	<string>Kindred needs access to save photos to your library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Kindred needs access to your photo library to upload and manage photos.</string>
+	<key>UILaunchScreen</key>
+	<dict/>
 </dict>
 </plist>
