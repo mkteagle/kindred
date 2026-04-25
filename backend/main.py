@@ -1506,12 +1506,13 @@ def get_clusters_summary(category: str, sort_visual: bool = False, limit: int = 
                 OR LOWER(label) LIKE LOWER(%s)
                 OR EXISTS (
                     SELECT 1 FROM unnest(string_to_array(LOWER(label), ' ')) AS word
-                    WHERE similarity(word, LOWER(%s)) > 0.15
-                    OR word LIKE LOWER(%s)
+                    WHERE word LIKE LOWER(%s)
+                    OR LOWER(%s) LIKE (LEFT(word, 3) || '%%')
+                    OR similarity(word, LOWER(%s)) > 0.25
                 )
             )
             ORDER BY similarity(LOWER(label), LOWER(%s)) DESC
-        """, (category, f"%{search_q}%", f"{search_q}%", search_q, f"{search_q}%", search_q))
+        """, (category, f"%{search_q}%", f"{search_q}%", f"{search_q}%", search_q, search_q, search_q))
         filtered_ids = [r["id"] for r in name_rows]
         if not filtered_ids:
             return {"clusters": [], "noise_count": 0}
@@ -2086,13 +2087,14 @@ def search_photos(q: str, limit: int = 50):
             OR LOWER(c.label) LIKE LOWER(%s)
             OR EXISTS (
                 SELECT 1 FROM unnest(string_to_array(LOWER(c.label), ' ')) AS word
-                WHERE similarity(word, LOWER(%s)) > 0.15
-                OR word LIKE LOWER(%s)
+                WHERE word LIKE LOWER(%s)
+                OR LOWER(%s) LIKE (LEFT(word, 3) || '%%')
+                OR similarity(word, LOWER(%s)) > 0.25
             )
         )
         ORDER BY prefix_match DESC, sim DESC, LENGTH(c.label) ASC
         LIMIT 5
-    """, (query, f"{query}%", f"%{query}%", f"{query}%", query, f"{query}%"))
+    """, (query, f"{query}%", f"%{query}%", f"{query}%", f"{query}%", query, query))
 
     if name_rows:
         # Get photos for matching people
