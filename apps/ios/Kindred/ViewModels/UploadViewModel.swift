@@ -8,7 +8,7 @@ final class UploadViewModel {
     var uploadProgress: Float { FlickrUploader.shared.totalProgress }
     var uploadedCount: Int { FlickrUploader.shared.uploadedCount }
     var totalUploadCount: Int { FlickrUploader.shared.totalCount }
-    var currentPhotoTitle: String { FlickrUploader.shared.currentPhotoTitle }
+    var currentPhotoTitle: String { FlickrUploader.shared.currentAssetTitle }
     var uploadError: String? { FlickrUploader.shared.lastError }
 
     var photoManager: PhotoLibraryManager { PhotoLibraryManager.shared }

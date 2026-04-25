@@ -1,8 +1,8 @@
 import Foundation
 import Photos
+import UniformTypeIdentifiers
 
-/// Handles uploading photos to Flickr with OAuth-signed multipart requests.
-/// Uses background URLSession for upload resilience.
+/// Handles uploading photos and videos to Flickr with OAuth-signed multipart requests.
 @Observable
 final class FlickrUploader: NSObject {
     static let shared = FlickrUploader()
@@ -12,25 +12,19 @@ final class FlickrUploader: NSObject {
     private(set) var totalProgress: Float = 0
     private(set) var uploadedCount = 0
     private(set) var totalCount = 0
-    private(set) var currentPhotoTitle: String = ""
+    private(set) var currentAssetTitle: String = ""
     private(set) var lastError: String?
 
     private let uploadURL = "https://up.flickr.com/services/upload/"
-    private var backgroundSession: URLSession!
-    private var uploadContinuations: [String: CheckedContinuation<String, Error>] = [:]
 
     override private init() {
         super.init()
-        let config = URLSessionConfiguration.background(withIdentifier: "com.kindlingsignal.kindred.upload")
-        config.isDiscretionary = false
-        config.sessionSendsLaunchEvents = true
-        backgroundSession = URLSession(configuration: config, delegate: self, delegateQueue: .main)
     }
 
-    // MARK: - Upload a Single Photo
+    // MARK: - Upload a Single Asset (photo or video)
 
-    /// Upload image data to Flickr, returns the Flickr photo ID.
-    func uploadPhoto(imageData: Data, title: String, description: String = "") async throws -> String {
+    /// Upload raw file data to Flickr. Returns the Flickr photo/video ID.
+    func uploadData(_ data: Data, filename: String, contentType: String, title: String, description: String = "") async throws -> String {
         let auth = FlickrAuth.shared
         guard auth.isAuthenticated else {
             throw UploadError.notAuthenticated
@@ -42,10 +36,10 @@ final class FlickrUploader: NSObject {
             ("description", description),
             ("is_public", "0"),
             ("is_friend", "0"),
-            ("is_family", "0"),
+            ("is_family", "1"),
         ]
 
-        // OAuth signature excludes the photo data
+        // OAuth signature excludes the file data
         let header = OAuthHelper.authorizationHeader(
             httpMethod: "POST",
             url: uploadURL,
@@ -55,17 +49,15 @@ final class FlickrUploader: NSObject {
         )
 
         var body = Data()
-        // Add text params
         for (key, value) in params {
             body.append("--\(boundary)\r\n".data(using: .utf8)!)
             body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n".data(using: .utf8)!)
             body.append("\(value)\r\n".data(using: .utf8)!)
         }
-        // Add photo
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"photo\"; filename=\"\(title).jpg\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
-        body.append(imageData)
+        body.append("Content-Disposition: form-data; name=\"photo\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(contentType)\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
 
         var request = URLRequest(url: URL(string: uploadURL)!)
@@ -73,16 +65,19 @@ final class FlickrUploader: NSObject {
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.setValue(header, forHTTPHeaderField: "Authorization")
         request.httpBody = body
+        // Videos can be large — extend timeout
+        request.timeoutInterval = 300
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (responseData, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
+            let body = String(data: responseData, encoding: .utf8) ?? ""
+            print("[FlickrUploader] Upload failed: \(body)")
             throw UploadError.uploadFailed
         }
 
-        // Parse XML response for photo ID
-        let responseString = String(data: data, encoding: .utf8) ?? ""
+        let responseString = String(data: responseData, encoding: .utf8) ?? ""
         guard let photoId = parsePhotoId(from: responseString) else {
             throw UploadError.parseError
         }
@@ -99,31 +94,26 @@ final class FlickrUploader: NSObject {
         totalProgress = 0
         lastError = nil
 
-        let imageManager = PHImageManager.default()
-        let options = PHImageRequestOptions()
-        options.isSynchronous = false
-        options.deliveryMode = .highQualityFormat
-        options.isNetworkAccessAllowed = true
-
         for (index, asset) in assets.enumerated() {
-            currentPhotoTitle = "Photo \(index + 1) of \(assets.count)"
+            let mediaLabel = asset.mediaType == .video ? "Video" : "Photo"
+            currentAssetTitle = "\(mediaLabel) \(index + 1) of \(assets.count)"
             currentProgress = 0
 
             do {
-                let imageData = try await requestImageData(for: asset, manager: imageManager, options: options)
+                let (data, filename, contentType) = try await getOriginalAssetData(asset)
 
-                let title = asset.creationDate.map { formatDate($0) } ?? "Photo \(index + 1)"
-                let photoId = try await uploadPhoto(imageData: imageData, title: title)
+                let title = asset.creationDate.map { formatDate($0) } ?? "\(mediaLabel) \(index + 1)"
+                let photoId = try await uploadData(data, filename: filename, contentType: contentType, title: title)
 
-                // Process with backend
-                try await APIClient.shared.processPhoto(photoId: photoId, url: nil)
+                // Process with backend (face/object detection + clustering)
+                if asset.mediaType == .image {
+                    try await APIClient.shared.processPhoto(photoId: photoId, url: nil)
+                }
 
-                // Mark as uploaded in local tracking
                 PhotoLibraryManager.shared.markAsUploaded(localIdentifier: asset.localIdentifier, flickrPhotoId: photoId)
-
                 uploadedCount += 1
             } catch {
-                lastError = "Failed to upload photo \(index + 1): \(error.localizedDescription)"
+                lastError = "Failed to upload \(mediaLabel.lowercased()) \(index + 1): \(error.localizedDescription)"
             }
 
             totalProgress = Float(index + 1) / Float(assets.count)
@@ -132,22 +122,68 @@ final class FlickrUploader: NSObject {
         isUploading = false
     }
 
-    // MARK: - Helpers
+    // MARK: - Get Original Asset Data
 
-    private func requestImageData(for asset: PHAsset, manager: PHImageManager, options: PHImageRequestOptions) async throws -> Data {
+    /// Fetches the original, unmodified file data from the photo library.
+    /// Returns (data, filename, mimeType).
+    private func getOriginalAssetData(_ asset: PHAsset) async throws -> (Data, String, String) {
+        let resources = PHAssetResource.assetResources(for: asset)
+
+        // Pick the best resource: prefer original, then current
+        let resource: PHAssetResource
+        if asset.mediaType == .video {
+            resource = resources.first(where: { $0.type == .video })
+                ?? resources.first(where: { $0.type == .fullSizeVideo })
+                ?? resources.first!
+        } else {
+            resource = resources.first(where: { $0.type == .photo })
+                ?? resources.first(where: { $0.type == .fullSizePhoto })
+                ?? resources.first!
+        }
+
+        let filename = resource.originalFilename
+        let uti = resource.uniformTypeIdentifier
+        let contentType = UTType(uti)?.preferredMIMEType ?? mimeTypeFromFilename(filename)
+
+        let data = try await loadResourceData(resource)
+        return (data, filename, contentType)
+    }
+
+    private func loadResourceData(_ resource: PHAssetResource) async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
-            manager.requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
-                if let data = data {
-                    continuation.resume(returning: data)
+            var buffer = Data()
+            let options = PHAssetResourceRequestOptions()
+            options.isNetworkAccessAllowed = true
+
+            PHAssetResourceManager.default().requestData(for: resource, options: options) { chunk in
+                buffer.append(chunk)
+            } completionHandler: { error in
+                if let error {
+                    continuation.resume(throwing: error)
                 } else {
-                    continuation.resume(throwing: UploadError.noImageData)
+                    continuation.resume(returning: buffer)
                 }
             }
         }
     }
 
+    private func mimeTypeFromFilename(_ filename: String) -> String {
+        let ext = (filename as NSString).pathExtension.lowercased()
+        switch ext {
+        case "heic", "heif": return "image/heic"
+        case "jpg", "jpeg": return "image/jpeg"
+        case "png": return "image/png"
+        case "gif": return "image/gif"
+        case "mov": return "video/quicktime"
+        case "mp4", "m4v": return "video/mp4"
+        case "avi": return "video/avi"
+        default: return "application/octet-stream"
+        }
+    }
+
+    // MARK: - Helpers
+
     private func parsePhotoId(from xml: String) -> String? {
-        // Flickr upload response: <photoid>12345</photoid>
         guard let startRange = xml.range(of: "<photoid>"),
               let endRange = xml.range(of: "</photoid>") else { return nil }
         return String(xml[startRange.upperBound..<endRange.lowerBound])
@@ -163,25 +199,15 @@ final class FlickrUploader: NSObject {
         case notAuthenticated
         case uploadFailed
         case parseError
-        case noImageData
+        case noAssetData
 
         var errorDescription: String? {
             switch self {
             case .notAuthenticated: return "Not authenticated with Flickr"
             case .uploadFailed: return "Upload to Flickr failed"
             case .parseError: return "Could not parse upload response"
-            case .noImageData: return "Could not load image data"
+            case .noAssetData: return "Could not load asset data"
             }
-        }
-    }
-}
-
-// MARK: - URLSessionDelegate for background uploads
-
-extension FlickrUploader: URLSessionDataDelegate {
-    nonisolated func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
-        Task { @MainActor in
-            self.currentProgress = Float(totalBytesSent) / Float(totalBytesExpectedToSend)
         }
     }
 }

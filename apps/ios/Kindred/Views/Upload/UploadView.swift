@@ -39,7 +39,7 @@ struct UploadView: View {
         ContentUnavailableView {
             Label("Photo Access", systemImage: "photo.on.rectangle")
         } description: {
-            Text("Kindred needs access to your photo library to upload photos to Flickr.")
+            Text("Kindred needs access to your photo library to upload photos and videos to Flickr.")
                 .font(.system(.body, design: .rounded))
         } actions: {
             Button("Grant Access") {
@@ -265,6 +265,26 @@ struct PhotoAssetCell: View {
                 }
             }
 
+            // Video duration badge
+            if asset.mediaType == .video {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Image(systemName: "video.fill")
+                            .font(.caption2)
+                        Text(formatDuration(asset.duration))
+                            .font(.system(.caption2, design: .rounded, weight: .medium))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.black.opacity(0.6))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .padding(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
             if isSelected {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.title3)
@@ -275,6 +295,12 @@ struct PhotoAssetCell: View {
         .task {
             await loadThumbnail()
         }
+    }
+
+    private func formatDuration(_ duration: TimeInterval) -> String {
+        let mins = Int(duration) / 60
+        let secs = Int(duration) % 60
+        return String(format: "%d:%02d", mins, secs)
     }
 
     private func loadThumbnail() async {
