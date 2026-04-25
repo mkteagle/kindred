@@ -1497,15 +1497,21 @@ def get_clusters_summary(category: str, sort_visual: bool = False, limit: int = 
     filtered_ids = None
     if q.strip():
         search_q = q.strip()
+        # Check similarity against each word in the label (not just the full string)
+        # so "mike" matches "Michael Teagle" by comparing against "Michael"
         name_rows = db_query("""
             SELECT id FROM clusters
             WHERE category = %s AND label IS NOT NULL AND (
                 label ILIKE %s
-                OR similarity(LOWER(label), LOWER(%s)) > 0.15
                 OR LOWER(label) LIKE LOWER(%s)
+                OR EXISTS (
+                    SELECT 1 FROM unnest(string_to_array(LOWER(label), ' ')) AS word
+                    WHERE similarity(word, LOWER(%s)) > 0.15
+                    OR word LIKE LOWER(%s)
+                )
             )
             ORDER BY similarity(LOWER(label), LOWER(%s)) DESC
-        """, (category, f"%{search_q}%", search_q, f"{search_q}%", search_q))
+        """, (category, f"%{search_q}%", f"{search_q}%", search_q, f"{search_q}%", search_q))
         filtered_ids = [r["id"] for r in name_rows]
         if not filtered_ids:
             return {"clusters": [], "noise_count": 0}
@@ -2077,12 +2083,16 @@ def search_photos(q: str, limit: int = 50):
         FROM clusters c
         WHERE c.label IS NOT NULL AND (
             c.label ILIKE %s
-            OR similarity(LOWER(c.label), LOWER(%s)) > 0.15
             OR LOWER(c.label) LIKE LOWER(%s)
+            OR EXISTS (
+                SELECT 1 FROM unnest(string_to_array(LOWER(c.label), ' ')) AS word
+                WHERE similarity(word, LOWER(%s)) > 0.15
+                OR word LIKE LOWER(%s)
+            )
         )
         ORDER BY prefix_match DESC, sim DESC, LENGTH(c.label) ASC
         LIMIT 5
-    """, (query, f"{query}%", f"%{query}%", query, f"{query}%"))
+    """, (query, f"{query}%", f"%{query}%", f"{query}%", query, f"{query}%"))
 
     if name_rows:
         # Get photos for matching people
