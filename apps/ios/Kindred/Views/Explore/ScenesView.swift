@@ -32,7 +32,7 @@ struct ScenesView: View {
                                     )
                                 ) {
                                     let items = photos.map { PhotoGridItem(from: $0) }
-                                    PhotoGridView(photoURLs: items, columns: 3) { item in
+                                    PhotoGridView(photoURLs: items) { item in
                                         selectedPhoto = item
                                     }
                                     .listRowInsets(EdgeInsets())

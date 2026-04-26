@@ -57,7 +57,7 @@ final class FlickrAuth {
     func authenticate() async throws {
         // Ensure Flickr consumer credentials are loaded from backend
         if OAuthHelper.consumerKey.isEmpty {
-            await OAuthHelper.loadConfig(from: "https://kindred-api.mkteagle.com")
+            await OAuthHelper.loadConfig(from: "https://api.kindredphotos.app")
         }
         guard !OAuthHelper.consumerKey.isEmpty else {
             throw AuthError.requestTokenFailed

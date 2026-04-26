@@ -118,7 +118,7 @@ struct SettingsView: View {
             Divider().padding(.leading, 48)
 
             settingsRow(icon: "link", title: "API", trailing: {
-                Text("kindred-api.mkteagle.com")
+                Text("api.kindredphotos.app")
                     .font(.system(.caption, design: .rounded))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

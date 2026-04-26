@@ -1507,8 +1507,7 @@ def get_clusters_summary(category: str, sort_visual: bool = False, limit: int = 
                 OR EXISTS (
                     SELECT 1 FROM unnest(string_to_array(LOWER(label), ' ')) AS word
                     WHERE word LIKE LOWER(%s)
-                    OR LOWER(%s) LIKE (LEFT(word, 3) || '%%')
-                    OR similarity(word, LOWER(%s)) > 0.25
+                    OR (LENGTH(word) >= 4 AND LENGTH(%s) >= 3 AND LEFT(word, 2) = LEFT(LOWER(%s), 2) AND similarity(word, LOWER(%s)) > 0.15)
                 )
             )
             ORDER BY similarity(LOWER(label), LOWER(%s)) DESC

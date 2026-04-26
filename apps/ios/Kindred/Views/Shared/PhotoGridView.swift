@@ -3,47 +3,51 @@ import SwiftUI
 /// A reusable grid of photo thumbnails, used across Library, Explore, and Search tabs.
 struct PhotoGridView: View {
     let photoURLs: [PhotoGridItem]
-    var columns: Int = 3
+    var columns: Int = 2
+    var spacing: CGFloat = 10
     var onTap: ((PhotoGridItem) -> Void)?
 
     private var gridColumns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 2), count: columns)
+        Array(repeating: GridItem(.flexible(), spacing: spacing), count: columns)
     }
 
     var body: some View {
-        LazyVGrid(columns: gridColumns, spacing: 2) {
+        LazyVGrid(columns: gridColumns, spacing: spacing) {
             ForEach(photoURLs) { item in
-                AsyncImage(url: URL(string: item.thumbURL ?? item.photoURL)) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(1, contentMode: .fill)
-                            .clipped()
-                    case .failure:
-                        KindredTheme.warmCardBackground
-                            .aspectRatio(1, contentMode: .fill)
-                            .overlay {
-                                Image(systemName: "photo")
-                                    .foregroundStyle(.secondary)
-                            }
-                    case .empty:
-                        KindredTheme.warmCardBackground
-                            .aspectRatio(1, contentMode: .fill)
-                            .overlay {
-                                ProgressView()
-                            }
-                    @unknown default:
-                        KindredTheme.warmCardBackground
-                            .aspectRatio(1, contentMode: .fill)
+                GeometryReader { geo in
+                    AsyncImage(url: URL(string: item.thumbURL ?? item.photoURL)) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: geo.size.width, height: geo.size.height)
+                                .clipped()
+                        case .failure:
+                            KindredTheme.warmCardBackground
+                                .overlay {
+                                    Image(systemName: "photo")
+                                        .foregroundStyle(.secondary)
+                                }
+                        case .empty:
+                            KindredTheme.warmCardBackground
+                                .overlay {
+                                    ProgressView()
+                                }
+                        @unknown default:
+                            KindredTheme.warmCardBackground
+                        }
                     }
                 }
+                .aspectRatio(1, contentMode: .fill)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
                 .contentShape(Rectangle())
                 .onTapGesture {
                     onTap?(item)
                 }
             }
         }
+        .padding(.horizontal, spacing)
     }
 }
 

@@ -4,7 +4,7 @@ import Foundation
 actor APIClient {
     static let shared = APIClient()
 
-    private var baseURL = "https://kindred-api.mkteagle.com"
+    private var baseURL = "https://api.kindredphotos.app"
     /// Session token for authenticated requests
     private var sessionToken: String?
     private let session = URLSession.shared

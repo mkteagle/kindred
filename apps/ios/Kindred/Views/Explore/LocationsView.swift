@@ -35,7 +35,7 @@ struct LocationsView: View {
                                         title: photo.photo_title
                                     )
                                 }
-                                PhotoGridView(photoURLs: items, columns: 3) { item in
+                                PhotoGridView(photoURLs: items) { item in
                                     selectedPhoto = item
                                 }
                                 .listRowInsets(EdgeInsets())

@@ -62,6 +62,10 @@ final class SessionManager {
             storeSession(token: response.session.token, user: response.user)
         }
         await APIClient.shared.setSessionToken(response.session.token)
+        Analytics.identify(userId: response.user.id, properties: [
+            "username": response.user.username,
+            "role": response.user.role,
+        ])
     }
 
     // MARK: - Register (join via invite code)
@@ -94,6 +98,7 @@ final class SessionManager {
         isAuthenticated = false
         KeychainHelper.delete(key: tokenKey)
         KeychainHelper.delete(key: userKey)
+        Analytics.reset()
         Task {
             await APIClient.shared.setSessionToken(nil)
         }

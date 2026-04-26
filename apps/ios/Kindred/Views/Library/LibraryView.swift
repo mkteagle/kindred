@@ -4,8 +4,8 @@ struct LibraryView: View {
     @State private var viewModel = LibraryViewModel()
 
     private let columns = [
-        GridItem(.flexible(), spacing: 6),
-        GridItem(.flexible(), spacing: 6),
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12),
     ]
 
     var body: some View {
@@ -26,12 +26,12 @@ struct LibraryView: View {
                 if viewModel.isLoading {
                     // Skeleton loading
                     ScrollView {
-                        LazyVGrid(columns: columns, spacing: 6) {
+                        LazyVGrid(columns: columns, spacing: 12) {
                             ForEach(0..<6, id: \.self) { _ in
                                 SkeletonCard()
                             }
                         }
-                        .padding(.horizontal, 8)
+                        .padding(.horizontal, 12)
                         .padding(.top, 4)
                     }
                 } else if let error = viewModel.error {
@@ -57,11 +57,11 @@ struct LibraryView: View {
                                     StatBadge(value: groups, label: "Groups")
                                 }
                             }
-                            .padding(.horizontal, 8)
+                            .padding(.horizontal, 12)
                             .padding(.bottom, 8)
                         }
 
-                        LazyVGrid(columns: columns, spacing: 6) {
+                        LazyVGrid(columns: columns, spacing: 12) {
                             ForEach(viewModel.clusters) { cluster in
                                 NavigationLink(value: cluster) {
                                     ClusterCard(
@@ -77,7 +77,7 @@ struct LibraryView: View {
                                 .buttonStyle(.plain)
                             }
                         }
-                        .padding(.horizontal, 8)
+                        .padding(.horizontal, 12)
                     }
                     .refreshable {
                         await viewModel.loadClusters()
@@ -128,23 +128,26 @@ struct ClusterCard: View {
     @State private var nameInput = ""
 
     var body: some View {
-        // Cover photo with face pip overlay — fixed aspect ratio
-        ZStack(alignment: .bottomLeading) {
-            let coverURL = cluster.photo_url ?? cluster.thumb_url ?? cluster.avatar
-            if let urlStr = coverURL, let url = URL(string: urlStr) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    default:
-                        skeletonCover
+        GeometryReader { geo in
+            ZStack(alignment: .bottomLeading) {
+                // Cover photo — fills the entire card
+                let coverURL = cluster.photo_url ?? cluster.thumb_url ?? cluster.avatar
+                if let urlStr = coverURL, let url = URL(string: urlStr) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: geo.size.width, height: geo.size.height)
+                                .clipped()
+                        default:
+                            skeletonCover
+                        }
                     }
+                } else {
+                    placeholderCover
                 }
-            } else {
-                placeholderCover
-            }
 
                 // Face detection pip in bottom-right
                 if let avatarURL = cluster.avatar, let url = URL(string: avatarURL) {
@@ -186,9 +189,8 @@ struct ClusterCard: View {
                     )
                 )
             }
-        .frame(maxWidth: .infinity)
+        }
         .aspectRatio(3/4, contentMode: .fill)
-        .clipped()
         .clipShape(RoundedRectangle(cornerRadius: KindredTheme.cardRadius))
         .shadow(color: KindredTheme.cardShadow, radius: 2, x: 0, y: 1)
         .onLongPressGesture {

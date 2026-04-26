@@ -20,7 +20,7 @@ struct FullScreenPhotoView: View {
         // Use the backend proxy with size=b (1024px) for fast loading
         guard let token = SessionManager.shared.sessionToken else { return nil }
         // We'll load this authenticated, so build the URL with the photo ID
-        return URL(string: "https://kindred-api.mkteagle.com/photos/\(photoId)/image?size=h")
+        return URL(string: "https://api.kindredphotos.app/photos/\(photoId)/image?size=h")
     }
 
     var body: some View {

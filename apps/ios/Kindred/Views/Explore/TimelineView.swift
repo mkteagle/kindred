@@ -31,7 +31,7 @@ struct TimelineView: View {
                                             title: photo.photo_title
                                         )
                                     }
-                                    PhotoGridView(photoURLs: items, columns: 4) { item in
+                                    PhotoGridView(photoURLs: items, columns: 3, spacing: 6) { item in
                                         selectedPhoto = item
                                     }
                                     .padding(.bottom, 12)
