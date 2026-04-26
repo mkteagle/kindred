@@ -34,6 +34,12 @@ final class TogetherViewModel {
 
     func loadPeople() async {
         isLoadingPeople = true
+        if DemoDataProvider.shared.isActive {
+            let response = DemoDataProvider.shared.getClusterSummary(category: "people")
+            peopleClusters = response.clusters.sorted { $0.photo_count > $1.photo_count }
+            isLoadingPeople = false
+            return
+        }
         do {
             let response = try await APIClient.shared.getClusterSummary(category: "people")
             peopleClusters = response.clusters.sorted { $0.photo_count > $1.photo_count }
@@ -47,6 +53,22 @@ final class TogetherViewModel {
         guard canSearch else { return }
         isSearching = true
         error = nil
+        if DemoDataProvider.shared.isActive {
+            // Return shared family photos for any combo of people
+            let sharedPhotos = ["family-group-1", "family-group-2", "family-dinner", "family-beach", "kids-birthday"]
+            results = sharedPhotos.enumerated().map { (i, filename) in
+                TogetherPhoto(
+                    photo_id: "together_\(i)",
+                    photo_url: "demo://file_\(filename)",
+                    thumb_url: "demo://file_\(filename)",
+                    flickr_url: nil,
+                    photo_title: "Together photo \(i + 1)"
+                )
+            }
+            totalCount = results.count
+            isSearching = false
+            return
+        }
         do {
             let response = try await APIClient.shared.getPhotosTogether(
                 clusterIds: Array(selectedPeople)
