@@ -16,8 +16,6 @@ __pycache__
 *.pyc
 
 # iOS
-apps/ios/*.xcodeproj
-apps/ios/*.xcworkspace
 apps/ios/DerivedData/
 apps/ios/build/
 *.xcuserdata
