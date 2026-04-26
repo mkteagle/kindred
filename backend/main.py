@@ -63,8 +63,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     request.state.user = {**user, "auth_method": "session"}
             return await call_next(request)
 
-        # Try session token first (web users)
-        session_token = request.headers.get("X-Session-Token")
+        # Try session token first (web users) — check header and query param for image endpoints
+        session_token = request.headers.get("X-Session-Token") or request.query_params.get("session_token")
         if session_token:
             user = validate_session(session_token)
             if user:
@@ -213,6 +213,14 @@ def create_new_tables():
                 )
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id)")
+            # ── Settings (key-value store for integrations) ─────────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TIMESTAMPTZ DEFAULT now()
+                )
+            """)
             # Fuzzy name search support
             cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
             # Clean up expired sessions
@@ -390,6 +398,13 @@ VEHICLE_CLASSES = {2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}
 class ProcessPhotoRequest(BaseModel):
     photo_id: str
     photo_url: Optional[str] = None
+
+class ResendKeyRequest(BaseModel):
+    api_key: str
+
+class EmailInviteRequest(BaseModel):
+    email: str
+    name: Optional[str] = None
 
 class AnalyzeRequest(BaseModel):
     photos: list[dict]
@@ -618,7 +633,7 @@ class FlickrLoginRequest(BaseModel):
 def auth_flickr_login(req: FlickrLoginRequest):
     """Admin re-login via Flickr OAuth. Finds admin by flickr_user_id and refreshes tokens."""
     rows = db_query(
-        "SELECT id, username, display_name, role FROM users WHERE flickr_user_id = %s AND role = 'admin'",
+        "SELECT id, username, display_name, role, avatar_photo_id, avatar_upload IS NOT NULL as has_avatar_upload FROM users WHERE flickr_user_id = %s AND role = 'admin'",
         (req.flickr_user_id,),
     )
     if not rows:
@@ -631,10 +646,13 @@ def auth_flickr_login(req: FlickrLoginRequest):
             (req.flickr_oauth_token, req.flickr_oauth_secret, str(user["id"])),
             fetch=False,
         )
-    session = create_session(str(user["id"]))
+    uid = str(user["id"])
+    avatar_url = f"/users/{uid}/avatar" if (user.get("avatar_photo_id") or user.get("has_avatar_upload")) else None
+    session = create_session(uid)
     return {
-        "user": {"id": str(user["id"]), "username": user["username"],
-                 "display_name": user["display_name"], "role": user["role"]},
+        "user": {"id": uid, "username": user["username"],
+                 "display_name": user["display_name"], "role": user["role"],
+                 "avatar_url": avatar_url},
         "session": session,
     }
 
@@ -646,7 +664,7 @@ class LoginRequest(BaseModel):
 def auth_login(req: LoginRequest):
     """Member login with username/password."""
     rows = db_query(
-        "SELECT id, username, display_name, role, password_hash FROM users WHERE username = %s",
+        "SELECT id, username, display_name, role, password_hash, avatar_photo_id, avatar_upload IS NOT NULL as has_avatar_upload FROM users WHERE username = %s",
         (req.username,),
     )
     if not rows or not rows[0]["password_hash"]:
@@ -654,10 +672,13 @@ def auth_login(req: LoginRequest):
     user = rows[0]
     if not verify_password(req.password, user["password_hash"]):
         raise HTTPException(401, "Invalid username or password")
-    session = create_session(str(user["id"]))
+    uid = str(user["id"])
+    avatar_url = f"/users/{uid}/avatar" if (user.get("avatar_photo_id") or user.get("has_avatar_upload")) else None
+    session = create_session(uid)
     return {
-        "user": {"id": str(user["id"]), "username": user["username"],
-                 "display_name": user["display_name"], "role": user["role"]},
+        "user": {"id": uid, "username": user["username"],
+                 "display_name": user["display_name"], "role": user["role"],
+                 "avatar_url": avatar_url},
         "session": session,
     }
 
@@ -977,6 +998,186 @@ def list_invites(admin=Depends(require_admin)):
 def revoke_invite(invite_id: str, admin=Depends(require_admin)):
     db_query("DELETE FROM invites WHERE id = %s", (invite_id,), fetch=False)
     return {"ok": True}
+
+# ── Settings / Integrations ─────────────────────────────────────────────────
+
+def _mask_key(key: str) -> str:
+    """Return a masked preview of an API key, e.g. 're_BFc...'"""
+    if len(key) <= 6:
+        return key[:2] + "..."
+    return key[:6] + "..."
+
+@app.put("/settings/integrations/resend")
+def save_resend_key(req: ResendKeyRequest, admin=Depends(require_admin)):
+    """Save the Resend API key to the database (admin only)."""
+    key = req.api_key.strip()
+    if not key:
+        raise HTTPException(400, "API key cannot be empty")
+    db_query(
+        """INSERT INTO settings (key, value, updated_at) VALUES ('resend_api_key', %s, now())
+           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()""",
+        (key,),
+        fetch=False,
+    )
+    return {"configured": True, "key_preview": _mask_key(key)}
+
+@app.get("/settings/integrations/resend")
+def get_resend_status(admin=Depends(require_admin)):
+    """Check whether a Resend API key is configured (admin only)."""
+    rows = db_query("SELECT value FROM settings WHERE key = 'resend_api_key'")
+    if not rows or not rows[0]["value"]:
+        return {"configured": False, "key_preview": None}
+    return {"configured": True, "key_preview": _mask_key(rows[0]["value"])}
+
+@app.delete("/settings/integrations/resend")
+def remove_resend_key(admin=Depends(require_admin)):
+    """Remove the stored Resend API key (admin only)."""
+    db_query("DELETE FROM settings WHERE key = 'resend_api_key'", fetch=False)
+    return {"configured": False}
+
+def _get_resend_key() -> str | None:
+    """Retrieve the Resend API key from the database."""
+    rows = db_query("SELECT value FROM settings WHERE key = 'resend_api_key'")
+    if rows and rows[0]["value"]:
+        return rows[0]["value"]
+    return None
+
+@app.post("/invites/send-email")
+def send_email_invite(req: EmailInviteRequest, request: FastAPIRequest, admin=Depends(require_admin)):
+    """Create an invite AND send it via email using the stored Resend API key."""
+    resend_key = _get_resend_key()
+    if not resend_key:
+        raise HTTPException(400, "Resend is not configured. Add your API key under Settings > Integrations.")
+
+    # Create the invite
+    code = generate_invite_code()
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    db_query(
+        "INSERT INTO invites (code, created_by, expires_at) VALUES (%s, %s, %s)",
+        (code, admin["user_id"], expires_at),
+        fetch=False,
+    )
+
+    # Send the email via Resend
+    import urllib.request
+    import urllib.error
+
+    email_body = json.dumps({
+        "from": "Kindred Photos <noreply@kindredphotos.app>",
+        "to": [req.email],
+        "subject": f"{admin.get('display_name', 'Someone')} invited you to Kindred Photos",
+        "html": _build_invite_email_html(
+            inviter_name=admin.get("display_name", "A family member"),
+            invite_code=code,
+            recipient_name=req.name,
+        ),
+    })
+
+    api_req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=email_body.encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {resend_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    email_sent = False
+    email_error = None
+    try:
+        with urllib.request.urlopen(api_req, timeout=15) as resp:
+            if resp.status < 300:
+                email_sent = True
+    except urllib.error.HTTPError as e:
+        email_error = e.read().decode("utf-8", errors="replace")
+    except Exception as e:
+        email_error = str(e)
+
+    return {
+        "code": code,
+        "expires_at": expires_at.isoformat(),
+        "email": req.email,
+        "email_sent": email_sent,
+        "email_error": email_error,
+    }
+
+
+def _build_invite_email_html(inviter_name: str, invite_code: str, recipient_name: str | None = None) -> str:
+    """Build the branded invite email HTML."""
+    app_url = "https://kindredphotos.app"
+    join_url = f"{app_url}/join/{invite_code}"
+    greeting = f"Hi {recipient_name}," if recipient_name else "Hi there,"
+
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body style="margin:0;padding:0;background:#fbf4e7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#fbf4e7;padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="520" cellpadding="0" cellspacing="0" style="background:#fffdf8;border-radius:12px;border:1px solid rgba(74,40,26,.12);overflow:hidden;">
+          <!-- Wordmark -->
+          <tr>
+            <td style="padding:28px 36px 0;text-align:center;">
+              <img src="{app_url}/kindred-wordmark.png" alt="Kindred Photos" width="140" style="display:inline-block;" />
+            </td>
+          </tr>
+          <!-- Header -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#2a201b,#3a2818);padding:32px 36px;margin-top:20px;">
+              <p style="font-family:monospace;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:#e9b85d;margin:0 0 8px;">You're invited</p>
+              <h1 style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;color:#fbf4e7;margin:0;line-height:1.1;">{inviter_name} opened the family archive to you.</h1>
+            </td>
+          </tr>
+          <!-- Body -->
+          <tr>
+            <td style="padding:32px 36px;">
+              <p style="font-size:15px;line-height:1.6;color:#6d3c24;margin:0 0 20px;">
+                {greeting}
+              </p>
+              <p style="font-size:15px;line-height:1.6;color:#6d3c24;margin:0 0 20px;">
+                You've been invited to join a family photo library on <strong>Kindred Photos</strong>.
+                Once you join, you'll see photos organized by people, places, and moments &mdash; all
+                powered by AI, all stored on the family's own Flickr account.
+              </p>
+              <p style="font-size:15px;line-height:1.6;color:#6d3c24;margin:0 0 28px;">
+                Click below to set up your account. It takes about 30 seconds.
+              </p>
+              <!-- CTA Button -->
+              <table cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td align="center">
+                    <a href="{join_url}" style="display:inline-block;background:#c9551c;color:#ffffff;font-size:15px;font-weight:800;text-decoration:none;padding:14px 32px;border-radius:8px;">
+                      Join the library
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <!-- Invite code fallback -->
+              <p style="font-size:12px;line-height:1.6;color:#946f5b;margin:24px 0 0;text-align:center;">
+                Or enter this code manually: <strong style="font-family:monospace;letter-spacing:0.1em;color:#2a201b;">{invite_code}</strong>
+              </p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="padding:20px 36px;border-top:1px solid rgba(74,40,26,.08);">
+              <p style="font-family:monospace;font-size:10px;color:#946f5b;margin:0;text-align:center;">
+                Kindred Photos &middot; A product of Kindling Signal &middot; <a href="{app_url}" style="color:#946f5b;">kindredphotos.app</a><br>
+                This invite expires in 7 days.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
 
 # ── Analysis endpoints ───────────────────────────────────────────────────────
 
