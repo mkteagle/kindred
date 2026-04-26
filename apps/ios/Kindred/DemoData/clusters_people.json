@@ -1,13 +1,13 @@
 {
   "clusters": [
-    {"id": "demo_p1", "label": "Maya", "det_count": 481, "photo_count": 214, "avatar": null, "thumb_url": "demo://thumb_01", "photo_url": "demo://photo_01"},
-    {"id": "demo_p2", "label": "Dad", "det_count": 320, "photo_count": 148, "avatar": null, "thumb_url": "demo://thumb_02", "photo_url": "demo://photo_02"},
-    {"id": "demo_p3", "label": "Mom", "det_count": 295, "photo_count": 131, "avatar": null, "thumb_url": "demo://thumb_03", "photo_url": "demo://photo_03"},
-    {"id": "demo_p4", "label": "Sam", "det_count": 210, "photo_count": 97, "avatar": null, "thumb_url": "demo://thumb_04", "photo_url": "demo://photo_04"},
-    {"id": "demo_p5", "label": "Theo", "det_count": 176, "photo_count": 82, "avatar": null, "thumb_url": "demo://thumb_05", "photo_url": "demo://photo_05"},
-    {"id": "demo_p6", "label": "Grandma", "det_count": 134, "photo_count": 63, "avatar": null, "thumb_url": "demo://thumb_06", "photo_url": "demo://photo_06"},
-    {"id": "demo_p7", "label": "Uncle Jim", "det_count": 88, "photo_count": 41, "avatar": null, "thumb_url": "demo://thumb_07", "photo_url": "demo://photo_07"},
-    {"id": "demo_p8", "label": "Baby Lily", "det_count": 62, "photo_count": 29, "avatar": null, "thumb_url": "demo://thumb_08", "photo_url": "demo://photo_08"}
+    {"id": "demo_p1", "label": "Maya", "det_count": 481, "photo_count": 214, "avatar": "demo://file_young-woman", "thumb_url": "demo://file_young-woman", "photo_url": "demo://file_maya-1"},
+    {"id": "demo_p2", "label": "Dad", "det_count": 320, "photo_count": 148, "avatar": "demo://file_dad-portrait", "thumb_url": "demo://file_dad-portrait", "photo_url": "demo://file_dad-2"},
+    {"id": "demo_p3", "label": "Mom", "det_count": 295, "photo_count": 131, "avatar": "demo://file_mom-portrait", "thumb_url": "demo://file_mom-portrait", "photo_url": "demo://file_mom-2"},
+    {"id": "demo_p4", "label": "Sam", "det_count": 210, "photo_count": 97, "avatar": "demo://file_sam-1", "thumb_url": "demo://file_sam-1", "photo_url": "demo://file_sam-2"},
+    {"id": "demo_p5", "label": "Theo", "det_count": 176, "photo_count": 82, "avatar": "demo://file_theo-1", "thumb_url": "demo://file_theo-1", "photo_url": "demo://file_theo-2"},
+    {"id": "demo_p6", "label": "Grandma", "det_count": 134, "photo_count": 63, "avatar": "demo://file_grandma-1", "thumb_url": "demo://file_grandma-1", "photo_url": "demo://file_grandma-2"},
+    {"id": "demo_p7", "label": "Uncle Jim", "det_count": 88, "photo_count": 41, "avatar": "demo://file_uncle-1", "thumb_url": "demo://file_uncle-1", "photo_url": "demo://file_uncle-2"},
+    {"id": "demo_p8", "label": "Baby Lily", "det_count": 62, "photo_count": 29, "avatar": "demo://file_baby-playing", "thumb_url": "demo://file_baby-playing", "photo_url": "demo://file_baby-2"}
   ],
   "noise_count": 12
 }

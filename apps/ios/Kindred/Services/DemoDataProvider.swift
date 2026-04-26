@@ -115,17 +115,17 @@ final class DemoDataProvider {
 
     /// Per-cluster photo collections — each person gets their own photos
     private static let clusterPhotos: [String: [String]] = [
-        "demo_1": ["young-woman", "maya-1", "maya-2", "maya-3", "family-beach", "kids-birthday"],         // Maya
-        "demo_2": ["dad-portrait", "dad-2", "dad-3", "family-dinner", "road-trip", "sunset-portrait"],    // Dad
-        "demo_3": ["mom-portrait", "mom-2", "mom-3", "family-beach", "family-dinner", "kids-birthday"],   // Mom
-        "demo_4": ["sam-1", "sam-2", "friends-laughing", "beach-waves", "road-trip"],                     // Sam
-        "demo_5": ["theo-1", "theo-2", "man-portrait", "mountain-lake", "autumn-walk"],                   // Theo
-        "demo_6": ["grandma-1", "grandma-2", "grandma-3", "family-dinner"],                               // Grandma
-        "demo_7": ["uncle-1", "uncle-2", "sunset-portrait", "road-trip"],                                  // Uncle Jim
-        "demo_8": ["baby-playing", "baby-2", "baby-3", "family-beach"],                                   // Baby Lily
-        "demo_pet_1": ["dog-golden", "luna-2", "luna-3", "dog-park"],                                     // Luna
-        "demo_pet_2": ["cat-sitting", "mochi-2"],                                                          // Mochi
-        "demo_pet_3": ["dog-park", "dog-golden", "luna-3"],                                                // Buddy
+        "demo_p1": ["young-woman", "maya-1", "maya-2", "maya-3", "family-beach", "kids-birthday"],         // Maya
+        "demo_p2": ["dad-portrait", "dad-2", "dad-3", "family-dinner", "road-trip", "sunset-portrait"],    // Dad
+        "demo_p3": ["mom-portrait", "mom-2", "mom-3", "family-beach", "family-dinner", "kids-birthday"],   // Mom
+        "demo_p4": ["sam-1", "sam-2", "friends-laughing", "beach-waves", "road-trip"],                     // Sam
+        "demo_p5": ["theo-1", "theo-2", "man-portrait", "mountain-lake", "autumn-walk"],                   // Theo
+        "demo_p6": ["grandma-1", "grandma-2", "grandma-3", "family-dinner"],                               // Grandma
+        "demo_p7": ["uncle-1", "uncle-2", "sunset-portrait", "road-trip"],                                  // Uncle Jim
+        "demo_p8": ["baby-playing", "baby-2", "baby-3", "family-beach"],                                   // Baby Lily
+        "demo_pet1": ["dog-golden", "luna-2", "luna-3", "dog-park"],                                       // Luna
+        "demo_pet2": ["cat-sitting", "mochi-2"],                                                            // Mochi
+        "demo_pet3": ["dog-park", "dog-golden", "luna-3"],                                                  // Buddy
     ]
 
     func getClusterDetail(category: String, clusterId: String) -> ClusterDetail {
