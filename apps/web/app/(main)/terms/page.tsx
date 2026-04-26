@@ -86,8 +86,10 @@ export default function TermsPage() {
 
         <h2>10. Open Source</h2>
         <p>
-          Kindred Photos is released under the MIT License. You are free to use, modify,
-          and distribute the software in accordance with the license terms. The full
+          Kindred Photos is released under the GNU Affero General Public License v3.0 (AGPL-3.0). You are free to use, modify,
+          and distribute the software in accordance with the AGPL-3.0 license terms. If you modify and deploy
+          Kindred as a network service, you must make your modified source code available
+          to users of that service. The full
           license text is available in the project repository.
         </p>
 

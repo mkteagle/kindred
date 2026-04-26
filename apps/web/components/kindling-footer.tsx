@@ -74,7 +74,7 @@ export function KindlingFooter() {
             &copy; {year} Kindling Signal. All rights reserved.
           </p>
           <p className="ks-footer-copyright">
-            Kindred Photos is a product of Kindling Signal. Licensed under MIT.
+            Kindred Photos is a product of Kindling Signal. Licensed under AGPL-3.0.
           </p>
         </div>
       </div>
