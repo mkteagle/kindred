@@ -9,6 +9,13 @@ struct LoginView: View {
     @State private var isLoggingIn = false
     @State private var isFlickrLoggingIn = false
     @State private var showJoin = false
+    @State private var isDemoLoading = false
+    @State private var demoError: String?
+
+    // Demo configuration
+    private let demoBaseURL = "https://api.kindredphotos.app"
+    private let demoUsername = "demo"
+    private let demoPassword = "demo2026"
 
     var body: some View {
         ZStack {
@@ -131,6 +138,33 @@ struct LoginView: View {
                     }
                     .padding(.top, 18)
 
+                    // Demo mode
+                    Button {
+                        tryDemo()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "play.circle.fill")
+                                .font(.system(size: 16))
+                            Text("Try the demo")
+                                .font(.kindredLabel)
+                        }
+                        .foregroundStyle(KindredTheme.forest)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(KindredTheme.forest.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusSM))
+                    }
+                    .disabled(isDemoLoading)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 12)
+
+                    if let demoError {
+                        Text(demoError)
+                            .font(.kindredCaption)
+                            .foregroundStyle(KindredTheme.rosehip)
+                            .padding(.top, 4)
+                    }
+
                     Spacer().frame(height: 40)
                 }
             }
@@ -198,6 +232,24 @@ struct LoginView: View {
                 authError = "Invalid username or password"
             }
             isLoggingIn = false
+        }
+    }
+
+    private func tryDemo() {
+        isDemoLoading = true
+        demoError = nil
+        Task {
+            do {
+                // Point to the demo backend
+                await APIClient.shared.setBaseURL(demoBaseURL)
+                // Log in with demo credentials
+                try await session.login(username: demoUsername, password: demoPassword)
+            } catch {
+                demoError = "Demo unavailable right now. Try again later."
+                // Reset to default URL if demo fails
+                await APIClient.shared.setBaseURL("https://api.kindredphotos.app")
+            }
+            isDemoLoading = false
         }
     }
 

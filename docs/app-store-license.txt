@@ -1,0 +1,50 @@
+KINDRED PHOTOS END USER LICENSE AGREEMENT
+
+Last updated: April 26, 2026
+
+This End User License Agreement ("Agreement") is between you ("User") and Kindling Signal ("Developer"), the creator of Kindred Photos ("App").
+
+By downloading, installing, or using Kindred Photos, you agree to be bound by this Agreement. If you do not agree, do not use the App.
+
+1. LICENSE GRANT
+The Developer grants you a limited, non-exclusive, non-transferable, revocable license to use the App on any Apple device that you own or control, subject to the Usage Rules set forth in the Apple Media Services Terms and Conditions.
+
+2. DESCRIPTION OF SERVICE
+Kindred Photos is a household photo management application. The App connects to a self-hosted backend server and organizes photos stored on Flickr using AI-powered face recognition, object detection, and scene classification. The App does not store your photos — it indexes and organizes photos already stored on your Flickr account.
+
+3. ACCOUNT AND HOUSEHOLD
+Access requires an account within a household. Household admins create accounts and invite members. You are responsible for maintaining the confidentiality of your login credentials.
+
+4. YOUR CONTENT
+You retain all rights to your photos and content. The Developer does not claim ownership of any photos processed through the App. By using the App, you grant permission for the App to process your photos for organization purposes (face recognition, object detection, scene classification) on your self-hosted server.
+
+5. PRIVACY
+Kindred Photos is designed with privacy at its core:
+- Photo processing occurs on your self-hosted server, not in the cloud.
+- The App communicates only with your designated backend server and Flickr.
+- No photo data is sent to the Developer or any third party.
+- Analytics (if enabled) collect only anonymous usage data.
+For full details, see our Privacy Policy at https://kindredphotos.app/privacy.
+
+6. SELF-HOSTED NATURE
+Kindred Photos requires a self-hosted backend server. The Developer does not provide hosting services. You are responsible for the security, maintenance, and availability of your server infrastructure.
+
+7. OPEN SOURCE
+Kindred Photos is released under the GNU Affero General Public License v3.0 (AGPL-3.0). The source code is available at https://github.com/mkteagle/kindred. If you modify and deploy Kindred Photos as a network service, you must make your modified source code available to users of that service.
+
+8. THIRD-PARTY SERVICES
+The App integrates with Flickr for photo storage. Your use of Flickr is governed by Flickr's own terms of service. The Developer is not affiliated with or endorsed by Flickr or SmugMug, Inc.
+
+9. NO WARRANTY
+THE APP IS PROVIDED "AS IS" WITHOUT WARRANTIES OF ANY KIND. THE DEVELOPER DOES NOT WARRANT THAT THE APP WILL BE UNINTERRUPTED, ERROR-FREE, OR SECURE.
+
+10. LIMITATION OF LIABILITY
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE DEVELOPER SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES ARISING FROM YOUR USE OF THE APP.
+
+11. TERMINATION
+This license is effective until terminated. Your rights under this license will terminate automatically if you fail to comply with any of its terms.
+
+12. CONTACT
+Questions about this Agreement may be directed to sayhello@bykindling.com.
+
+This Agreement is governed by the laws of the United States.
