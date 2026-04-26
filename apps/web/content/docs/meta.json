@@ -6,6 +6,10 @@
     "getting-started/requirements",
     "getting-started/installation",
     "getting-started/flickr-setup",
+    "---Features---",
+    "features/together",
+    "features/notifications",
+    "features/upload",
     "---Self-Hosting---",
     "self-hosting/docker",
     "self-hosting/vps",
@@ -13,10 +17,13 @@
     "self-hosting/vercel",
     "---Household---",
     "household/accounts",
+    "household/invites",
+    "household/roles",
     "---Mobile---",
     "mobile/config",
     "---Reference---",
     "reference/api",
-    "reference/architecture"
+    "reference/architecture",
+    "reference/bulk-upload"
   ]
 }

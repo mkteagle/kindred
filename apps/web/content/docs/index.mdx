@@ -1,45 +1,78 @@
 ---
 title: Introduction
-description: Kindred is a self-hosted family photo library with automatic face recognition, clustering, and organization.
+description: Kindred Photos is a self-hosted family photo library with face recognition, shared browsing, and a calmer home for your memories.
 ---
 
-## What is Kindred?
+## What is Kindred Photos?
 
-Kindred turns your Flickr photo library into something a household can actually use. It automatically detects faces, pets, and vehicles in your photos, clusters them into people and animals, and lets you browse by person, location, event, or timeline.
+Kindred Photos turns your Flickr photo library into something a household can actually use. It automatically detects faces, pets, and vehicles in your photos, clusters them into people and animals, and lets everyone in the family browse by person, location, event, or timeline.
 
-Unlike cloud photo services, Kindred runs on your own server. Your photos stay on Flickr — Kindred just indexes and organizes them. No photo data is stored on the Kindred server itself.
+Unlike cloud photo services, Kindred Photos runs on your own server. Your photos stay on Flickr -- Kindred just indexes and organizes them. No photo data is stored on the Kindred server itself.
+
+A calmer home for family photos.
 
 ## Features
 
-- **Face recognition** — ArcFace-powered detection and clustering, automatically groups photos by person
-- **Pet & vehicle detection** — YOLOv8 detects animals and vehicles
-- **Visual search** — CLIP-powered text search ("kids at the beach") and similar-photo search
-- **Timeline & locations** — Browse photos by date or on a map
-- **Events** — Automatic event detection from time/location clusters
-- **Review mode** — Keyboard-driven triage for quickly naming and organizing people
-- **Manual tagging** — Draw bounding boxes to tag missed faces
-- **Custom avatars** — Pick the best photo and crop for each person's card
-- **Duplicates** — Find and manage duplicate photos
-- **Color search** — Find photos by dominant color
-- **OCR** — Detect text in photos
+### Organization
+- **Face recognition** -- ArcFace-powered detection and clustering, automatically groups photos by person
+- **Pet and vehicle detection** -- YOLOv8 detects animals and vehicles
+- **Visual search** -- CLIP-powered text search ("kids at the beach") and similar-photo search
+- **Timeline and locations** -- Browse photos by date or on a map
+- **Events** -- Automatic event detection from time/location clusters
+- **Color search** -- Find photos by dominant color
+- **OCR** -- Detect text in photos
+- **Duplicates** -- Find and manage duplicate photos
+
+### Browsing
+- **Together** -- Pick two or more people and see every photo they share. A multi-person photo finder for reliving moments with the people who matter.
+- **Memories / On This Day** -- Auto-curated story player that surfaces photos from the same date in past years.
+- **Photo lightbox** -- In-app photo viewer with EXIF data, people tags, and pinch-to-zoom.
+- **Share sheet** -- Share photos via Messages, Mail, or AirDrop on iOS.
+
+### Household
+- **Invite system** -- Send email invites via Resend or share manual invite codes so family members can join.
+- **Role-based access** -- Admins manage scans, labels, and settings. Members browse and search freely.
+- **Avatar system** -- Everyone gets a profile photo picked from your own library.
+- **Notifications** -- Push notifications and an in-app inbox for scan completions, new people discovered, and more.
+
+### Uploads
+- **Upload proxy** -- Any household member can upload photos through the VPS, no Flickr credentials needed.
+- **Bulk upload** -- A CLI tool for importing Google Takeout archives directly to Flickr with AI processing.
+
+### Management
+- **Review mode** -- Keyboard-driven triage for quickly naming and organizing people
+- **Manual tagging** -- Draw bounding boxes to tag missed faces
+- **Custom avatars** -- Pick the best photo and crop for each person's card
+- **Intelligence settings** -- Control which AI processing categories are enabled
 
 ## Architecture
 
 ```
-Flickr (photo storage)
-   |
-   v
-Kindred Backend (FastAPI + PostgreSQL/pgvector)
-   |                    |
-   v                    v
-Kindred Web (Next.js)   Kindred iOS (SwiftUI)
+┌─────────────┐     ┌──────────────────────────┐     ┌──────────┐
+│  Flickr     │────▶│  Kindred Backend          │────▶│ PostgreSQL│
+│  (photos)   │◀────│  FastAPI + Docker          │     │ + pgvector│
+└─────────────┘     └──────────────────────────┘     └──────────┘
+                       │         │          ▲
+                       ▼         ▼          │
+                 ┌──────────┐ ┌──────────┐  │
+                 │  Web UI  │ │  iOS App  │  │
+                 │  Next.js │ │  SwiftUI  │  │
+                 └──────────┘ └──────────┘  │
+                       │          │         │
+                       ▼          ▼         │
+                 ┌─────────────────────┐    │
+                 │  Upload Proxy (VPS) │────┘
+                 │  Members upload     │
+                 │  through backend    │
+                 └─────────────────────┘
 ```
 
-- **Backend** — Python FastAPI service with InsightFace, YOLOv8, and CLIP models. Runs in Docker.
-- **Database** — PostgreSQL with pgvector for embedding similarity search
-- **Web frontend** — Next.js app, can be deployed on Vercel or self-hosted
-- **iOS app** — Native SwiftUI app connecting to your backend
-- **Photo storage** — Flickr. Kindred never stores your photos, only metadata and embeddings.
+- **Backend** -- Python FastAPI service with InsightFace, YOLOv8, and CLIP models. Runs in Docker.
+- **Database** -- PostgreSQL with pgvector for embedding similarity search.
+- **Web frontend** -- Next.js app, can be deployed on Vercel or self-hosted.
+- **iOS app** -- Native SwiftUI app connecting to your backend.
+- **Upload proxy** -- The backend accepts photo uploads from any household member and forwards them to Flickr, so members never need Flickr credentials.
+- **Photo storage** -- Flickr. Kindred Photos never stores your photos, only metadata and embeddings.
 
 ## Quick start
 
@@ -49,4 +82,4 @@ Kindred Web (Next.js)   Kindred iOS (SwiftUI)
 
 ## License
 
-Kindred is open source under the [AGPL-3.0 license](https://www.gnu.org/licenses/agpl-3.0.en.html).
+Kindred Photos is open source under the [AGPL-3.0 license](https://www.gnu.org/licenses/agpl-3.0.en.html).

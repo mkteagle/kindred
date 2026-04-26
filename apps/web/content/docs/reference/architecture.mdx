@@ -1,22 +1,31 @@
 ---
 title: Architecture
-description: How Kindred's components fit together.
+description: How Kindred Photos' components fit together.
 ---
 
 ## System overview
 
 ```
 ┌─────────────┐     ┌──────────────────────────┐     ┌──────────┐
-│  Flickr     │────▶│  Kindred Backend          │────▶│ PostgreSQL│
-│  (photos)   │     │  FastAPI + Docker          │     │ + pgvector│
+│  Flickr     │────▶│  Kindred Photos Backend   │────▶│ PostgreSQL│
+│  (photos)   │◀────│  FastAPI + Docker          │     │ + pgvector│
 └─────────────┘     └──────────────────────────┘     └──────────┘
-                       │              │
-                       ▼              ▼
-                 ┌──────────┐  ┌──────────┐
-                 │  Web UI  │  │  iOS App  │
-                 │  Next.js │  │  SwiftUI  │
-                 └──────────┘  └──────────┘
+                       │         │          ▲
+                       ▼         ▼          │
+                 ┌──────────┐ ┌──────────┐  │
+                 │  Web UI  │ │  iOS App  │  │
+                 │  Next.js │ │  SwiftUI  │  │
+                 └──────────┘ └──────────┘  │
+                       │          │         │
+                       ▼          ▼         │
+                 ┌─────────────────────┐    │
+                 │  Upload Proxy (VPS) │────┘
+                 │  Members upload     │
+                 │  through backend    │
+                 └─────────────────────┘
 ```
+
+The upload proxy allows any household member to upload photos through the backend. The backend forwards them to Flickr using the admin's OAuth credentials, so members never need their own Flickr account.
 
 ## Backend
 
@@ -26,8 +35,10 @@ The backend is a single Python FastAPI service that handles:
 - **Face detection** — InsightFace (ArcFace) at 960px resolution
 - **Pet/vehicle detection** — YOLOv8
 - **Embedding generation** — CLIP ViT-B-32 for text/image search
-- **Clustering** — DBSCAN + agglomerative clustering for face grouping
-- **API** — RESTful endpoints for the web and mobile clients
+- **Clustering** -- DBSCAN + agglomerative clustering for face grouping
+- **Upload proxy** -- Accepts photo uploads from household members and forwards to Flickr
+- **Notifications** -- Push (APNs) and in-app notifications for scan events and new discoveries
+- **API** -- RESTful endpoints for the web and mobile clients
 
 All models run on CPU. No GPU required.
 
@@ -50,10 +61,10 @@ Native SwiftUI app that connects directly to the backend using the API key store
 
 ## Photo storage
 
-Kindred **never stores your photos**. Photos remain on Flickr. The backend only stores:
+Kindred Photos **never stores your photos**. Photos remain on Flickr. The backend only stores:
 
 - Metadata (titles, dates, locations)
 - Detection chips (small base64 face/object crops for display)
 - Embeddings (for search and clustering)
 
-If you delete the Kindred database, your photos on Flickr are unaffected.
+If you delete the Kindred Photos database, your photos on Flickr are unaffected.

@@ -1,0 +1,68 @@
+---
+title: Invites
+description: Invite family members to your Kindred Photos household via email or manual codes.
+---
+
+## Overview
+
+Kindred Photos makes it easy to bring family members into your shared photo library. Admins can send email invites through the Resend integration or share manual invite codes.
+
+## Email invites (Resend)
+
+With the Resend integration configured, admins can invite members by email address. Kindred Photos sends a branded invitation email with a one-click join link.
+
+### Setting up Resend
+
+1. Create a free account at [resend.com](https://resend.com)
+2. Add and verify your sending domain
+3. Generate an API key
+4. Add these environment variables to your backend:
+
+```bash
+RESEND_API_KEY=re_xxxxxxxxxxxx
+RESEND_FROM_EMAIL=invites@kindredphotos.app
+```
+
+5. Restart the backend
+
+### Sending an email invite
+
+1. Go to **Settings** in the web app
+2. Click **Invite member**
+3. Enter the family member's email address
+4. Click **Send invite**
+
+The recipient gets an email with a link to join your household. The link expires after 7 days.
+
+## Manual invite codes
+
+If you prefer not to set up email, or need to invite someone in person, you can use manual invite codes.
+
+1. Go to **Settings** in the web app
+2. Click **Create invite code**
+3. Share the 8-character code with your family member
+
+They can join at `/join` and enter the code, or use the direct link:
+
+```
+https://your-kindred.com/join?code=ABC12345
+```
+
+Invite codes expire after 7 days and can only be used once.
+
+## Managing invites
+
+From the Settings page, admins can:
+
+- View all pending invites (email and manual)
+- Revoke an invite before it is used
+- See when each invite was created and expires
+
+## API endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/invites` | Create an invite (email or manual) |
+| GET | `/invites` | List all invites |
+| DELETE | `/invites/{id}` | Revoke an invite |
+| POST | `/settings/integrations/resend` | Configure or update Resend integration |

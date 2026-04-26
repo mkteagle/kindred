@@ -4,15 +4,20 @@ export function baseOptions(): BaseLayoutProps {
   return {
     nav: {
       title: (
-        <span className="text-base font-bold tracking-tight">
+        <span className="flex items-center gap-2 text-base font-bold tracking-tight">
+          <img
+            src="/kindred-icon.svg"
+            alt="Kindred Photos"
+            className="h-6 w-6 rounded"
+          />
           Kindred
-          <span className="ml-1.5 text-xs font-normal text-fd-muted-foreground">Docs</span>
+          <span className="text-xs font-normal text-fd-muted-foreground">Docs</span>
         </span>
       ),
     },
     links: [
       {
-        text: 'Kindred',
+        text: 'Kindred Photos',
         url: '/',
       },
       {

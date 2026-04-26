@@ -1,6 +1,6 @@
 ---
 title: Environment Variables
-description: All configuration options for Kindred.
+description: All configuration options for Kindred Photos.
 ---
 
 ## Backend (`backend/.env`)
@@ -15,6 +15,8 @@ description: All configuration options for Kindred.
 | `FLICKR_USER_ID` | No | Legacy fallback. Automatically stored in the database when you connect Flickr via the web UI |
 | `API_KEY` | Recommended | API key for authenticating requests. Generate with `openssl rand -hex 32` |
 | `SCAN_SECRET` | No | Secret for the automated scan endpoint |
+| `RESEND_API_KEY` | No | API key from [Resend](https://resend.com) for sending email invites |
+| `RESEND_FROM_EMAIL` | No | Sender address for invite emails (e.g. `invites@kindredphotos.app`). Requires a verified Resend domain. |
 
 ## Frontend (`.env` or `.env.local`)
 
@@ -24,6 +26,7 @@ description: All configuration options for Kindred.
 | `API_KEY` | Yes | Must match the `API_KEY` in backend config |
 | `COOKIE_SECRET` | Yes | Encryption key for auth cookies. Generate with `openssl rand -hex 32` |
 | `NEXT_PUBLIC_BASE_URL` | No | Public URL of the web app (for OpenGraph metadata) |
+| `NEXT_PUBLIC_APP_URL` | No | Public URL used for invite links and share URLs. Falls back to `NEXT_PUBLIC_BASE_URL` if not set. |
 
 ## Example
 
@@ -34,6 +37,8 @@ DATABASE_URL=postgresql://kindred:your-password@db.example.com:5432/kindred
 FLICKR_API_KEY=abc123
 FLICKR_SECRET=def456
 API_KEY=a1b2c3d4e5f6...
+RESEND_API_KEY=re_xxxxxxxxxxxx
+RESEND_FROM_EMAIL=invites@kindredphotos.app
 ```
 
 ### Frontend
@@ -43,4 +48,5 @@ BACKEND_URL=https://api.your-domain.com
 API_KEY=a1b2c3d4e5f6...
 COOKIE_SECRET=your-random-hex-string
 NEXT_PUBLIC_BASE_URL=https://photos.your-domain.com
+NEXT_PUBLIC_APP_URL=https://photos.your-domain.com
 ```

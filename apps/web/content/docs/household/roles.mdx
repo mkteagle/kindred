@@ -1,0 +1,50 @@
+---
+title: Roles
+description: Admin and member roles in Kindred Photos, and what each can do.
+---
+
+## Overview
+
+Every Kindred Photos household has one admin and any number of members. Roles determine what actions are available in the UI and enforced at the API level.
+
+## Role comparison
+
+| Capability | Admin | Member |
+|------------|:-----:|:------:|
+| Browse all photos | Yes | Yes |
+| Search (text, face, color) | Yes | Yes |
+| View people, pets, vehicles | Yes | Yes |
+| Timeline, locations, events | Yes | Yes |
+| Together (multi-person finder) | Yes | Yes |
+| Memories / On This Day | Yes | Yes |
+| Upload photos | Yes | Yes |
+| Share photos (iOS) | Yes | Yes |
+| Notification inbox | Yes | Yes |
+| Connect Flickr account | Yes | -- |
+| Run photo scans | Yes | -- |
+| Label and name clusters | Yes | -- |
+| Merge or dismiss clusters | Yes | -- |
+| Delete photos | Yes | -- |
+| Manage household members | Yes | -- |
+| Create and revoke invites | Yes | -- |
+| Intelligence settings | Yes | -- |
+| Promote member to admin | Yes | -- |
+| Demote admin to member | Yes | -- |
+
+## How roles work
+
+- The person who first connects a Flickr account becomes the admin.
+- Members register through an invite code or email invite.
+- Admins can promote a member to admin or demote an admin to member from the Settings page.
+- The UI automatically adjusts -- members see a cleaner interface without management controls.
+- All role checks happen server-side. Even if someone modifies the client, the API rejects unauthorized actions.
+
+## Promoting and demoting
+
+From **Settings**, the admin can:
+
+1. Find the member in the household list
+2. Click the role badge next to their name
+3. Select **Promote to admin** or **Demote to member**
+
+The change takes effect immediately. The affected user's UI updates on their next page load.

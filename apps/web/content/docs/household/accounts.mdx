@@ -1,23 +1,29 @@
 ---
 title: Household Accounts
-description: Invite family members to browse your photo library with their own accounts.
+description: Invite family members to browse your Kindred Photos library with their own accounts.
 ---
 
 ## Overview
 
-Kindred supports household accounts so family members can browse the photo library without needing their own Flickr account. The admin (who connected Flickr) has full control, while members get read-only access.
+Kindred Photos supports household accounts so family members can browse the photo library without needing their own Flickr account. The admin (who connected Flickr) has full control, while members can browse, search, and upload photos.
 
 ## Roles
 
 | Role | Capabilities |
 |------|-------------|
-| **Admin** | Connect Flickr, run scans, label/merge/dismiss clusters, delete photos, manage members, create invites |
-| **Member** | Browse all photos, search, view clusters, timeline, locations, events |
+| **Admin** | Connect Flickr, run scans, label/merge/dismiss clusters, delete photos, manage members, create invites, intelligence settings |
+| **Member** | Browse all photos, search, view clusters, timeline, locations, events, upload photos |
+
+Admins can promote members to admin or demote admins to members from the Settings page. See [Roles](/docs/household/roles) for the full comparison.
 
 ## Inviting members
 
+You can invite family members by email (using the Resend integration) or by sharing a manual invite code. See [Invites](/docs/household/invites) for the full setup guide.
+
+The quick version:
+
 1. Go to **Settings** (gear icon in the user menu)
-2. Click **Create invite**
+2. Click **Invite member** (email) or **Create invite code** (manual)
 3. Share the invite code or link with a family member
 
 Invite codes are 8 characters, expire after 7 days, and can only be used once.
@@ -32,11 +38,25 @@ https://your-kindred.com/join?code=ABC12345
 
 They'll create a username, display name, and password. No Flickr account needed.
 
+## Avatars
+
+Every household member can set a profile avatar. Kindred Photos lets you pick a photo from your own library and crop it to use as your profile picture.
+
+To set your avatar:
+
+1. Click your avatar (or initials) in the top navigation
+2. Select **Edit profile**
+3. Choose a photo from the library or upload a new one
+4. Crop and save
+
+Avatars appear throughout the app -- in the navigation bar, notification messages, and household member lists.
+
 ## Managing members
 
 From the Settings page, admins can:
 
-- View all household members
+- View all household members and their roles
+- Promote a member to admin or demote an admin to member
 - Remove members (immediately revokes access)
 - View and revoke active invite codes
 

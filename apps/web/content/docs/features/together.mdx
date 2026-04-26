@@ -1,0 +1,35 @@
+---
+title: Together
+description: Find every photo where two or more people appear side by side.
+---
+
+## What is Together?
+
+Together is Kindred Photos' multi-person photo finder. Pick two or more people from your library, and it instantly shows every photo where they all appear. It is the fastest way to find moments shared between specific family members.
+
+## How it works
+
+1. Open the **Together** page from the main navigation
+2. Select two or more people from the picker
+3. Kindred Photos queries every photo where all selected people have face detections
+4. Results appear as a photo grid, sorted by date
+
+Behind the scenes, Together uses the face detection clusters already built during scanning. There is no extra processing -- if the people are recognized, Together can find them.
+
+## Use cases
+
+- Find every photo of Mom and Dad together
+- See all the pictures where the kids are in the same frame
+- Pull up group shots from a specific trip by combining people and date range
+
+## Related endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/photos/together` | Photos containing all specified people |
+| GET | `/photos/appears-with` | People who frequently appear alongside a given person |
+
+## Tips
+
+- Together works best when people are fully labeled. Use [Review mode](/docs/reference/api) to name unrecognized clusters first.
+- The more people you select, the fewer results you get -- group shots where everyone is present are naturally rarer.

@@ -1,0 +1,46 @@
+---
+title: Notifications
+description: Push notifications and in-app inbox for scan events, new people, and more.
+---
+
+## Overview
+
+Kindred Photos keeps household members informed through two channels: push notifications on iOS and an in-app notification inbox on the web.
+
+## Notification types
+
+| Type | Description |
+|------|-------------|
+| **Scan complete** | A photo scan has finished processing |
+| **New person discovered** | A new face cluster was found during scanning |
+| **Invite accepted** | A family member joined the household |
+| **Upload complete** | A batch upload has finished |
+
+## In-app inbox
+
+The bell icon in the top navigation opens the notification inbox. Unread notifications show a badge count. Each notification links directly to the relevant page -- for example, tapping a "new person" notification opens that person's cluster.
+
+Notifications can be marked as read individually or all at once.
+
+## Push notifications (iOS)
+
+The Kindred Photos iOS app supports push notifications via APNs. When enabled, you receive alerts even when the app is not open.
+
+To enable push notifications:
+
+1. Open the iOS app
+2. Go to **Settings** (tap your avatar)
+3. Toggle **Push notifications** on
+4. Allow notifications when prompted by iOS
+
+## Notification settings
+
+From the settings page, you can control which notification types you receive. Each type can be toggled independently for both push and in-app channels.
+
+## API endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/notifications` | List notifications for the current user |
+| PUT | `/notifications/{id}/read` | Mark a notification as read |
+| PUT | `/notifications/read-all` | Mark all notifications as read |

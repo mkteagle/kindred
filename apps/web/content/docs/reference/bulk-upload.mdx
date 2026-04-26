@@ -1,0 +1,171 @@
+---
+title: Bulk Upload CLI
+description: Command-line tool for importing Google Takeout photo archives into Kindred Photos.
+---
+
+## Overview
+
+The bulk upload tool migrates a Google Takeout photo archive directly to Flickr with OAuth 1.0a, then optionally triggers Kindred Photos AI processing for each photo. It is designed for one-time bulk migrations of large archives and has been tested with archives up to 7 TB.
+
+The tool lives in the `tools/` directory of the Kindred Photos repository.
+
+## Requirements
+
+- Python 3.9+
+- `requests` library (`pip install requests`)
+
+## Credentials
+
+You need four Flickr credentials and optionally a Kindred Photos API key:
+
+| Credential | What it is | Where to find it |
+|---|---|---|
+| `FLICKR_API_KEY` | Consumer key (app ID) | Your Flickr app page at [flickr.com/services/apps](https://www.flickr.com/services/apps/) |
+| `FLICKR_SECRET` | Consumer secret | Same app page, under "Secret" |
+| `FLICKR_OAUTH_TOKEN` | User access token | Database query or backend env vars (see below) |
+| `FLICKR_OAUTH_SECRET` | User access token secret | Database query or backend env vars (see below) |
+| `KINDRED_API_KEY` | Kindred Photos API key | Settings page or `POST /api-keys` |
+
+### Getting OAuth tokens
+
+If you have a running Kindred Photos instance with Flickr connected, query the tokens from the database:
+
+```sql
+SELECT flickr_oauth_token, flickr_oauth_secret
+FROM users
+WHERE role = 'admin' AND flickr_oauth_token IS NOT NULL;
+```
+
+Or check your backend environment variables: `FLICKR_OAUTH_TOKEN` and `FLICKR_OAUTH_SECRET`.
+
+### Getting a Kindred Photos API key
+
+Generate one from the Settings page in the web app, or via the API:
+
+```
+POST /api-keys
+X-API-Key: <existing_key>
+{"name": "Bulk Upload"}
+```
+
+The response includes the raw `knd_xxx` key, shown only once.
+
+## Usage
+
+### Basic upload (Flickr only)
+
+```bash
+python3 bulk-upload.py /path/to/Takeout \
+  --api-key YOUR_FLICKR_API_KEY \
+  --api-secret YOUR_FLICKR_SECRET \
+  --oauth-token YOUR_TOKEN \
+  --oauth-secret YOUR_TOKEN_SECRET
+```
+
+### With Kindred Photos processing
+
+```bash
+python3 bulk-upload.py /path/to/Takeout \
+  --api-key YOUR_FLICKR_API_KEY \
+  --api-secret YOUR_FLICKR_SECRET \
+  --oauth-token YOUR_TOKEN \
+  --oauth-secret YOUR_TOKEN_SECRET \
+  --backend https://api.kindredphotos.app \
+  --backend-key knd_xxxxxxxxxxxx \
+  --workers 3
+```
+
+### Using environment variables
+
+```bash
+export FLICKR_API_KEY=xxx
+export FLICKR_SECRET=xxx
+export FLICKR_OAUTH_TOKEN=xxx
+export FLICKR_OAUTH_SECRET=xxx
+export KINDRED_BACKEND=https://api.kindredphotos.app
+export KINDRED_API_KEY=knd_xxxxxxxxxxxx
+
+python3 bulk-upload.py /path/to/Takeout
+```
+
+### Dry run
+
+Preview what would be uploaded without actually sending anything:
+
+```bash
+python3 bulk-upload.py /path/to/Takeout --dry-run
+```
+
+This scans the directory, shows the first 20 files with metadata, and estimates the upload time. No credentials required.
+
+## CLI options
+
+| Flag | Default | Description |
+|---|---|---|
+| `source_dir` | (required) | Root directory of the Google Takeout archive |
+| `--api-key` | env `FLICKR_API_KEY` | Flickr consumer key |
+| `--api-secret` | env `FLICKR_SECRET` | Flickr consumer secret |
+| `--oauth-token` | env `FLICKR_OAUTH_TOKEN` | Flickr OAuth access token |
+| `--oauth-secret` | env `FLICKR_OAUTH_SECRET` | Flickr OAuth access token secret |
+| `--backend` | env `KINDRED_BACKEND` | Kindred Photos backend URL |
+| `--backend-key` | env `KINDRED_API_KEY` | Kindred Photos API key |
+| `--workers N` | 3 | Number of parallel upload threads |
+| `--delay N` | 2.0 | Seconds between uploads per worker |
+| `--dry-run` | off | Preview mode, no actual uploads |
+| `--skip-backend` | off | Upload to Flickr but skip Kindred Photos notification |
+| `--verbose` / `-v` | off | Enable debug logging |
+
+## How it works
+
+1. **Scan** -- Recursively finds all supported files in the Takeout directory
+2. **Resume** -- Loads `upload_progress.json` from the source directory. Files already tracked are skipped.
+3. **Parse metadata** -- For each file, reads the Google Takeout JSON sidecar (e.g., `IMG_1234.jpg.json`) and extracts title, description, date taken, and geo coordinates.
+4. **Upload** -- Sends the file to Flickr with OAuth 1.0a signing. Photos are set to private, family-visible.
+5. **Notify** -- Calls `POST /process-photo` on the Kindred Photos backend so the photo enters the AI pipeline.
+6. **Track** -- Updates `upload_progress.json` after every batch. Failed files are logged to `upload_errors.log`.
+
+### Interrupt and resume
+
+Press Ctrl+C once for a graceful shutdown (finishes current uploads, saves progress). Press Ctrl+C twice to force exit (still saves progress).
+
+Restart the same command to resume from where you left off.
+
+## Time estimates
+
+Estimates assume 3 workers with default 2-second delay:
+
+| Archive size | File count (est.) | Estimated time |
+|---|---|---|
+| 50 GB | ~10,000 | ~6 hours |
+| 500 GB | ~100,000 | ~2.5 days |
+| 1 TB | ~200,000 | ~5 days |
+| 3 TB | ~600,000 | ~14 days |
+| 7 TB | ~1,400,000 | ~33 days |
+
+Actual times depend on file sizes, network speed, and Flickr's rate limits. Increasing workers to 5 can reduce times by around 40%, but watch for rate-limit errors (the script retries automatically with exponential backoff).
+
+For very large archives, consider running in a `tmux` or `screen` session.
+
+## Supported file types
+
+**Photos**: jpg, jpeg, png, gif, heic, webp, tiff, raw, cr2, nef, arw
+
+**Videos**: mp4, mov, avi, mkv
+
+## Google Takeout structure
+
+The tool handles the standard Takeout layout:
+
+```
+Takeout/
+  Google Photos/
+    2023-06-01/
+      IMG_1234.jpg
+      IMG_1234.jpg.json    <-- metadata sidecar
+    Trip to Paris/
+      DSC_0001.nef
+      DSC_0001.nef.json
+    ...
+```
+
+JSON sidecar files provide title, description, date taken (Unix timestamp), and geo coordinates (latitude/longitude).

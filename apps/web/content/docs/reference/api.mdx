@@ -1,6 +1,6 @@
 ---
 title: API Reference
-description: Kindred backend API endpoints.
+description: Kindred Photos backend API endpoints.
 ---
 
 ## Authentication
@@ -40,6 +40,8 @@ Categories: `people`, `pets`, `vehicles`
 | POST | `/photos/{photo_id}/tag` | Manually tag a face/object |
 | GET | `/photos/together` | Photos containing multiple people |
 | GET | `/photos/appears-with` | People who appear with a person |
+| POST | `/photos/upload` | Upload a single photo via the VPS proxy |
+| POST | `/photos/upload-batch` | Upload multiple photos in one request |
 
 ## Search
 
@@ -55,6 +57,28 @@ Categories: `people`, `pets`, `vehicles`
 | POST | `/analyze` | Start a photo scan |
 | GET | `/jobs/active` | Check scan progress |
 | GET | `/syncs` | Scan history |
+
+## Notifications
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/notifications` | List notifications for the current user |
+| PUT | `/notifications/{id}/read` | Mark a notification as read |
+| PUT | `/notifications/read-all` | Mark all notifications as read |
+
+## Users
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| PUT | `/users/me/avatar` | Upload or update the current user's avatar |
+| GET | `/users/me` | Get current user profile |
+
+## Settings
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/settings/integrations/resend` | Configure or update Resend email integration |
+| GET | `/settings/integrations` | List configured integrations |
 
 ## Other
 

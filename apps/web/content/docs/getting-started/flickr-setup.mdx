@@ -1,6 +1,6 @@
 ---
 title: Flickr Setup
-description: How to get Flickr API credentials for Kindred.
+description: How to get Flickr API credentials for Kindred Photos.
 ---
 
 ## Get API credentials
@@ -8,13 +8,13 @@ description: How to get Flickr API credentials for Kindred.
 1. Go to [Flickr API Keys](https://www.flickr.com/services/api/keys/)
 2. Click **Apply for a Non-Commercial Key**
 3. Fill in the application details:
-   - **Name**: Kindred
+   - **Name**: Kindred Photos
    - **Description**: Private family photo organization
 4. You'll receive an **API Key** and **Secret**
 
 ## Configure OAuth
 
-Kindred uses OAuth to access your Flickr account. The web app handles the OAuth flow — just sign in through the UI and authorize Kindred to access your photos.
+Kindred Photos uses OAuth to access your Flickr account. The web app handles the OAuth flow -- just sign in through the UI and authorize Kindred Photos to access your photos.
 
 Add your API credentials to `backend/.env`:
 
@@ -27,7 +27,7 @@ The OAuth tokens (`FLICKR_OAUTH_TOKEN` and `FLICKR_OAUTH_SECRET`) are generated 
 
 ## Permissions
 
-Kindred requests **delete** permission level from Flickr. This is needed to:
+Kindred Photos requests **delete** permission level from Flickr. This is needed to:
 
 - Read your photos and metadata
 - Upload new photos (optional)

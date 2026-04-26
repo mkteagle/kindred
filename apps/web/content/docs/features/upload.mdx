@@ -1,0 +1,55 @@
+---
+title: Photo Upload
+description: Upload photos through the VPS proxy or bulk-import Google Takeout archives.
+---
+
+## Overview
+
+Kindred Photos supports two ways to get photos into your library: the upload proxy for everyday uploads and the bulk upload CLI for large migrations.
+
+## Upload proxy
+
+Any household member -- admin or regular member -- can upload photos directly through the Kindred Photos backend. The backend acts as a proxy, forwarding photos to Flickr using the admin's credentials so members never need their own Flickr account.
+
+### How it works
+
+1. A member selects photos in the web or iOS app
+2. The photos are sent to the Kindred Photos backend
+3. The backend uploads them to Flickr via the admin's OAuth tokens
+4. Each photo enters the AI processing pipeline (face detection, embeddings, etc.)
+5. The photo appears in the shared library
+
+### Upload limits
+
+Uploads are limited by Flickr's own constraints:
+
+- **Photo size**: up to 200 MB per file (Flickr Pro) or 50 MB (free)
+- **Video length**: up to 10 minutes (Flickr Pro) or 3 minutes (free)
+- **File types**: JPG, PNG, GIF, HEIC, MP4, MOV
+
+### Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/photos/upload` | Upload a single photo |
+| POST | `/photos/upload-batch` | Upload multiple photos in one request |
+
+## Bulk upload CLI
+
+For large imports -- like migrating from Google Photos -- use the bulk upload command-line tool. It handles Google Takeout archives of any size, with resumable uploads and parallel workers.
+
+See the [Bulk Upload CLI Reference](/docs/reference/bulk-upload) for full documentation.
+
+### Quick start
+
+```bash
+python3 bulk-upload.py /path/to/Takeout \
+  --api-key YOUR_FLICKR_API_KEY \
+  --api-secret YOUR_FLICKR_SECRET \
+  --oauth-token YOUR_TOKEN \
+  --oauth-secret YOUR_TOKEN_SECRET \
+  --backend https://api.kindredphotos.app \
+  --backend-key knd_xxxxxxxxxxxx
+```
+
+The tool has been tested with archives up to 7 TB.
