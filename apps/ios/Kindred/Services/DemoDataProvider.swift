@@ -168,24 +168,49 @@ struct DemoThumbnailView: View {
     var cornerRadius: CGFloat = KindredTheme.radiusXS
 
     /// Map demo URL indices to bundled photo filenames
+    // Ordered to match demo clusters: 01=Maya, 02=Dad, 03=Mom, 04=Sam, 05=Theo,
+    // 06=Grandma, 07=Uncle Jim, 08=Baby Lily, 09+=pets/vehicles/timeline
     private static let photoFiles = [
-        "family-beach", "family-dinner", "friends-laughing", "sunset-portrait",
-        "woman-smiling", "man-portrait", "woman-outdoor", "mom-portrait",
-        "dad-portrait", "young-woman", "kids-birthday", "birthday-cake",
-        "baby-playing", "dog-golden", "cat-sitting", "dog-park",
-        "road-trip", "mountain-lake", "beach-waves", "autumn-walk",
+        "young-woman",       // 01 Maya — young woman
+        "dad-portrait",      // 02 Dad — man
+        "mom-portrait",      // 03 Mom — woman
+        "friends-laughing",  // 04 Sam — group/friends
+        "man-portrait",      // 05 Theo — man
+        "woman-outdoor",     // 06 Grandma — older woman outdoors
+        "sunset-portrait",   // 07 Uncle Jim — man silhouette
+        "baby-playing",      // 08 Baby Lily — baby
+        "dog-golden",        // 09 Luna (pet)
+        "cat-sitting",       // 10 Mochi (pet)
+        "dog-park",          // 11 Buddy (pet)
+        "family-beach",      // 12+ timeline/scatter photos
+        "family-dinner",
+        "kids-birthday",
+        "birthday-cake",
+        "road-trip",
+        "mountain-lake",
+        "beach-waves",
+        "autumn-walk",
+        "woman-smiling",
     ]
 
     private var image: UIImage? {
         let idx = DemoDataProvider.paletteIndex(for: urlString)
         let filename = Self.photoFiles[idx % Self.photoFiles.count]
-        if let path = Bundle.main.path(forResource: filename, ofType: "jpg", inDirectory: "DemoData/Photos") {
-            return UIImage(contentsOfFile: path)
+        // Try with subdirectory first
+        if let path = Bundle.main.path(forResource: filename, ofType: "jpg", inDirectory: "DemoData/Photos"),
+           let img = UIImage(contentsOfFile: path) {
+            return img
         }
-        // Try without subdirectory (flat bundle)
-        if let path = Bundle.main.path(forResource: filename, ofType: "jpg") {
-            return UIImage(contentsOfFile: path)
+        // Flat bundle (Xcode copies resources flat by default)
+        if let path = Bundle.main.path(forResource: filename, ofType: "jpg"),
+           let img = UIImage(contentsOfFile: path) {
+            return img
         }
+        // Try URL-based loading as last resort
+        if let url = Bundle.main.url(forResource: filename, withExtension: "jpg") {
+            return UIImage(contentsOfFile: url.path)
+        }
+        print("[DemoThumbnail] Failed to load: \(filename).jpg for URL: \(urlString)")
         return nil
     }
 
