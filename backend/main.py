@@ -221,6 +221,19 @@ def create_new_tables():
                     updated_at TIMESTAMPTZ DEFAULT now()
                 )
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS notifications (
+                    id SERIAL PRIMARY KEY,
+                    type TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    message TEXT,
+                    metadata JSONB DEFAULT '{}',
+                    read BOOLEAN DEFAULT false,
+                    created_at TIMESTAMPTZ DEFAULT now()
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read)")
             # Fuzzy name search support
             cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
             # Clean up expired sessions
