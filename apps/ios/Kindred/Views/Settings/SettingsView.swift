@@ -63,11 +63,16 @@ struct SettingsView: View {
             }
             .kindredPaperBackground()
             .navigationBarHidden(true)
-            .alert("Sign Out", isPresented: $showLogoutConfirm) {
-                Button("Sign Out", role: .destructive) { viewModel.logout() }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Are you sure you want to sign out?")
+            .sheet(isPresented: $showLogoutConfirm) {
+                SignOutSheet(
+                    onConfirm: {
+                        showLogoutConfirm = false
+                        viewModel.logout()
+                    },
+                    onCancel: { showLogoutConfirm = false }
+                )
+                .presentationDetents([.height(320)])
+                .presentationDragIndicator(.visible)
             }
             .task {
                 await viewModel.checkHealth()
@@ -340,15 +345,20 @@ struct SettingsView: View {
             .kindredGroupedCard()
             .padding(.horizontal, 16)
         }
-        .alert("Privacy", isPresented: $showPrivacyInfo) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Your photo library is stored privately within your household. No data is shared outside your account. All intelligence processing runs on your server and never leaves your household.")
+        .sheet(isPresented: $showPrivacyInfo) {
+            PrivacyInfoSheet {
+                showPrivacyInfo = false
+            }
+            .presentationDetents([.height(340)])
+            .presentationDragIndicator(.visible)
         }
-        .alert("Backend", isPresented: $showBackendURL) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Server: https://api.kindredphotos.app\nStatus: \(viewModel.isHealthy ? "Online" : "Offline")")
+        .sheet(isPresented: $showBackendURL) {
+            BackendInfoSheet(
+                isHealthy: viewModel.isHealthy,
+                onDismiss: { showBackendURL = false }
+            )
+            .presentationDetents([.height(320)])
+            .presentationDragIndicator(.visible)
         }
     }
 
@@ -789,6 +799,142 @@ struct SpaceFreedSheet: View {
             Spacer()
 
             KindredButton(title: "Done", style: .dark, isFullWidth: true) {
+                onDismiss()
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
+        }
+        .background(KindredTheme.paper)
+    }
+}
+
+// MARK: - Sign Out Sheet
+
+struct SignOutSheet: View {
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Image(systemName: "rectangle.portrait.and.arrow.right")
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(KindredTheme.ember)
+                .padding(.top, 32)
+
+            Text("Sign out?")
+                .font(.kindredH2)
+                .foregroundStyle(KindredTheme.ash)
+                .padding(.top, 16)
+
+            Text("Are you sure you want to sign out of your household?")
+                .font(.kindredBody)
+                .foregroundStyle(KindredTheme.pine)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+                .padding(.top, 8)
+
+            Spacer()
+
+            VStack(spacing: 10) {
+                KindredButton(
+                    title: "Sign out",
+                    icon: "rectangle.portrait.and.arrow.right",
+                    style: .danger,
+                    isFullWidth: true
+                ) {
+                    onConfirm()
+                }
+
+                KindredButton(
+                    title: "Stay signed in",
+                    style: .ghost,
+                    isFullWidth: true
+                ) {
+                    onCancel()
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
+        }
+        .background(KindredTheme.paper)
+    }
+}
+
+// MARK: - Privacy Info Sheet
+
+struct PrivacyInfoSheet: View {
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Image(systemName: "lock.shield.fill")
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(KindredTheme.forest)
+                .padding(.top, 32)
+
+            Text("Privacy")
+                .font(.kindredH2)
+                .foregroundStyle(KindredTheme.ash)
+                .padding(.top, 16)
+
+            Text("Your photo library is stored privately within your household. No data is shared outside your account. All intelligence processing runs on your server and never leaves your household.")
+                .font(.kindredBody)
+                .foregroundStyle(KindredTheme.pine)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+                .padding(.top, 8)
+
+            Spacer()
+
+            KindredButton(title: "Got it", style: .dark, isFullWidth: true) {
+                onDismiss()
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
+        }
+        .background(KindredTheme.paper)
+    }
+}
+
+// MARK: - Backend Info Sheet
+
+struct BackendInfoSheet: View {
+    let isHealthy: Bool
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Image(systemName: "server.rack")
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(KindredTheme.slateBlue)
+                .padding(.top, 32)
+
+            Text("Backend")
+                .font(.kindredH2)
+                .foregroundStyle(KindredTheme.ash)
+                .padding(.top, 16)
+
+            VStack(spacing: 6) {
+                Text("Server: https://api.kindredphotos.app")
+                    .font(.kindredBody)
+                    .foregroundStyle(KindredTheme.pine)
+
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(isHealthy ? KindredTheme.forest : KindredTheme.rosehip)
+                        .frame(width: 8, height: 8)
+                    Text("Status: \(isHealthy ? "Online" : "Offline")")
+                        .font(.kindredBody)
+                        .foregroundStyle(KindredTheme.pine)
+                }
+            }
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 32)
+            .padding(.top, 8)
+
+            Spacer()
+
+            KindredButton(title: "Got it", style: .dark, isFullWidth: true) {
                 onDismiss()
             }
             .padding(.horizontal, 24)

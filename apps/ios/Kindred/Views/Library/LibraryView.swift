@@ -82,13 +82,12 @@ struct LibraryView: View {
                     viewModel: viewModel
                 )
             }
-            .confirmationDialog("Sort by", isPresented: $showSortFilter, titleVisibility: .visible) {
-                ForEach(LibrarySortOrder.allCases, id: \.self) { order in
-                    Button(order.rawValue) {
-                        sortOrder = order
-                    }
+            .sheet(isPresented: $showSortFilter) {
+                SortBySheet(sortOrder: $sortOrder) {
+                    showSortFilter = false
                 }
-                Button("Cancel", role: .cancel) {}
+                .presentationDetents([.height(340)])
+                .presentationDragIndicator(.visible)
             }
             .task {
                 await viewModel.loadStats()
@@ -307,14 +306,18 @@ struct MasonryClusterCard: View {
                 Label("Rename", systemImage: "pencil")
             }
         }
-        .alert("Rename", isPresented: $showRename) {
-            TextField("Name", text: $nameInput)
-            Button("Save") {
-                if !nameInput.isEmpty { onRename?(nameInput) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Enter a new name for this \(category.displayName.lowercased().dropLast()) group.")
+        .sheet(isPresented: $showRename) {
+            RenameSheet(
+                nameInput: $nameInput,
+                entityType: String(category.displayName.lowercased().dropLast()),
+                onSave: { newName in
+                    showRename = false
+                    if !newName.isEmpty { onRename?(newName) }
+                },
+                onCancel: { showRename = false }
+            )
+            .presentationDetents([.height(300)])
+            .presentationDragIndicator(.visible)
         }
     }
 }
@@ -327,6 +330,129 @@ struct StatBadge: View {
 
     var body: some View {
         KindredStatCard(value: "\(value)", label: label)
+    }
+}
+
+// MARK: - Sort By Sheet
+
+struct SortBySheet: View {
+    @Binding var sortOrder: LibrarySortOrder
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Image(systemName: "line.3.horizontal.decrease")
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(KindredTheme.pine)
+                .padding(.top, 32)
+
+            Text("Sort by")
+                .font(.kindredH2)
+                .foregroundStyle(KindredTheme.ash)
+                .padding(.top, 16)
+
+            VStack(spacing: 0) {
+                ForEach(LibrarySortOrder.allCases, id: \.self) { order in
+                    Button {
+                        sortOrder = order
+                        onDismiss()
+                    } label: {
+                        HStack {
+                            Text(order.rawValue)
+                                .font(.kindredLabel)
+                                .foregroundStyle(KindredTheme.ash)
+                            Spacer()
+                            if sortOrder == order {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(KindredTheme.ember)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 13)
+                    }
+                    .buttonStyle(.plain)
+
+                    if order != LibrarySortOrder.allCases.last {
+                        Divider()
+                            .overlay(KindredTheme.line)
+                            .padding(.leading, 14)
+                    }
+                }
+            }
+            .kindredGroupedCard()
+            .padding(.horizontal, 24)
+            .padding(.top, 16)
+
+            Spacer()
+        }
+        .background(KindredTheme.paper)
+    }
+}
+
+// MARK: - Rename Sheet
+
+struct RenameSheet: View {
+    @Binding var nameInput: String
+    let entityType: String
+    let onSave: (String) -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Image(systemName: "pencil.line")
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(KindredTheme.ember)
+                .padding(.top, 32)
+
+            Text("Rename")
+                .font(.kindredH2)
+                .foregroundStyle(KindredTheme.ash)
+                .padding(.top, 16)
+
+            Text("Enter a new name for this \(entityType) group.")
+                .font(.kindredBody)
+                .foregroundStyle(KindredTheme.pine)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+                .padding(.top, 8)
+
+            TextField("Name", text: $nameInput)
+                .font(.kindredBody)
+                .padding(12)
+                .background(KindredTheme.canvas)
+                .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusSM))
+                .overlay(
+                    RoundedRectangle(cornerRadius: KindredTheme.radiusSM)
+                        .stroke(KindredTheme.lineDark, lineWidth: 1)
+                )
+                .padding(.horizontal, 24)
+                .padding(.top, 14)
+
+            Spacer()
+
+            VStack(spacing: 10) {
+                KindredButton(
+                    title: "Save",
+                    icon: "checkmark",
+                    style: .primary,
+                    isFullWidth: true
+                ) {
+                    onSave(nameInput)
+                }
+
+                KindredButton(
+                    title: "Cancel",
+                    style: .ghost,
+                    isFullWidth: true
+                ) {
+                    onCancel()
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
+        }
+        .background(KindredTheme.paper)
     }
 }
 

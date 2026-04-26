@@ -122,23 +122,29 @@ struct IntelligenceView: View {
                 .presentationCornerRadius(22)
                 .presentationDragIndicator(.visible)
         }
-        .alert("Pause intelligence?", isPresented: $showPauseConfirm) {
-            Button("Pause", role: .destructive) {
-                withAnimation(.easeOut(duration: 0.28)) {
-                    intelligence.enabled = false
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Existing groups will stay. New photos won\u{2019}t be sorted.")
+        .sheet(isPresented: $showPauseConfirm) {
+            PauseIntelligenceSheet(
+                onConfirm: {
+                    showPauseConfirm = false
+                    withAnimation(.easeOut(duration: 0.28)) {
+                        intelligence.enabled = false
+                    }
+                },
+                onCancel: { showPauseConfirm = false }
+            )
+            .presentationDetents([.height(320)])
+            .presentationDragIndicator(.visible)
         }
-        .alert("Re-index library?", isPresented: $showReindexConfirm) {
-            Button("Re-index now", role: .destructive) {
-                // placeholder — would trigger re-index
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will re-run on every photo on your server and takes approximately 40 minutes.")
+        .sheet(isPresented: $showReindexConfirm) {
+            ReindexSheet(
+                onConfirm: {
+                    showReindexConfirm = false
+                    // placeholder — would trigger re-index
+                },
+                onCancel: { showReindexConfirm = false }
+            )
+            .presentationDetents([.height(340)])
+            .presentationDragIndicator(.visible)
         }
     }
 
@@ -843,5 +849,109 @@ struct IntelligenceOnboardingView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Pause Intelligence Sheet
+
+struct PauseIntelligenceSheet: View {
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Image(systemName: "pause.circle.fill")
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(KindredTheme.ember)
+                .padding(.top, 32)
+
+            Text("Pause intelligence?")
+                .font(.kindredH2)
+                .foregroundStyle(KindredTheme.ash)
+                .padding(.top, 16)
+
+            Text("Existing groups will stay. New photos won\u{2019}t be sorted until you turn this back on.")
+                .font(.kindredBody)
+                .foregroundStyle(KindredTheme.pine)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+                .padding(.top, 8)
+
+            Spacer()
+
+            VStack(spacing: 10) {
+                KindredButton(
+                    title: "Pause",
+                    icon: "pause",
+                    style: .danger,
+                    isFullWidth: true
+                ) {
+                    onConfirm()
+                }
+
+                KindredButton(
+                    title: "Keep running",
+                    style: .ghost,
+                    isFullWidth: true
+                ) {
+                    onCancel()
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
+        }
+        .background(KindredTheme.paper)
+    }
+}
+
+// MARK: - Re-index Sheet
+
+struct ReindexSheet: View {
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(KindredTheme.ember)
+                .padding(.top, 32)
+
+            Text("Re-index library?")
+                .font(.kindredH2)
+                .foregroundStyle(KindredTheme.ash)
+                .padding(.top, 16)
+
+            Text("This will re-run intelligence on every photo on your server. It takes approximately 40 minutes.")
+                .font(.kindredBody)
+                .foregroundStyle(KindredTheme.pine)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+                .padding(.top, 8)
+
+            Spacer()
+
+            VStack(spacing: 10) {
+                KindredButton(
+                    title: "Re-index now",
+                    icon: "arrow.triangle.2.circlepath",
+                    style: .primary,
+                    isFullWidth: true
+                ) {
+                    onConfirm()
+                }
+
+                KindredButton(
+                    title: "Cancel",
+                    style: .ghost,
+                    isFullWidth: true
+                ) {
+                    onCancel()
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
+        }
+        .background(KindredTheme.paper)
     }
 }

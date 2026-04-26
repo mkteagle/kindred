@@ -237,23 +237,30 @@ struct UploadView: View {
         .padding()
         .background(KindredTheme.warmCardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
-        .alert("Free Up Space", isPresented: $showFreeSpaceConfirm) {
-            Button("Delete \(viewModel.photoManager.uploadedCount) Local Copies", role: .destructive) {
-                Task {
-                    do {
-                        freedCount = try await viewModel.freeUpSpace()
-                        showFreedAlert = true
-                    } catch {}
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Remove \(viewModel.photoManager.uploadedCount) items from this device that are already backed up to Flickr? This saves \(viewModel.formattedSavings).\n\nThey'll stay safe in your Kindred library.")
+        .sheet(isPresented: $showFreeSpaceConfirm) {
+            FreeSpaceConfirmSheet(
+                count: viewModel.photoManager.uploadedCount,
+                savings: viewModel.formattedSavings,
+                onConfirm: {
+                    showFreeSpaceConfirm = false
+                    Task {
+                        do {
+                            freedCount = try await viewModel.freeUpSpace()
+                            showFreedAlert = true
+                        } catch {}
+                    }
+                },
+                onCancel: { showFreeSpaceConfirm = false }
+            )
+            .presentationDetents([.height(380)])
+            .presentationDragIndicator(.visible)
         }
-        .alert("Space Freed", isPresented: $showFreedAlert) {
-            Button("OK") {}
-        } message: {
-            Text("Removed \(freedCount) items from your device. They're still safe in your Kindred library on Flickr.")
+        .sheet(isPresented: $showFreedAlert) {
+            SpaceFreedSheet(count: freedCount) {
+                showFreedAlert = false
+            }
+            .presentationDetents([.height(300)])
+            .presentationDragIndicator(.visible)
         }
     }
 

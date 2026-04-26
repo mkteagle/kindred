@@ -99,22 +99,77 @@ struct DuplicatesView: View {
         .sheet(item: $selectedPhoto) { item in
             FullScreenPhotoView(item: item)
         }
-        .alert("Delete Photo", isPresented: $showDeleteConfirm) {
-            Button("Delete from Flickr", role: .destructive) {
-                if let photo = photoToDelete {
-                    Task {
-                        await viewModel.deleteDuplicatePhotos(photoIds: [photo.photo_id])
+        .sheet(isPresented: $showDeleteConfirm) {
+            DeletePhotoSheet(
+                onConfirm: {
+                    showDeleteConfirm = false
+                    if let photo = photoToDelete {
+                        Task {
+                            await viewModel.deleteDuplicatePhotos(photoIds: [photo.photo_id])
+                        }
                     }
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will permanently delete this photo from Flickr. This cannot be undone.")
+                },
+                onCancel: { showDeleteConfirm = false }
+            )
+            .presentationDetents([.height(320)])
+            .presentationDragIndicator(.visible)
         }
         .task {
             if viewModel.duplicates.isEmpty {
                 await viewModel.loadDuplicates()
             }
         }
+    }
+}
+
+// MARK: - Delete Photo Sheet
+
+struct DeletePhotoSheet: View {
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Image(systemName: "trash.fill")
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(KindredTheme.rosehip)
+                .padding(.top, 32)
+
+            Text("Delete photo?")
+                .font(.kindredH2)
+                .foregroundStyle(KindredTheme.ash)
+                .padding(.top, 16)
+
+            Text("This will permanently delete this photo from Flickr. This cannot be undone.")
+                .font(.kindredBody)
+                .foregroundStyle(KindredTheme.pine)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+                .padding(.top, 8)
+
+            Spacer()
+
+            VStack(spacing: 10) {
+                KindredButton(
+                    title: "Delete",
+                    icon: "trash",
+                    style: .danger,
+                    isFullWidth: true
+                ) {
+                    onConfirm()
+                }
+
+                KindredButton(
+                    title: "Cancel",
+                    style: .ghost,
+                    isFullWidth: true
+                ) {
+                    onCancel()
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
+        }
+        .background(KindredTheme.paper)
     }
 }

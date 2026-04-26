@@ -45,25 +45,34 @@ struct ClusterDetailView: View {
         .sheet(item: $selectedPhoto) { item in
             FullScreenPhotoView(item: item)
         }
-        .alert("Rename", isPresented: $showRename) {
-            TextField("Name", text: $nameInput)
-            Button("Save") {
-                if !nameInput.isEmpty {
-                    Task { await viewModel.renameCluster(clusterId: cluster.id, newName: nameInput) }
-                }
-            }
-            Button("Cancel", role: .cancel) {}
+        .sheet(isPresented: $showRename) {
+            RenameSheet(
+                nameInput: $nameInput,
+                entityType: String(category.displayName.lowercased().dropLast()),
+                onSave: { newName in
+                    showRename = false
+                    if !newName.isEmpty {
+                        Task { await viewModel.renameCluster(clusterId: cluster.id, newName: newName) }
+                    }
+                },
+                onCancel: { showRename = false }
+            )
+            .presentationDetents([.height(300)])
+            .presentationDragIndicator(.visible)
         }
-        .alert("Dismiss Group", isPresented: $showDismissConfirm) {
-            Button("Dismiss", role: .destructive) {
-                Task {
-                    await viewModel.dismissCluster(clusterId: cluster.id)
-                    dismiss()
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will dismiss all detections in this group. This cannot be undone.")
+        .sheet(isPresented: $showDismissConfirm) {
+            DismissGroupSheet(
+                onConfirm: {
+                    showDismissConfirm = false
+                    Task {
+                        await viewModel.dismissCluster(clusterId: cluster.id)
+                        dismiss()
+                    }
+                },
+                onCancel: { showDismissConfirm = false }
+            )
+            .presentationDetents([.height(320)])
+            .presentationDragIndicator(.visible)
         }
         .task {
             await viewModel.loadClusterDetail(cluster: cluster)
@@ -172,5 +181,57 @@ struct ClusterDetailView: View {
                 .padding(.horizontal, 16)
             }
         }
+    }
+}
+
+// MARK: - Dismiss Group Sheet
+
+struct DismissGroupSheet: View {
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Image(systemName: "eye.slash.fill")
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(KindredTheme.rosehip)
+                .padding(.top, 32)
+
+            Text("Dismiss group?")
+                .font(.kindredH2)
+                .foregroundStyle(KindredTheme.ash)
+                .padding(.top, 16)
+
+            Text("This will dismiss all detections in this group. This cannot be undone.")
+                .font(.kindredBody)
+                .foregroundStyle(KindredTheme.pine)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+                .padding(.top, 8)
+
+            Spacer()
+
+            VStack(spacing: 10) {
+                KindredButton(
+                    title: "Dismiss",
+                    icon: "eye.slash",
+                    style: .danger,
+                    isFullWidth: true
+                ) {
+                    onConfirm()
+                }
+
+                KindredButton(
+                    title: "Cancel",
+                    style: .ghost,
+                    isFullWidth: true
+                ) {
+                    onCancel()
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
+        }
+        .background(KindredTheme.paper)
     }
 }
