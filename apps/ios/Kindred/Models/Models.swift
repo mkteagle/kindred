@@ -179,6 +179,12 @@ struct JobCounts: Codable {
     let vehicles: Int
 }
 
+struct TriggerScanResponse: Codable {
+    let message: String
+    let job_id: String?
+    let count: Int?
+}
+
 // MARK: - User
 
 struct FlickrUser: Codable {

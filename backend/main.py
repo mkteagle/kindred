@@ -55,6 +55,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if path in AUTH_SKIP_PATHS or path.startswith("/docs"):
             return await call_next(request)
         if path == "/scan/auto":
+            # Optionally extract user for admin auth, but don't require it
+            session_token = request.headers.get("X-Session-Token")
+            if session_token:
+                user = validate_session(session_token)
+                if user:
+                    request.state.user = {**user, "auth_method": "session"}
             return await call_next(request)
 
         # Try session token first (web users)
@@ -169,6 +175,9 @@ def create_new_tables():
             # Migration: add Flickr token columns if upgrading from older schema
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS flickr_oauth_token TEXT")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS flickr_oauth_secret TEXT")
+            # Migration: user avatar — can be a photo_id from the library or a custom uploaded image
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_photo_id TEXT")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_upload BYTEA")
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS sessions (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -253,7 +262,7 @@ def create_session(user_id: str) -> dict:
 
 def validate_session(token: str) -> dict | None:
     rows = db_query(
-        """SELECT u.id as user_id, u.username, u.display_name, u.role, u.flickr_user_id
+        """SELECT u.id as user_id, u.username, u.display_name, u.role, u.flickr_user_id, u.avatar_photo_id
            FROM sessions s JOIN users u ON s.user_id = u.id
            WHERE s.token = %s AND s.expires_at > now()""",
         (token,),
@@ -267,6 +276,7 @@ def validate_session(token: str) -> dict | None:
         "display_name": r["display_name"],
         "role": r["role"],
         "flickr_user_id": r.get("flickr_user_id"),
+        "avatar_photo_id": r.get("avatar_photo_id"),
     }
 
 def generate_invite_code() -> str:
@@ -703,6 +713,15 @@ def auth_me(request: FastAPIRequest):
     user = getattr(request.state, "user", None)
     if not user or not user.get("user_id"):
         return {"loggedIn": False}
+    # Build avatar URL if the user has one
+    avatar_url = None
+    if user.get("avatar_photo_id"):
+        avatar_url = f"/users/{user['user_id']}/avatar"
+    elif user.get("user_id"):
+        # Check if they have a custom upload
+        rows = db_query("SELECT avatar_upload IS NOT NULL as has_upload FROM users WHERE id = %s", (user["user_id"],))
+        if rows and rows[0].get("has_upload"):
+            avatar_url = f"/users/{user['user_id']}/avatar"
     return {
         "loggedIn": True,
         "userId": user["user_id"],
@@ -710,6 +729,7 @@ def auth_me(request: FastAPIRequest):
         "display_name": user["display_name"],
         "role": user["role"],
         "auth_method": user.get("auth_method", "session"),
+        "avatar_url": avatar_url,
     }
 
 # ── API key management endpoints ──────────────────────────────────────────────
@@ -774,9 +794,16 @@ def roll_api_key(key_id: str, user=Depends(get_current_user)):
 
 @app.get("/users")
 def list_users(admin=Depends(require_admin)):
-    rows = db_query("SELECT id, username, display_name, role, flickr_user_id, created_at FROM users ORDER BY created_at")
+    rows = db_query("SELECT id, username, display_name, role, flickr_user_id, avatar_photo_id, avatar_upload IS NOT NULL as has_avatar_upload, created_at FROM users ORDER BY created_at")
+    def user_avatar_url(r):
+        uid = str(r["id"])
+        if r.get("avatar_photo_id") or r.get("has_avatar_upload"):
+            return f"/users/{uid}/avatar"
+        return None
     return {"users": [{"id": str(r["id"]), "username": r["username"], "display_name": r["display_name"],
-                        "role": r["role"], "flickr_user_id": r.get("flickr_user_id"), "created_at": r["created_at"].isoformat() if r["created_at"] else None}
+                        "role": r["role"], "flickr_user_id": r.get("flickr_user_id"),
+                        "avatar_url": user_avatar_url(r),
+                        "created_at": r["created_at"].isoformat() if r["created_at"] else None}
                        for r in rows]}
 
 class UpdateUserRequest(BaseModel):
@@ -830,6 +857,99 @@ def delete_user(user_id: str, request: FastAPIRequest, admin=Depends(require_adm
     if admin["user_id"] == user_id:
         raise HTTPException(400, "Cannot delete yourself")
     db_query("DELETE FROM users WHERE id = %s", (user_id,), fetch=False)
+    return {"ok": True}
+
+# ── User avatar endpoints ───────────────────────────────────────────────────
+
+from fastapi import UploadFile, File, Form
+
+class SetAvatarPhotoRequest(BaseModel):
+    photo_id: str
+
+@app.put("/users/me/avatar")
+async def set_user_avatar(request: FastAPIRequest, user=Depends(get_current_user)):
+    """Set the current user's avatar. Accepts JSON with photo_id or multipart file upload."""
+    content_type = request.headers.get("content-type", "")
+    if "multipart/form-data" in content_type:
+        # Multipart file upload
+        form = await request.form()
+        file = form.get("file")
+        if not file:
+            raise HTTPException(400, "No file provided")
+        image_data = await file.read()
+        if len(image_data) > 5 * 1024 * 1024:
+            raise HTTPException(400, "Image must be under 5MB")
+        # Store as uploaded avatar, clear photo_id reference
+        conn = get_db()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE users SET avatar_upload = %s, avatar_photo_id = NULL, updated_at = now() WHERE id = %s",
+                    (psycopg2.Binary(image_data), user["user_id"]),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+        return {"ok": True, "avatar_url": f"/users/{user['user_id']}/avatar"}
+    else:
+        # JSON body with photo_id
+        body = await request.json()
+        photo_id = body.get("photo_id")
+        if not photo_id:
+            raise HTTPException(400, "photo_id is required")
+        # Verify the photo exists in the library
+        rows = db_query("SELECT photo_id FROM photos WHERE photo_id = %s", (photo_id,))
+        if not rows:
+            raise HTTPException(404, "Photo not found in library")
+        # Store photo_id reference, clear uploaded avatar
+        db_query(
+            "UPDATE users SET avatar_photo_id = %s, avatar_upload = NULL, updated_at = now() WHERE id = %s",
+            (photo_id, user["user_id"]),
+            fetch=False,
+        )
+        return {"ok": True, "avatar_url": f"/users/{user['user_id']}/avatar"}
+
+@app.get("/users/{user_id}/avatar")
+async def get_user_avatar(user_id: str, size: str = "q", user=Depends(get_current_user)):
+    """Return the user's avatar image. If from library, proxies from Flickr. If uploaded, returns the stored image."""
+    rows = db_query(
+        "SELECT avatar_photo_id, avatar_upload FROM users WHERE id = %s",
+        (user_id,),
+    )
+    if not rows:
+        raise HTTPException(404, "User not found")
+    row = rows[0]
+
+    # Custom upload takes priority
+    if row.get("avatar_upload"):
+        image_data = bytes(row["avatar_upload"])
+        # Detect content type from magic bytes
+        ct = "image/jpeg"
+        if image_data[:4] == b'\x89PNG':
+            ct = "image/png"
+        elif image_data[:4] == b'RIFF' and image_data[8:12] == b'WEBP':
+            ct = "image/webp"
+        return StreamingResponse(
+            iter([image_data]),
+            media_type=ct,
+            headers={"Cache-Control": "private, max-age=3600"},
+        )
+
+    # From library photo — proxy via Flickr
+    if row.get("avatar_photo_id"):
+        # Reuse the existing photo proxy logic
+        return await proxy_photo_image(row["avatar_photo_id"], size=size, user=user)
+
+    raise HTTPException(404, "No avatar set")
+
+@app.delete("/users/me/avatar")
+def delete_user_avatar(user=Depends(get_current_user)):
+    """Remove the current user's avatar."""
+    db_query(
+        "UPDATE users SET avatar_photo_id = NULL, avatar_upload = NULL, updated_at = now() WHERE id = %s",
+        (user["user_id"],),
+        fetch=False,
+    )
     return {"ok": True}
 
 @app.post("/invites")
@@ -2611,9 +2731,16 @@ async def delete_flickr_photos(req: FlickrDeleteRequest, admin=Depends(require_a
     return {"deleted": deleted, "failed": failed, "count": len(deleted)}
 
 @app.post("/scan/auto")
-async def auto_scan(background_tasks: BackgroundTasks, secret: str = ""):
-    """Nightly auto-scan: fetch all Flickr photos and analyze new ones."""
-    if secret != SCAN_SECRET:
+async def auto_scan(request: FastAPIRequest, background_tasks: BackgroundTasks, secret: str = ""):
+    """Nightly auto-scan: fetch all Flickr photos and analyze new ones.
+    Auth: either provide the SCAN_SECRET query param, or be an authenticated admin user.
+    """
+    # Allow admin session auth as an alternative to the shared secret
+    admin_auth = False
+    user = getattr(request.state, "user", None)
+    if user and user.get("role") == "admin":
+        admin_auth = True
+    if not admin_auth and secret != SCAN_SECRET:
         raise HTTPException(403, "Invalid scan secret")
     flickr_creds = get_flickr_credentials()
     if not FLICKR_API_KEY or not flickr_creds:
