@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		SC001122334455667788990A /* KindredScreenshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = SC00AABBCCDDEEFF11223344 /* KindredScreenshots.swift */; };
+		SC001122334455667788990B /* SeedData.swift in Sources */ = {isa = PBXBuildFile; fileRef = SC00AABBCCDDEEFF11223355 /* SeedData.swift */; };
 		01FFC05E2AAB22D9C980AEFC /* FlickrUploader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CDA1E9F98FE735D3749D0C /* FlickrUploader.swift */; };
 		02D2166F11FF1B8CE074C8C3 /* ObjectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB482EA5F25D0C836C3D924A /* ObjectsView.swift */; };
 		051CBC370877331D2CBFB934 /* SyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42B787BDA6C935F8D2B42952 /* SyncManager.swift */; };
@@ -61,7 +63,20 @@
 		FA7AFBE4E49D705AB03CD7AB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D39C881320D483DFE1FAB6B8 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		SC00PROXY000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F691641064B4B586D17964D9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4BC8B10CCFC26A3C4AF7B1D6;
+			remoteInfo = Kindred;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		SC00AABBCCDDEEFF11223344 /* KindredScreenshots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KindredScreenshots.swift; sourceTree = "<group>"; };
+		SC00AABBCCDDEEFF11223355 /* SeedData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeedData.swift; sourceTree = "<group>"; };
+		SC00PRODUCT0000000000001 /* KindredScreenshots.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KindredScreenshots.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		06451EBFF28F5757EA24B1B0 /* SessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionManager.swift; sourceTree = "<group>"; };
 		0DF4311D3CE6D138F01BD50E /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		0E34D4DC149F169F63F8F013 /* ExploreViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExploreViewModel.swift; sourceTree = "<group>"; };
@@ -123,8 +138,18 @@
 			isa = PBXGroup;
 			children = (
 				B9B56AC82BAB4B97BA939845 /* Kindred */,
+				SC00GROUP00000000000001 /* KindredScreenshots */,
 				721F6ECD66A6957E6057BA83 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		SC00GROUP00000000000001 /* KindredScreenshots */ = {
+			isa = PBXGroup;
+			children = (
+				SC00AABBCCDDEEFF11223344 /* KindredScreenshots.swift */,
+				SC00AABBCCDDEEFF11223355 /* SeedData.swift */,
+			);
+			path = KindredScreenshots;
 			sourceTree = "<group>";
 		};
 		0C9DA719218636921ED3C795 /* Upload */ = {
@@ -186,6 +211,7 @@
 			isa = PBXGroup;
 			children = (
 				776F85584ADFADA9DD5079BB /* Kindred Photos.app */,
+				SC00PRODUCT0000000000001 /* KindredScreenshots.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -321,7 +347,31 @@
 			productReference = 776F85584ADFADA9DD5079BB /* Kindred Photos.app */;
 			productType = "com.apple.product-type.application";
 		};
+		SC00TARGET000000000000001 /* KindredScreenshots */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = SC00CFGLIST0000000000001 /* Build configuration list for PBXNativeTarget "KindredScreenshots" */;
+			buildPhases = (
+				SC00SOURCES0000000000001 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				SC00DEPEND000000000000001 /* PBXTargetDependency */,
+			);
+			name = KindredScreenshots;
+			productName = KindredScreenshots;
+			productReference = SC00PRODUCT0000000000001 /* KindredScreenshots.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXTargetDependency section */
+		SC00DEPEND000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4BC8B10CCFC26A3C4AF7B1D6 /* Kindred */;
+			targetProxy = SC00PROXY000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
 		F691641064B4B586D17964D9 /* Project object */ = {
@@ -348,6 +398,7 @@
 			projectRoot = "";
 			targets = (
 				4BC8B10CCFC26A3C4AF7B1D6 /* Kindred */,
+				SC00TARGET000000000000001 /* KindredScreenshots */,
 			);
 		};
 /* End PBXProject section */
@@ -419,6 +470,15 @@
 				AB2233445566778899001122 /* IntelligenceView.swift in Sources */,
 				AB3344556677889900112233 /* NotificationsView.swift in Sources */,
 				EF4455667788990011223344 /* AdminScanView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+	SC00SOURCES0000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				SC001122334455667788990A /* KindredScreenshots.swift in Sources */,
+				SC001122334455667788990B /* SeedData.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -606,6 +666,50 @@
 			};
 			name = Release;
 		};
+		SC00CFG00DEBUG0000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = L2T2KBN2GC;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.kindlingsignal.kindred.screenshots;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Kindred;
+			};
+			name = Debug;
+		};
+		SC00CFG0RELEASE0000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = L2T2KBN2GC;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.kindlingsignal.kindred.screenshots;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Kindred;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -623,6 +727,15 @@
 			buildConfigurations = (
 				687B893585EC9E6729D602A3 /* Debug */,
 				A2CE6DFD6E3FAD8D9B6EFAD2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		SC00CFGLIST0000000000001 /* Build configuration list for PBXNativeTarget "KindredScreenshots" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				SC00CFG00DEBUG0000000001 /* Debug */,
+				SC00CFG0RELEASE0000000001 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
