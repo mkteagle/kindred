@@ -718,6 +718,8 @@ struct BackupDetailView: View {
                         do {
                             let count = try await uploadVM.freeUpSpace()
                             freedCount = count
+                            // Refresh photo library to update counts
+                            await uploadVM.refreshPhotos()
                             showFreedAlert = true
                         } catch {}
                     }
