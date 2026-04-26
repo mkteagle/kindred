@@ -113,6 +113,7 @@ struct SettingsView: View {
                     .sheet(isPresented: $showAvatarPicker) {
                         AvatarPickerView(
                             currentAvatarURL: user.avatar_url,
+                            userName: user.display_name,
                             onSaved: { newURL in
                                 // Update the stored user with new avatar URL
                                 let updated = UserInfo(

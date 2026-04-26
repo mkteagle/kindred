@@ -12,8 +12,12 @@ struct AvatarPickerView: View {
     @State private var selectedDeviceImage: UIImage?
     @State private var pickerItem: PhotosPickerItem?
     @State private var searchQuery = ""
+    @State private var clusters: [ClusterSummary] = []
+    @State private var selectedCluster: ClusterSummary?
+    @State private var clusterPhotos: [AvatarPhoto] = []
 
     let currentAvatarURL: String?
+    let userName: String? // Used to auto-find matching clusters
     let onSaved: (String?) -> Void
 
     var body: some View {
@@ -131,7 +135,7 @@ struct AvatarPickerView: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 14))
                     .foregroundStyle(KindredTheme.mist)
-                TextField("Search your photos...", text: $searchQuery)
+                TextField("Search people or photos...", text: $searchQuery)
                     .font(.kindredCaption)
                     .foregroundStyle(KindredTheme.ash)
                     .onSubmit {
@@ -140,6 +144,7 @@ struct AvatarPickerView: View {
                 if !searchQuery.isEmpty {
                     Button {
                         searchQuery = ""
+                        selectedCluster = nil
                         Task { await loadLibraryPhotos() }
                     } label: {
                         Image(systemName: "xmark.circle.fill")
@@ -159,24 +164,82 @@ struct AvatarPickerView: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
 
+            // Cluster chips (people to browse)
+            if !clusters.isEmpty && selectedCluster == nil {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(clusters) { cluster in
+                            Button {
+                                selectedCluster = cluster
+                                Task { await loadClusterPhotos(cluster) }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    KindredAvatar(url: cluster.avatar ?? cluster.thumb_url, size: 24, borderWidth: 1)
+                                    Text(cluster.label ?? "Unnamed")
+                                        .font(.body(12, weight: .semibold))
+                                        .foregroundStyle(KindredTheme.ash)
+                                    Text("\(cluster.photo_count)")
+                                        .font(.kindredMicro)
+                                        .foregroundStyle(KindredTheme.mist)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(KindredTheme.card)
+                                .clipShape(Capsule())
+                                .overlay(Capsule().stroke(KindredTheme.line, lineWidth: 1))
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .padding(.bottom, 10)
+            }
+
+            // Selected cluster header
+            if let cluster = selectedCluster {
+                HStack(spacing: 8) {
+                    Button {
+                        selectedCluster = nil
+                        Task { await loadLibraryPhotos() }
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(KindredTheme.ember)
+                    }
+                    KindredAvatar(url: cluster.avatar ?? cluster.thumb_url, size: 28, borderWidth: 1)
+                    Text(cluster.label ?? "Unnamed")
+                        .font(.kindredCardTitle)
+                        .foregroundStyle(KindredTheme.ash)
+                    Text("· \(clusterPhotos.count) photos")
+                        .font(.kindredMeta)
+                        .foregroundStyle(KindredTheme.mist)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+            }
+
             if loading {
                 ProgressView()
-                    .padding(.top, 40)
-            } else if libraryPhotos.isEmpty {
-                Text("No photos found")
-                    .font(.kindredCaption)
-                    .foregroundStyle(KindredTheme.mist)
+                    .tint(KindredTheme.ember)
                     .padding(.top, 40)
             } else {
-                ScrollView {
-                    LazyVGrid(columns: [
-                        GridItem(.flexible(), spacing: 6),
-                        GridItem(.flexible(), spacing: 6),
-                        GridItem(.flexible(), spacing: 6),
-                        GridItem(.flexible(), spacing: 6),
-                    ], spacing: 6) {
-                        ForEach(libraryPhotos) { photo in
-                            Button {
+                let photos = selectedCluster != nil ? clusterPhotos : libraryPhotos
+                if photos.isEmpty {
+                    Text("No photos found")
+                        .font(.kindredCaption)
+                        .foregroundStyle(KindredTheme.mist)
+                        .padding(.top, 40)
+                } else {
+                    ScrollView {
+                        LazyVGrid(columns: [
+                            GridItem(.flexible(), spacing: 6),
+                            GridItem(.flexible(), spacing: 6),
+                            GridItem(.flexible(), spacing: 6),
+                            GridItem(.flexible(), spacing: 6),
+                        ], spacing: 6) {
+                            ForEach(photos) { photo in
+                                Button {
                                 selectedPhotoId = photo.photo_id
                                 selectedDeviceImage = nil
                             } label: {
@@ -208,6 +271,7 @@ struct AvatarPickerView: View {
                     .padding(.bottom, 100)
                 }
             }
+        }
         }
     }
 
@@ -274,25 +338,57 @@ struct AvatarPickerView: View {
     private func loadLibraryPhotos() async {
         loading = true
         do {
+            // Load people clusters for browsing
+            let response = try await APIClient.shared.getClusterSummary(category: "people")
+            await MainActor.run {
+                clusters = response.clusters.filter { $0.label != nil }
+            }
+
             if searchQuery.trimmingCharacters(in: .whitespaces).count > 1 {
-                let results: [SearchResult] = try await APIClient.shared.search(query: searchQuery, limit: 24)
+                // Search by query
+                let results: [SearchResult] = try await APIClient.shared.search(query: searchQuery, limit: 40)
                 await MainActor.run {
                     libraryPhotos = results.map { AvatarPhoto(photo_id: $0.photo_id, thumb_url: $0.thumb_url ?? $0.photo_url) }
                 }
+            } else if let name = userName,
+                      let matchingCluster = clusters.first(where: {
+                          $0.label?.localizedCaseInsensitiveContains(name.split(separator: " ").first.map(String.init) ?? name) == true
+                      }) {
+                // Auto-match: show photos from the cluster matching the user's name
+                await MainActor.run { selectedCluster = matchingCluster }
+                await loadClusterPhotos(matchingCluster)
+                return // loadClusterPhotos sets loading = false
             } else {
+                // Fallback: recent timeline photos
                 let timeline: TimelineResponse = try await APIClient.shared.getTimeline()
                 var photos: [AvatarPhoto] = []
                 for month in timeline.months {
                     for p in month.photos {
                         photos.append(AvatarPhoto(photo_id: p.photo_id, thumb_url: p.thumb_url ?? ""))
-                        if photos.count >= 24 { break }
+                        if photos.count >= 40 { break }
                     }
-                    if photos.count >= 24 { break }
+                    if photos.count >= 40 { break }
                 }
                 await MainActor.run { libraryPhotos = photos }
             }
         } catch {
             print("Failed to load photos for avatar picker: \(error)")
+        }
+        await MainActor.run { loading = false }
+    }
+
+    private func loadClusterPhotos(_ cluster: ClusterSummary) async {
+        await MainActor.run { loading = true }
+        do {
+            let detail = try await APIClient.shared.getClusterDetail(
+                category: "people",
+                clusterId: cluster.id
+            )
+            await MainActor.run {
+                clusterPhotos = detail.items.map { AvatarPhoto(photo_id: $0.photo_id, thumb_url: $0.thumb_url ?? $0.photo_url) }
+            }
+        } catch {
+            print("Failed to load cluster photos: \(error)")
         }
         await MainActor.run { loading = false }
     }
