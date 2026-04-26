@@ -384,6 +384,9 @@ struct BackupDetailView: View {
     @State private var uploadVM = UploadViewModel()
     @State private var syncManager = SyncManager.shared
     @State private var uploader = FlickrUploader.shared
+    @State private var showFreeSpaceConfirm = false
+    @State private var showFreedAlert = false
+    @State private var freedCount = 0
 
     var body: some View {
         Group {
@@ -638,23 +641,50 @@ struct BackupDetailView: View {
 
             Divider().padding(.leading, 14)
 
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Free up device space")
-                        .font(.kindredLabel)
-                        .foregroundStyle(KindredTheme.ash)
-                    Text("\(uploadVM.formattedSavings) available")
-                        .font(.kindredMeta)
-                        .foregroundStyle(KindredTheme.mist)
+            Button {
+                showFreeSpaceConfirm = true
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Free up device space")
+                            .font(.kindredLabel)
+                            .foregroundStyle(KindredTheme.ash)
+                        Text(uploadVM.photoManager.uploadedCount > 0
+                            ? "Remove \(uploadVM.photoManager.uploadedCount) backed-up items · save \(uploadVM.formattedSavings)"
+                            : "No backed-up photos to remove")
+                            .font(.kindredMeta)
+                            .foregroundStyle(KindredTheme.mist)
+                    }
+                    Spacer()
+                    Image(systemName: "trash")
+                        .font(.system(size: 14))
+                        .foregroundStyle(uploadVM.photoManager.uploadedCount > 0 ? KindredTheme.ember : KindredTheme.mist)
                 }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundStyle(KindredTheme.mist)
+                .padding(14)
             }
-            .padding(14)
+            .buttonStyle(.plain)
+            .disabled(uploadVM.photoManager.uploadedCount == 0)
         }
         .kindredGroupedCard()
         .padding(.horizontal, 16)
+        .alert("Free Up Space", isPresented: $showFreeSpaceConfirm) {
+            Button("Remove \(uploadVM.photoManager.uploadedCount) local copies", role: .destructive) {
+                Task {
+                    do {
+                        let count = try await uploadVM.freeUpSpace()
+                        freedCount = count
+                        showFreedAlert = true
+                    } catch {}
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Remove \(uploadVM.photoManager.uploadedCount) photos from this device that are already backed up? They'll stay safe in your Kindred library on Flickr.")
+        }
+        .alert("Space freed", isPresented: $showFreedAlert) {
+            Button("OK") {}
+        } message: {
+            Text("Removed \(freedCount) items. They're still safe on Flickr.")
+        }
     }
 }
