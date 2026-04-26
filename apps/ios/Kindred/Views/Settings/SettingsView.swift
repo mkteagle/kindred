@@ -597,7 +597,7 @@ struct BackupDetailView: View {
                 Text("\(Int(progress * 100))%")
                     .font(.display(42, weight: .bold))
                     .foregroundStyle(KindredTheme.ash)
-                Text("\(uploadVM.photoManager.uploadedCount) OF \(uploadVM.photoManager.totalDevicePhotos)")
+                Text("\(uploadVM.photoManager.uploadedCount) OF \(uploadVM.photoManager.uploadedCount + uploadVM.photoManager.notUploadedPhotos.count)")
                     .font(.kindredMicro)
                     .tracking(1.4)
                     .foregroundStyle(KindredTheme.mist)
@@ -607,9 +607,11 @@ struct BackupDetailView: View {
     }
 
     private var backupProgress: CGFloat {
-        let total = uploadVM.photoManager.totalDevicePhotos
+        let uploaded = uploadVM.photoManager.uploadedCount
+        let notUploaded = uploadVM.photoManager.notUploadedPhotos.count
+        let total = uploaded + notUploaded
         guard total > 0 else { return 0 }
-        return CGFloat(uploadVM.photoManager.uploadedCount) / CGFloat(total)
+        return min(1.0, CGFloat(uploaded) / CGFloat(total))
     }
 
     // MARK: - Settings List
