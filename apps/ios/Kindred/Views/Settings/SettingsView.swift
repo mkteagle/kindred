@@ -76,9 +76,10 @@ struct SettingsView: View {
                 .presentationDragIndicator(.visible)
             }
             .task {
-                await viewModel.checkHealth()
-                await viewModel.loadSyncs()
-                await viewModel.checkActiveJob()
+                async let health: () = viewModel.checkHealth()
+                async let syncs: () = viewModel.loadSyncs()
+                async let job: () = viewModel.checkActiveJob()
+                _ = await (health, syncs, job)
             }
         }
     }
