@@ -383,6 +383,7 @@ struct SettingsView: View {
 struct BackupDetailView: View {
     @State private var uploadVM = UploadViewModel()
     @State private var syncManager = SyncManager.shared
+    @State private var uploader = FlickrUploader.shared
 
     var body: some View {
         ScrollView {
@@ -397,9 +398,27 @@ struct BackupDetailView: View {
                 progressRing
                     .padding(.top, 20)
 
+                // Upload in progress
+                if uploader.isUploading {
+                    uploadProgressCard
+                        .padding(.horizontal, 16)
+                        .padding(.top, 16)
+                }
+
+                // Action buttons
+                actionButtons
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+
                 // Settings list
                 settingsList
                     .padding(.top, 20)
+
+                // Not backed up count
+                if !uploadVM.photoManager.notUploadedPhotos.isEmpty && !uploader.isUploading {
+                    notBackedUpSection
+                        .padding(.top, 16)
+                }
 
                 Spacer().frame(height: 110)
             }
@@ -412,9 +431,92 @@ struct BackupDetailView: View {
     }
 
     private var backupTitle: String {
+        if uploader.isUploading {
+            return "Uploading..."
+        }
         let remaining = uploadVM.photoManager.notUploadedPhotos.count
         if remaining == 0 { return "You're caught up." }
         return "\(remaining) remaining."
+    }
+
+    // MARK: - Upload Progress
+
+    private var uploadProgressCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(uploader.currentAssetTitle)
+                    .font(.kindredLabel)
+                    .foregroundStyle(KindredTheme.ash)
+                Spacer()
+                Text("\(uploader.uploadedCount)/\(uploader.totalCount)")
+                    .font(.kindredMeta)
+                    .foregroundStyle(KindredTheme.mist)
+            }
+            ProgressView(value: uploader.totalProgress)
+                .tint(KindredTheme.forest)
+            if let error = uploader.lastError {
+                Text(error)
+                    .font(.kindredMicro)
+                    .foregroundStyle(KindredTheme.rosehip)
+            }
+        }
+        .padding(14)
+        .kindredGroupedCard()
+    }
+
+    // MARK: - Action Buttons
+
+    private var actionButtons: some View {
+        VStack(spacing: 10) {
+            if !uploadVM.photoManager.notUploadedPhotos.isEmpty && !uploader.isUploading {
+                KindredButton(
+                    title: "Back up \(uploadVM.photoManager.notUploadedPhotos.count) photos now",
+                    icon: "icloud.and.arrow.up",
+                    style: .primary,
+                    isFullWidth: true
+                ) {
+                    Task {
+                        uploadVM.selectAll()
+                        await uploadVM.uploadSelected()
+                    }
+                }
+            }
+
+            if uploadVM.photoManager.notUploadedPhotos.isEmpty && !uploader.isUploading {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(KindredTheme.forest)
+                    Text("All photos are backed up")
+                        .font(.kindredLabel)
+                        .foregroundStyle(KindredTheme.forest)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(14)
+                .background(KindredTheme.forest.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusSM))
+            }
+        }
+    }
+
+    // MARK: - Not Backed Up Section
+
+    private var notBackedUpSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                KindredEyebrow(text: "Not backed up")
+                Spacer()
+                Text("\(uploadVM.photoManager.notUploadedPhotos.count)")
+                    .font(.kindredMeta)
+                    .foregroundStyle(KindredTheme.mist)
+            }
+            .padding(.horizontal, 20)
+
+            Text("These photos haven't been uploaded to Flickr yet. Tap the button above to start.")
+                .font(.kindredCaption)
+                .foregroundStyle(KindredTheme.mist)
+                .padding(.horizontal, 20)
+        }
     }
 
     // MARK: - Progress Ring
