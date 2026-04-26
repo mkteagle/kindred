@@ -1092,7 +1092,7 @@ def send_email_invite(req: EmailInviteRequest, request: FastAPIRequest, admin=De
 
     # Send the email via Resend (using httpx to avoid Cloudflare blocks)
     email_payload = {
-        "from": os.getenv("RESEND_FROM_EMAIL", "Kindred Photos <onboarding@resend.dev>"),
+        "from": os.getenv("RESEND_FROM_EMAIL", "Kindred Photos <noreply@mail.kindredphotos.app>"),
         "to": [req.email],
         "subject": f"{admin.get('display_name', 'Someone')} invited you to Kindred Photos",
         "html": _build_invite_email_html(
