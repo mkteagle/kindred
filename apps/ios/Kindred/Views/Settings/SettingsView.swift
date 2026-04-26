@@ -667,24 +667,133 @@ struct BackupDetailView: View {
         }
         .kindredGroupedCard()
         .padding(.horizontal, 16)
-        .alert("Free Up Space", isPresented: $showFreeSpaceConfirm) {
-            Button("Remove \(uploadVM.photoManager.uploadedCount) local copies", role: .destructive) {
-                Task {
-                    do {
-                        let count = try await uploadVM.freeUpSpace()
-                        freedCount = count
-                        showFreedAlert = true
-                    } catch {}
+        .sheet(isPresented: $showFreeSpaceConfirm) {
+            FreeSpaceConfirmSheet(
+                count: uploadVM.photoManager.uploadedCount,
+                savings: uploadVM.formattedSavings,
+                onConfirm: {
+                    showFreeSpaceConfirm = false
+                    Task {
+                        do {
+                            let count = try await uploadVM.freeUpSpace()
+                            freedCount = count
+                            showFreedAlert = true
+                        } catch {}
+                    }
+                },
+                onCancel: { showFreeSpaceConfirm = false }
+            )
+            .presentationDetents([.height(380)])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showFreedAlert) {
+            SpaceFreedSheet(count: freedCount) {
+                showFreedAlert = false
+            }
+            .presentationDetents([.height(300)])
+            .presentationDragIndicator(.visible)
+        }
+    }
+}
+
+// MARK: - Free Space Confirmation Sheet
+
+struct FreeSpaceConfirmSheet: View {
+    let count: Int
+    let savings: String
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Icon
+            Image(systemName: "arrow.up.trash")
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(KindredTheme.ember)
+                .padding(.top, 32)
+
+            // Title
+            Text("Free up \(savings)?")
+                .font(.kindredH2)
+                .foregroundStyle(KindredTheme.ash)
+                .padding(.top, 16)
+
+            // Body
+            Text("**\(count) photos** on this device are already safely backed up to Flickr. Removing them frees up \(savings) of storage.")
+                .font(.kindredBody)
+                .foregroundStyle(KindredTheme.pine)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+                .padding(.top, 8)
+
+            Text("They'll move to Recently Deleted in Photos — recoverable for 30 days.")
+                .font(.kindredCaption)
+                .foregroundStyle(KindredTheme.mist)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+                .padding(.top, 8)
+
+            Spacer()
+
+            // Buttons
+            VStack(spacing: 10) {
+                KindredButton(
+                    title: "Remove \(count) local copies",
+                    icon: "trash",
+                    style: .danger,
+                    isFullWidth: true
+                ) {
+                    onConfirm()
+                }
+
+                KindredButton(
+                    title: "Keep them on device",
+                    style: .ghost,
+                    isFullWidth: true
+                ) {
+                    onCancel()
                 }
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Remove \(uploadVM.photoManager.uploadedCount) photos from this device that are already backed up to Flickr?\n\nThey'll move to Recently Deleted in Photos where you can recover them for 30 days.")
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
         }
-        .alert("Space freed", isPresented: $showFreedAlert) {
-            Button("OK") {}
-        } message: {
-            Text("Removed \(freedCount) items. They're still safe on Flickr.")
+        .background(KindredTheme.paper)
+    }
+}
+
+// MARK: - Space Freed Sheet
+
+struct SpaceFreedSheet: View {
+    let count: Int
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 48, weight: .light))
+                .foregroundStyle(KindredTheme.forest)
+                .padding(.top, 32)
+
+            Text("Space freed")
+                .font(.kindredH2)
+                .foregroundStyle(KindredTheme.ash)
+                .padding(.top, 16)
+
+            Text("Removed \(count) items from this device. They're still safe in your Kindred library on Flickr.")
+                .font(.kindredBody)
+                .foregroundStyle(KindredTheme.pine)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+                .padding(.top, 8)
+
+            Spacer()
+
+            KindredButton(title: "Done", style: .dark, isFullWidth: true) {
+                onDismiss()
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
         }
+        .background(KindredTheme.paper)
     }
 }
