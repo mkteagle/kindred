@@ -5,6 +5,28 @@ struct UserInfo: Codable {
     let username: String
     let display_name: String
     let role: String
+    let avatar_url: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, username, display_name, role, avatar_url
+    }
+
+    init(id: String, username: String, display_name: String, role: String, avatar_url: String? = nil) {
+        self.id = id
+        self.username = username
+        self.display_name = display_name
+        self.role = role
+        self.avatar_url = avatar_url
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        username = try container.decode(String.self, forKey: .username)
+        display_name = try container.decode(String.self, forKey: .display_name)
+        role = try container.decode(String.self, forKey: .role)
+        avatar_url = try container.decodeIfPresent(String.self, forKey: .avatar_url)
+    }
 }
 
 struct AuthResponse: Codable {
@@ -88,6 +110,12 @@ final class SessionManager {
 
     func restoreSession(token: String, user: UserInfo) {
         storeSession(token: token, user: user)
+    }
+
+    /// Update stored user info without changing the session token (e.g. after avatar change)
+    func restoreUser(_ user: UserInfo) {
+        self.currentUser = user
+        KeychainHelper.saveCodable(user, forKey: userKey)
     }
 
     // MARK: - Logout

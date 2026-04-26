@@ -8,11 +8,19 @@ struct ContentView: View {
             // Content area — fills entire screen
             Group {
                 switch selectedTab {
-                case 0: HomeView()
+                case 0: HomeView(onNavigateToTab: { tab in
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        selectedTab = tab
+                    }
+                })
                 case 1: LibraryView()
                 case 2: SearchView()
                 case 3: SettingsView()
-                default: HomeView()
+                default: HomeView(onNavigateToTab: { tab in
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        selectedTab = tab
+                    }
+                })
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

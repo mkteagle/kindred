@@ -3,17 +3,22 @@ import SwiftUI
 struct HomeView: View {
     @State private var libraryVM = LibraryViewModel()
     @State private var exploreVM = ExploreViewModel()
+    @State private var inboxVM = InboxViewModel()
+    @StateObject private var readState = NotificationReadState.shared
     @State private var selectedPhoto: PhotoGridItem?
     @State private var showTogether = false
     @State private var showMemory = false
     @State private var showInbox = false
+
+    /// Callback for tab navigation from notification taps
+    var onNavigateToTab: ((Int) -> Void)? = nil
 
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     // App bar
-                    KindredAppBar {
+                    KindredAppBar(unreadCount: inboxVM.unreadCount(readState: readState)) {
                         showInbox = true
                     }
 
@@ -61,12 +66,15 @@ struct HomeView: View {
                 )
             }
             .sheet(isPresented: $showInbox) {
-                NotificationInboxView()
+                NotificationInboxView(
+                    onNavigateToTab: onNavigateToTab
+                )
             }
             .task {
                 await libraryVM.loadStats()
                 await libraryVM.loadClusters()
                 await exploreVM.loadTimeline()
+                await inboxVM.loadSyncHistory()
             }
             .refreshable {
                 await libraryVM.loadClusters()

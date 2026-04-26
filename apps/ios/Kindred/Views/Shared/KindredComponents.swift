@@ -266,6 +266,7 @@ struct KindredTabBar: View {
 // MARK: - App Bar (top bar for Home)
 
 struct KindredAppBar: View {
+    var unreadCount: Int = 0
     var onBellTap: (() -> Void)? = nil
 
     var body: some View {
@@ -284,17 +285,30 @@ struct KindredAppBar: View {
             Button {
                 onBellTap?()
             } label: {
-                Circle()
-                    .fill(KindredTheme.card)
-                    .frame(width: 34, height: 34)
-                    .overlay(
-                        Circle().stroke(KindredTheme.line, lineWidth: 1)
-                    )
-                    .overlay {
-                        Image(systemName: "bell")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(KindredTheme.pine)
+                ZStack(alignment: .topTrailing) {
+                    Circle()
+                        .fill(KindredTheme.card)
+                        .frame(width: 34, height: 34)
+                        .overlay(
+                            Circle().stroke(KindredTheme.line, lineWidth: 1)
+                        )
+                        .overlay {
+                            Image(systemName: "bell")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(KindredTheme.pine)
+                        }
+
+                    // Unread badge
+                    if unreadCount > 0 {
+                        Text(unreadCount > 9 ? "9+" : "\(unreadCount)")
+                            .font(.mono(8, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(minWidth: 16, minHeight: 16)
+                            .background(KindredTheme.ember)
+                            .clipShape(Capsule())
+                            .offset(x: 4, y: -4)
                     }
+                }
             }
         }
         .padding(.horizontal, 20)

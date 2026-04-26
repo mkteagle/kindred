@@ -6,6 +6,7 @@ struct SettingsView: View {
     @State private var showLogoutConfirm = false
     @State private var showPrivacyInfo = false
     @State private var showBackendURL = false
+    @State private var showAvatarPicker = false
 
     var body: some View {
         NavigationStack {
@@ -82,10 +83,49 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 if let user = viewModel.session.currentUser {
-                    KindredInitialsAvatar(
-                        initials: String(user.display_name.prefix(2)).uppercased(),
-                        size: 44
-                    )
+                    Button {
+                        showAvatarPicker = true
+                    } label: {
+                        ZStack {
+                            if let avatarPath = user.avatar_url {
+                                AvatarAsyncImage(avatarPath: avatarPath, size: 44)
+                                    .frame(width: 44, height: 44)
+                                    .clipShape(Circle())
+                            } else {
+                                KindredInitialsAvatar(
+                                    initials: String(user.display_name.prefix(2)).uppercased(),
+                                    size: 44
+                                )
+                            }
+                            // Camera overlay on hover/press
+                            Circle()
+                                .fill(.black.opacity(0.3))
+                                .frame(width: 44, height: 44)
+                                .overlay {
+                                    Image(systemName: "camera.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(.white)
+                                }
+                                .opacity(0.001) // Invisible but tappable hint; shows on press
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .sheet(isPresented: $showAvatarPicker) {
+                        AvatarPickerView(
+                            currentAvatarURL: user.avatar_url,
+                            onSaved: { newURL in
+                                // Update the stored user with new avatar URL
+                                let updated = UserInfo(
+                                    id: user.id,
+                                    username: user.username,
+                                    display_name: user.display_name,
+                                    role: user.role,
+                                    avatar_url: newURL
+                                )
+                                viewModel.session.restoreUser(updated)
+                            }
+                        )
+                    }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(user.display_name)
                             .font(.display(17, weight: .bold))
@@ -132,7 +172,7 @@ struct SettingsView: View {
 
             VStack(spacing: 0) {
                 if let user = viewModel.session.currentUser {
-                    memberRow(name: user.display_name, role: user.role, isLast: true)
+                    memberRow(name: user.display_name, role: user.role, avatarURL: user.avatar_url, isLast: true)
                 }
             }
             .kindredGroupedCard()
@@ -140,12 +180,18 @@ struct SettingsView: View {
         }
     }
 
-    private func memberRow(name: String, role: String, isLast: Bool = false) -> some View {
+    private func memberRow(name: String, role: String, avatarURL: String? = nil, isLast: Bool = false) -> some View {
         HStack(spacing: 12) {
-            KindredInitialsAvatar(
-                initials: String(name.prefix(1)).uppercased(),
-                size: 32
-            )
+            if let avatarPath = avatarURL {
+                AvatarAsyncImage(avatarPath: avatarPath, size: 32)
+                    .frame(width: 32, height: 32)
+                    .clipShape(Circle())
+            } else {
+                KindredInitialsAvatar(
+                    initials: String(name.prefix(1)).uppercased(),
+                    size: 32
+                )
+            }
             Text(name)
                 .font(.kindredLabel)
                 .foregroundStyle(KindredTheme.ash)

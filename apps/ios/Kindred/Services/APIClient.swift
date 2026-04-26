@@ -213,6 +213,78 @@ actor APIClient {
         try await request("/scan/auto", method: "POST")
     }
 
+    // MARK: - Avatar
+
+    struct AvatarResponse: Codable {
+        let ok: Bool
+        let avatar_url: String?
+    }
+
+    func setAvatarFromPhoto(photoId: String) async throws -> AvatarResponse {
+        let body = ["photo_id": photoId]
+        let data = try JSONEncoder().encode(body)
+        return try await request("/users/me/avatar", method: "PUT", body: data)
+    }
+
+    func uploadAvatar(imageData: Data) async throws -> AvatarResponse {
+        guard let url = URL(string: "\(baseURL)/users/me/avatar") else {
+            throw APIError.invalidURL
+        }
+
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var req = URLRequest(url: url)
+        req.httpMethod = "PUT"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 60
+
+        if let token = sessionToken {
+            req.setValue(token, forHTTPHeaderField: "X-Session-Token")
+        }
+
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"avatar.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        req.httpBody = body
+
+        let (data, response) = try await session.data(for: req)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.invalidResponse
+        }
+        return try decoder.decode(AvatarResponse.self, from: data)
+    }
+
+    func deleteAvatar() async throws {
+        guard let url = URL(string: "\(baseURL)/users/me/avatar") else {
+            throw APIError.invalidURL
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "DELETE"
+        req.timeoutInterval = 30
+        if let token = sessionToken {
+            req.setValue(token, forHTTPHeaderField: "X-Session-Token")
+        }
+        let (_, response) = try await session.data(for: req)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.invalidResponse
+        }
+    }
+
+    /// Build a full authenticated URL for a user's avatar image
+    func avatarImageURL(for avatarPath: String) -> URL? {
+        guard var components = URLComponents(string: "\(baseURL)\(avatarPath)") else { return nil }
+        if let token = sessionToken {
+            var items = components.queryItems ?? []
+            items.append(URLQueryItem(name: "session_token", value: token))
+            components.queryItems = items
+        }
+        return components.url
+    }
+
     // MARK: - Errors
 
     enum APIError: LocalizedError {

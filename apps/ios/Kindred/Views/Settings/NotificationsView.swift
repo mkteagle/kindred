@@ -3,12 +3,11 @@ import SwiftUI
 // MARK: - Notification Channel
 
 enum NotificationChannel: String, CaseIterable {
-    case push, email, inbox
+    case push, inbox
 
     var label: String {
         switch self {
         case .push: return "PUSH"
-        case .email: return "EMAIL"
         case .inbox: return "INBOX"
         }
     }
@@ -16,7 +15,6 @@ enum NotificationChannel: String, CaseIterable {
     var color: Color {
         switch self {
         case .push: return KindredTheme.ember
-        case .email: return KindredTheme.pine
         case .inbox: return KindredTheme.forest
         }
     }
@@ -54,7 +52,6 @@ struct NotificationType: Identifiable {
     let caption: String
     let group: NotificationGroup
     var pushEnabled: Bool
-    var emailEnabled: Bool
     var inAppEnabled: Bool
     var inAppLocked: Bool = true
     var frequency: NotificationFrequency = .realtime
@@ -78,17 +75,17 @@ final class NotificationState {
 
     var types: [NotificationType] = [
         // Photos
-        NotificationType(id: "photos.backed_up", label: "New photos backed up", caption: "Daily digest", group: .photos, pushEnabled: false, emailEnabled: true, inAppEnabled: true, frequency: .daily),
-        NotificationType(id: "photos.memory_ready", label: "Memory ready", caption: "On this day, trips, spotlights", group: .photos, pushEnabled: true, emailEnabled: false, inAppEnabled: true),
-        NotificationType(id: "photos.together_found", label: "Together found", caption: "When 2+ people now share a photo", group: .photos, pushEnabled: true, emailEnabled: false, inAppEnabled: true),
-        NotificationType(id: "photos.sync_paused", label: "Sync paused", caption: "Out of Wi-Fi or storage", group: .photos, pushEnabled: true, emailEnabled: false, inAppEnabled: true),
+        NotificationType(id: "photos.backed_up", label: "New photos backed up", caption: "Daily digest", group: .photos, pushEnabled: false, inAppEnabled: true, frequency: .daily),
+        NotificationType(id: "photos.memory_ready", label: "Memory ready", caption: "On this day, trips, spotlights", group: .photos, pushEnabled: true, inAppEnabled: true),
+        NotificationType(id: "photos.together_found", label: "Together found", caption: "When 2+ people now share a photo", group: .photos, pushEnabled: true, inAppEnabled: true),
+        NotificationType(id: "photos.sync_paused", label: "Sync paused", caption: "Out of Wi-Fi or storage", group: .photos, pushEnabled: true, inAppEnabled: true),
         // Household
-        NotificationType(id: "household.member_joined", label: "Member joined or left", caption: "Always", group: .household, pushEnabled: true, emailEnabled: true, inAppEnabled: true),
-        NotificationType(id: "household.activity", label: "Photo activity", caption: "Comments and hearts", group: .household, pushEnabled: false, emailEnabled: false, inAppEnabled: true),
-        NotificationType(id: "household.cover_updated", label: "Cover updated", caption: "", group: .household, pushEnabled: false, emailEnabled: false, inAppEnabled: true),
+        NotificationType(id: "household.member_joined", label: "Member joined or left", caption: "Always", group: .household, pushEnabled: true, inAppEnabled: true),
+        NotificationType(id: "household.activity", label: "Photo activity", caption: "Comments and hearts", group: .household, pushEnabled: false, inAppEnabled: true),
+        NotificationType(id: "household.cover_updated", label: "Cover updated", caption: "", group: .household, pushEnabled: false, inAppEnabled: true),
         // Admin
-        NotificationType(id: "admin.storage_warning", label: "Storage warning", caption: "< 10% free", group: .admin, pushEnabled: true, emailEnabled: true, inAppEnabled: true, isAdmin: true),
-        NotificationType(id: "admin.signin_new_device", label: "Sign-in from new device", caption: "Always", group: .admin, pushEnabled: true, emailEnabled: true, inAppEnabled: true, isAdmin: true),
+        NotificationType(id: "admin.storage_warning", label: "Storage warning", caption: "< 10% free", group: .admin, pushEnabled: true, inAppEnabled: true, isAdmin: true),
+        NotificationType(id: "admin.signin_new_device", label: "Sign-in from new device", caption: "Always", group: .admin, pushEnabled: true, inAppEnabled: true, isAdmin: true),
     ]
 
     func typesFor(group: NotificationGroup) -> [NotificationType] {
@@ -120,6 +117,7 @@ struct InboxItem: Identifiable {
     var isNew: Bool = false
     var isAdmin: Bool = false
     var thumbnailURL: String? = nil
+    var date: Date? = nil
 }
 
 enum InboxItemKind: String {
@@ -330,7 +328,6 @@ struct NotificationsSettingsView: View {
                         // Channel pips
                         HStack(spacing: 6) {
                             channelPip(on: notifType.pushEnabled, color: NotificationChannel.push.color)
-                            channelPip(on: notifType.emailEnabled, color: NotificationChannel.email.color)
                             channelPip(on: notifType.inAppEnabled, color: NotificationChannel.inbox.color)
                         }
                         Image(systemName: "chevron.right")
@@ -506,25 +503,6 @@ struct NotificationTypeDetailView: View {
                 isOn: .constant(true),
                 locked: notifType.inAppLocked
             )
-
-            Divider().overlay(KindredTheme.line).padding(.leading, 14)
-
-            // Email
-            channelRow(
-                pipColor: NotificationChannel.email.color,
-                label: "Email digest",
-                caption: "Weekly summary",
-                toggleColor: KindredTheme.pine,
-                isOn: Binding(
-                    get: { notifType.emailEnabled },
-                    set: { newValue in
-                        if let idx = typeIndex {
-                            notifState.types[idx].emailEnabled = newValue
-                        }
-                    }
-                ),
-                locked: false
-            )
         }
         .kindredGroupedCard()
     }
@@ -638,6 +616,73 @@ struct NotificationTypeDetailView: View {
     }
 }
 
+// MARK: - Read State Manager
+
+/// Tracks which notification IDs have been read, persisted in UserDefaults.
+final class NotificationReadState: ObservableObject {
+    static let shared = NotificationReadState()
+
+    private let key = "kindred_read_notification_ids"
+
+    @Published private(set) var readIDs: Set<String> = []
+
+    private init() {
+        if let saved = UserDefaults.standard.array(forKey: key) as? [String] {
+            readIDs = Set(saved)
+        }
+    }
+
+    func isRead(_ id: String) -> Bool {
+        readIDs.contains(id)
+    }
+
+    func markRead(_ id: String) {
+        readIDs.insert(id)
+        persist()
+    }
+
+    func markAllRead(_ ids: [String]) {
+        readIDs.formUnion(ids)
+        persist()
+    }
+
+    var unreadCount: Int {
+        // This is updated externally by the view model
+        0
+    }
+
+    private func persist() {
+        UserDefaults.standard.set(Array(readIDs), forKey: key)
+    }
+}
+
+// MARK: - Notification Route
+
+/// Describes where a notification should navigate to when tapped.
+enum NotificationRoute {
+    case libraryPeople    // Scan completed, new people
+    case adminScan        // Scan failed
+    case settings         // Storage/admin
+}
+
+func routeForNotification(_ item: InboxItem) -> NotificationRoute {
+    switch item.kind {
+    case .sync, .together:
+        return .libraryPeople
+    case .admin:
+        if item.title.lowercased().contains("scan failed") {
+            return .adminScan
+        }
+        return .settings
+    case .memory, .cover:
+        return .libraryPeople
+    case .household:
+        return .settings
+    case .signin:
+        return .settings
+    }
+}
+
 // MARK: - Inbox View Model
 
 @Observable
@@ -658,74 +703,84 @@ final class InboxViewModel {
         }
     }
 
-    /// Convert sync logs into inbox items grouped by date
-    var groups: [(eyebrow: String, items: [InboxItem])] {
-        let calendar = Calendar.current
-        let now = Date()
-
-        // Parse sync logs into inbox items
+    /// Build all inbox items from sync logs (unread state applied via ReadState)
+    func allItems(readState: NotificationReadState) -> [InboxItem] {
         var items: [InboxItem] = []
         for (index, log) in syncLogs.enumerated() {
             let date = parseDate(log.finished_at ?? log.started_at)
             let timeString = formatTime(date)
-            let isRecent = calendar.isDateInToday(date ?? now)
 
             if log.status == "completed" || log.status == "done" {
                 let photosText = (log.total_photos ?? 0).formatted()
                 let facesText = log.new_faces ?? 0
                 let petsText = log.new_pets ?? 0
+                let vehiclesText = log.new_vehicles ?? 0
 
                 var details: [String] = []
-                if facesText > 0 { details.append("\(facesText) new face\(facesText == 1 ? "" : "s") found") }
-                if petsText > 0 { details.append("\(petsText) new pet\(petsText == 1 ? "" : "s") found") }
+                if facesText > 0 { details.append("\(facesText) new people") }
+                if petsText > 0 { details.append("\(petsText) pet\(petsText == 1 ? "" : "s")") }
+                if vehiclesText > 0 { details.append("\(vehiclesText) vehicle\(vehiclesText == 1 ? "" : "s")") }
 
-                let title = "Scan completed \u{2014} \(photosText) photos indexed"
-                let body = details.isEmpty ? "All photos up to date." : details.joined(separator: ", ").prefix(1).uppercased() + details.joined(separator: ", ").dropFirst()
+                let body: String
+                if details.isEmpty {
+                    body = "All photos up to date."
+                } else {
+                    body = "\(photosText) photos indexed. Found \(details.joined(separator: ", "))."
+                }
 
+                let syncId = "sync_\(log.id)_\(index)"
                 items.append(InboxItem(
-                    id: "sync_\(log.id)_\(index)",
+                    id: syncId,
                     kind: .sync,
-                    title: title,
-                    body: String(body),
+                    title: "Scan completed",
+                    body: body,
                     time: timeString,
-                    isNew: isRecent
+                    isNew: !readState.isRead(syncId),
+                    date: date
                 ))
 
                 // Generate cluster notification if new faces found
                 if facesText > 0 {
+                    let clusterId = "cluster_\(log.id)_\(index)"
                     items.append(InboxItem(
-                        id: "cluster_\(log.id)_\(index)",
+                        id: clusterId,
                         kind: .together,
-                        title: "\(facesText) new people cluster\(facesText == 1 ? "" : "s") detected",
+                        title: "\(facesText) new people cluster\(facesText == 1 ? "" : "s") discovered",
                         body: "Review and label in People.",
                         time: timeString,
-                        isNew: isRecent
+                        isNew: !readState.isRead(clusterId),
+                        date: date
                     ))
                 }
             } else if log.status == "failed" || log.status == "error" {
+                let errorId = "error_\(log.id)_\(index)"
                 items.append(InboxItem(
-                    id: "error_\(log.id)_\(index)",
+                    id: errorId,
                     kind: .admin,
                     title: "Scan failed",
                     body: log.error ?? "An error occurred during scanning.",
                     time: timeString,
-                    isAdmin: true
+                    isNew: !readState.isRead(errorId),
+                    isAdmin: true,
+                    date: date
                 ))
             }
         }
+        return items
+    }
+
+    /// Convert sync logs into inbox items grouped by date
+    func groups(readState: NotificationReadState) -> [(eyebrow: String, items: [InboxItem])] {
+        let calendar = Calendar.current
+        let items = allItems(readState: readState)
 
         // Group by date
         var todayItems: [InboxItem] = []
         var yesterdayItems: [InboxItem] = []
         var earlierItems: [InboxItem] = []
 
-        for (index, item) in items.enumerated() {
-            // Use the corresponding sync log's date if available
-            let logIndex = index < syncLogs.count ? index : syncLogs.count - 1
-            let logDate: String? = logIndex >= 0 ? (syncLogs[logIndex].finished_at ?? syncLogs[logIndex].started_at) : nil
-            let date = parseDate(logDate)
-
-            if let date = date {
+        for item in items {
+            if let date = item.date {
                 if calendar.isDateInToday(date) {
                     todayItems.append(item)
                 } else if calendar.isDateInYesterday(date) {
@@ -743,8 +798,11 @@ final class InboxViewModel {
         if !yesterdayItems.isEmpty { result.append(("Yesterday", yesterdayItems)) }
         if !earlierItems.isEmpty { result.append(("Earlier", earlierItems)) }
 
-        // If no sync data at all, show empty state
         return result
+    }
+
+    func unreadCount(readState: NotificationReadState) -> Int {
+        allItems(readState: readState).filter(\.isNew).count
     }
 
     private func parseDate(_ dateString: String?) -> Date? {
@@ -778,10 +836,16 @@ final class InboxViewModel {
 struct NotificationInboxView: View {
     @State private var filter: InboxFilter = .all
     @State private var viewModel = InboxViewModel()
+    @StateObject private var readState = NotificationReadState.shared
     @Environment(\.dismiss) private var dismiss
 
+    /// Callback to navigate: 1 = Library tab, 3 = Settings tab
+    var onNavigateToTab: ((Int) -> Void)? = nil
+    /// Callback to push AdminScanView in settings
+    var onNavigateToAdminScan: (() -> Void)? = nil
+
     private var groups: [(eyebrow: String, items: [InboxItem])] {
-        viewModel.groups
+        viewModel.groups(readState: readState)
     }
 
     private var filteredGroups: [(eyebrow: String, items: [InboxItem])] {
@@ -817,6 +881,30 @@ struct NotificationInboxView: View {
         }
     }
 
+    private func handleTap(_ item: InboxItem) {
+        // Mark as read
+        readState.markRead(item.id)
+
+        // Dismiss inbox and route
+        let route = routeForNotification(item)
+        dismiss()
+
+        // Small delay to let sheet dismiss before navigating
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            switch route {
+            case .libraryPeople:
+                onNavigateToTab?(1) // Library tab
+            case .adminScan:
+                onNavigateToTab?(3) // Settings tab
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    onNavigateToAdminScan?()
+                }
+            case .settings:
+                onNavigateToTab?(3) // Settings tab
+            }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -832,6 +920,19 @@ struct NotificationInboxView: View {
                             .foregroundStyle(KindredTheme.ash)
                     }
                     Spacer()
+
+                    if unreadCount > 0 {
+                        Button {
+                            let allIds = groups.flatMap(\.items).map(\.id)
+                            readState.markAllRead(allIds)
+                        } label: {
+                            Text("Mark all read")
+                                .font(.body(12, weight: .semibold))
+                                .foregroundStyle(KindredTheme.ember)
+                        }
+                        .padding(.trailing, 8)
+                    }
+
                     NavigationLink {
                         NotificationsSettingsView()
                     } label: {
@@ -914,7 +1015,12 @@ struct NotificationInboxView: View {
 
                                 VStack(spacing: 0) {
                                     ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
-                                        inboxRow(item: item)
+                                        Button {
+                                            handleTap(item)
+                                        } label: {
+                                            inboxRow(item: item)
+                                        }
+                                        .buttonStyle(.plain)
 
                                         if index < group.items.count - 1 {
                                             Divider().overlay(KindredTheme.line).padding(.leading, 14)
@@ -941,7 +1047,7 @@ struct NotificationInboxView: View {
 
     private func inboxRow(item: InboxItem) -> some View {
         HStack(alignment: .top, spacing: 11) {
-            // New indicator
+            // Unread indicator dot
             ZStack {
                 if item.isNew {
                     Circle()
@@ -996,6 +1102,7 @@ struct NotificationInboxView: View {
                     .font(.body(12))
                     .foregroundStyle(KindredTheme.pine)
                     .lineSpacing(2)
+                    .multilineTextAlignment(.leading)
 
                 if item.isAdmin {
                     Text("ADMIN")
