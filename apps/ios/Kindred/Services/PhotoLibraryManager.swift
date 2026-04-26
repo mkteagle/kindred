@@ -53,6 +53,15 @@ final class PhotoLibraryManager {
 
         self.allPhotos = assets
         self.totalDevicePhotos = assets.count
+
+        // Prune the uploaded map — remove entries for photos no longer on the device
+        let currentIDs = Set(assets.map(\.localIdentifier))
+        let staleKeys = uploadedMap.keys.filter { !currentIDs.contains($0) }
+        if !staleKeys.isEmpty {
+            for key in staleKeys { uploadedMap.removeValue(forKey: key) }
+            saveUploadedMap()
+        }
+
         self.uploadedCount = uploadedMap.count
         self.notUploadedPhotos = assets.filter { !uploadedMap.keys.contains($0.localIdentifier) }
 
