@@ -6,11 +6,12 @@ export function middleware(request: NextRequest) {
   const flickrToken = request.cookies.get("flickr_token");
   const { pathname } = request.nextUrl;
 
-  // Allow: landing page, login, join, API routes, docs, static files
+  // Allow: landing page, login, join, reset, API routes, docs, static files
   if (
     pathname === "/" ||
     pathname === "/login" ||
-    pathname === "/join" ||
+    pathname.startsWith("/join") ||
+    pathname.startsWith("/reset") ||
     pathname.startsWith("/api/") ||
     pathname.startsWith("/docs") ||
     pathname.startsWith("/_next") ||

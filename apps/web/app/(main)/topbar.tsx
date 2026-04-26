@@ -54,7 +54,7 @@ export function Topbar() {
   }, []);
 
   const pathname = usePathname();
-  if (pathname === "/login") return null;
+  if (pathname === "/login" || pathname.startsWith("/join") || pathname.startsWith("/reset")) return null;
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -109,7 +109,27 @@ export function Topbar() {
     await fetch(`${BACKEND}/notifications/read`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(null) });
     qc.invalidateQueries({ queryKey: ["notifications"] });
   };
-  const logout = async () => { await fetch(`${API}/auth/logout`); window.location.href = "/login"; };
+  const [signOutOpen, setSignOutOpen] = useState(false);
+  const signOutRef = useRef<HTMLDialogElement>(null);
+
+  const openSignOut = () => {
+    setSignOutOpen(true);
+    setUserMenuOpen(false);
+  };
+  const closeSignOut = () => {
+    setSignOutOpen(false);
+    signOutRef.current?.close();
+  };
+  const confirmSignOut = async () => {
+    await fetch(`${API}/auth/logout`, { method: "POST" });
+    window.location.href = "/login";
+  };
+
+  useEffect(() => {
+    if (signOutOpen && signOutRef.current && !signOutRef.current.open) {
+      signOutRef.current.showModal();
+    }
+  }, [signOutOpen]);
 
   const startScan = async () => {
     setScanning(true);
@@ -354,7 +374,7 @@ export function Topbar() {
                       </Link>
                     )}
                     <div className="nb-popover-divider" />
-                    <button className="nb-popover-action" onClick={logout}>
+                    <button className="nb-popover-action" onClick={openSignOut}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
@@ -374,6 +394,28 @@ export function Topbar() {
 
       {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} />}
       {qrOpen && <MobileSetupDialog onClose={() => setQrOpen(false)} />}
+
+      {/* Sign-out confirmation dialog */}
+      {signOutOpen && (
+        <dialog
+          ref={signOutRef}
+          className="signout-confirm"
+          onClose={closeSignOut}
+          onClick={(e) => { if (e.target === e.currentTarget) closeSignOut(); }}
+        >
+          <div className="signout-body">
+            <div className="signout-avatar">
+              {user?.display_name?.[0]?.toUpperCase() || user?.username?.[0]?.toUpperCase() || "?"}
+            </div>
+            <h3>Sign out, <strong>{user?.display_name?.split(" ")[0] || user?.username || "there"}</strong>?</h3>
+            <p>You&apos;ll need your password to sign back in. Pending uploads will be saved on this device.</p>
+          </div>
+          <div className="signout-actions">
+            <button className="button ghost" onClick={closeSignOut}>Stay signed in</button>
+            <button className="button dark" onClick={confirmSignOut}>Sign out</button>
+          </div>
+        </dialog>
+      )}
     </>
   );
 }

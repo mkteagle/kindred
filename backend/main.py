@@ -33,7 +33,13 @@ SCAN_SECRET = os.environ.get("SCAN_SECRET", "")
 API_KEY = os.environ.get("API_KEY", "")
 
 app = FastAPI(title="Kindred API")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "").split(",") if os.environ.get("CORS_ORIGINS") else [
+    "https://kindredphotos.app",
+    "https://demo.kindredphotos.app",
+    "http://localhost:3000",
+    "http://localhost:3001",
+]
+app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
 
 from fastapi import Request as FastAPIRequest, Depends
 from starlette.middleware.base import BaseHTTPMiddleware

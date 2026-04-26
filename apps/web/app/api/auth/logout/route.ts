@@ -4,7 +4,15 @@ import { getSessionFromRequest } from "@/lib/oauth";
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 const API_KEY = process.env.API_KEY || "";
 
-export async function GET(req: NextRequest) {
+/**
+ * GET /api/auth/logout — redirect to login instead of processing logout.
+ * Logout must be POST-only to prevent CSRF via <img src="/api/auth/logout">.
+ */
+export async function GET() {
+  return NextResponse.redirect(new URL("/login", process.env.NEXT_PUBLIC_URL || "http://localhost:3000"));
+}
+
+export async function POST(req: NextRequest) {
   // Invalidate backend session
   const session = getSessionFromRequest(req);
   if (session?.session_token) {
@@ -20,8 +28,4 @@ export async function GET(req: NextRequest) {
     response.cookies.set(name, "", { path: "/", httpOnly: true, secure: true, maxAge: 0 });
   }
   return response;
-}
-
-export async function POST(req: NextRequest) {
-  return GET(req);
 }

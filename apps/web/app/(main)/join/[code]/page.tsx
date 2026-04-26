@@ -1,7 +1,7 @@
 "use client";
 
-import { useSearchParams, useRouter } from "next/navigation";
-import { Suspense, useState, useRef } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useState, useRef } from "react";
 import { BrandMark, Spinner } from "@/components/ui";
 
 /* ── Eye toggle icon ─────────────────────────────────────────────── */
@@ -36,6 +36,7 @@ function getStrength(pw: string): { level: number; label: string } {
   if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
   if (/\d/.test(pw)) score++;
   if (/[^a-zA-Z0-9]/.test(pw)) score++;
+  // Penalize common patterns
   if (/^(123|abc|password|qwerty)/i.test(pw)) score = Math.max(score - 2, 0);
 
   if (score <= 1) return { level: 1, label: "Too easy" };
@@ -66,15 +67,11 @@ function StrengthMeter({ password }: { password: string }) {
   );
 }
 
-function JoinContent() {
-  const searchParams = useSearchParams();
+export default function JoinCodePage() {
+  const params = useParams();
   const router = useRouter();
-  const prefillCode = searchParams.get("code") || "";
+  const code = (params.code as string) || "";
 
-  // If code is in query param, redirect to the code-specific route
-  // (but also support the old ?code= pattern)
-
-  const [code, setCode] = useState(prefillCode);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -85,7 +82,7 @@ function JoinContent() {
   const passwordRef = useRef<HTMLInputElement>(null);
 
   const strength = getStrength(password);
-  const canSubmit = strength.level >= 2 && termsAccepted && name.trim() && email.trim() && code.trim();
+  const canSubmit = strength.level >= 2 && termsAccepted && name.trim() && email.trim();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,7 +120,7 @@ function JoinContent() {
 
   return (
     <div className="join-screen">
-      {/* Left pane: context */}
+      {/* Left pane: context + household preview */}
       <div className="join-left">
         <BrandMark />
 
@@ -133,26 +130,29 @@ function JoinContent() {
             Join the family archive.
           </h1>
           <p className="join-lede">
-            Enter your invite code and create an account to start browsing
-            the family photo library.
+            You&apos;ve been invited to view and contribute to a shared family photo library.
+            Create your account to get started.
           </p>
         </div>
 
+        {/* Household preview card */}
         <div className="household-card">
-          <div className="household-card-label">Getting started</div>
+          <div className="household-card-label">Household</div>
+          <div className="household-name">
+            Family Archive
+            <span className="household-pulse" />
+          </div>
           <div className="household-inviter">
-            <span>
-              Paste the invite code from your email or text message, then create your account.
-              Invite codes expire after 7 days and are single-use.
-            </span>
+            <div className="household-avatars">
+              <span>K</span>
+            </div>
+            <span>You were invited to join. Invite expires in 7 days.</span>
           </div>
         </div>
 
-        {code && (
-          <div className="join-code">
-            Invite code: {code.toUpperCase()}
-          </div>
-        )}
+        <div className="join-code">
+          Invite code: {code.toUpperCase()}
+        </div>
       </div>
 
       {/* Right pane: registration form */}
@@ -168,22 +168,6 @@ function JoinContent() {
         )}
 
         <form onSubmit={handleRegister} className="join-form">
-          <div>
-            <div className="field-label">
-              <span>Invite code</span>
-            </div>
-            <input
-              className="field-input"
-              type="text"
-              value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-              placeholder="ABC12345"
-              autoComplete="off"
-              style={{ fontFamily: "var(--mono)", letterSpacing: "0.1em", fontSize: 16 }}
-              required
-            />
-          </div>
-
           <div>
             <div className="field-label">
               <span>Your name</span>
@@ -271,25 +255,5 @@ function JoinContent() {
         </form>
       </div>
     </div>
-  );
-}
-
-export default function JoinPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="join-screen">
-          <div className="join-left">
-            <BrandMark />
-            <div style={{ marginTop: 32 }}>
-              <h1 className="join-headline">Join the family archive.</h1>
-            </div>
-          </div>
-          <div className="join-right" />
-        </div>
-      }
-    >
-      <JoinContent />
-    </Suspense>
   );
 }
