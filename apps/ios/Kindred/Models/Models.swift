@@ -245,6 +245,23 @@ struct ProcessPhotoRequest: Codable {
     let url: String?
 }
 
+// MARK: - Together
+
+struct TogetherResponse: Codable {
+    let photos: [TogetherPhoto]
+    let count: Int
+    let people_count: Int
+}
+
+struct TogetherPhoto: Codable, Identifiable {
+    var id: String { photo_id }
+    let photo_id: String
+    let photo_url: String
+    let thumb_url: String?
+    let flickr_url: String?
+    let photo_title: String?
+}
+
 // MARK: - Health
 
 struct HealthResponse: Codable {

@@ -7,127 +7,39 @@ struct SearchView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Search bar
-                HStack(spacing: 12) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(KindredTheme.pine)
-                    TextField("Search people, places, things...", text: $viewModel.query)
-                        .font(.system(.body, design: .rounded))
-                        .textFieldStyle(.plain)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .submitLabel(.search)
-                        .onSubmit {
-                            viewModel.search()
-                        }
-                    if !viewModel.query.isEmpty {
-                        Button {
-                            viewModel.query = ""
-                            viewModel.results = []
-                            viewModel.hasSearched = false
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
-                        }
+                // Page header
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        KindredEyebrow(text: "Search")
+                        Text("What are you looking for?")
+                            .font(.kindredH2)
+                            .foregroundStyle(KindredTheme.ash)
                     }
+                    Spacer()
                 }
-                .padding(12)
-                .background(KindredTheme.warmCardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: KindredTheme.cardRadius))
-                .shadow(color: KindredTheme.cardShadow, radius: 4, x: 0, y: 2)
-                .padding(.horizontal)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 20)
+                .padding(.top, 10)
+                .padding(.bottom, 4)
 
-                // Results
+                // Search input
+                searchInput
+
+                // Content
                 if viewModel.isSearching {
                     Spacer()
-                    ProgressView("Searching...")
-                        .font(.system(.body, design: .rounded))
+                    ProgressView()
+                        .tint(KindredTheme.ember)
                     Spacer()
                 } else if viewModel.hasSearched && viewModel.results.isEmpty {
                     ContentUnavailableView.search(text: viewModel.query)
                 } else if !viewModel.results.isEmpty {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 16) {
-                            // Matched people/clusters section
-                            let personResults = viewModel.results.filter { $0.match_type == "person" }
-                            let uniqueClusters = uniqueMatchedClusters(from: personResults)
-
-                            if !uniqueClusters.isEmpty {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text("People")
-                                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                                        .foregroundStyle(.secondary)
-                                        .padding(.horizontal)
-
-                                    ScrollView(.horizontal, showsIndicators: false) {
-                                        HStack(spacing: 12) {
-                                            ForEach(uniqueClusters, id: \.clusterId) { match in
-                                                matchedPersonCard(match: match, photoCount: personResults.filter { $0.match_cluster_id == match.clusterId }.count)
-                                            }
-                                        }
-                                        .padding(.horizontal)
-                                    }
-                                }
-                            }
-
-                            // Photo results
-                            let photoResults = viewModel.results.filter { $0.match_type != "person" }
-                            if !photoResults.isEmpty || !personResults.isEmpty {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text(photoResults.isEmpty ? "\(personResults.count) photos" : "\(viewModel.results.count) results")
-                                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                                        .foregroundStyle(.secondary)
-                                        .padding(.horizontal)
-
-                                    let items = viewModel.results.map { PhotoGridItem(from: $0) }
-                                    PhotoGridView(photoURLs: items) { item in
-                                        selectedPhoto = item
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.top, 4)
-                    }
+                    searchResults
                 } else {
-                    // Empty state
-                    Spacer()
-                    VStack(spacing: 16) {
-                        Image(systemName: "text.magnifyingglass")
-                            .font(.system(size: 48, weight: .light))
-                            .foregroundStyle(KindredTheme.pine.opacity(0.6))
-                        Text("Search your photos")
-                            .font(.system(.title3, design: .rounded, weight: .semibold))
-                            .foregroundStyle(KindredTheme.darkAccent)
-                        Text("Try names like \"Jen\" or \"Mike\", or describe a scene like \"sunset\" or \"birthday cake\".")
-                            .font(.system(.subheadline, design: .rounded))
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
-                    }
-                    Spacer()
-                }
-
-                if let error = viewModel.error {
-                    Text(error)
-                        .font(.system(.caption, design: .rounded))
-                        .foregroundStyle(.red)
-                        .padding()
+                    defaultBrowseContent
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(KindredTheme.warmBackground.ignoresSafeArea())
-            .navigationTitle("Search")
-            .toolbarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Image("KindredLogo")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 32, height: 32)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                }
-            }
+            .kindredPaperBackground()
+            .navigationBarHidden(true)
             .sheet(item: $selectedPhoto) { item in
                 FullScreenPhotoView(item: item)
             }
@@ -135,10 +47,117 @@ struct SearchView: View {
                 viewModel.search()
             }
         }
-        .tint(KindredTheme.pine)
     }
 
-    // MARK: - Helpers
+    // MARK: - Search Input
+
+    private var searchInput: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(KindredTheme.mist)
+
+            TextField("People, places, or things…", text: $viewModel.query)
+                .font(.kindredBody)
+                .textFieldStyle(.plain)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.search)
+                .onSubmit { viewModel.search() }
+
+            if !viewModel.query.isEmpty {
+                Button {
+                    viewModel.query = ""
+                    viewModel.results = []
+                    viewModel.hasSearched = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(KindredTheme.mist)
+                }
+            } else {
+                Text("VOICE")
+                    .font(.kindredMicro)
+                    .tracking(1.4)
+                    .foregroundStyle(KindredTheme.pine)
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 46)
+        .background(KindredTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusSM))
+        .overlay(
+            RoundedRectangle(cornerRadius: KindredTheme.radiusSM)
+                .stroke(KindredTheme.lineDark, lineWidth: 1)
+        )
+        .shadow(color: Color(hex: 0x11161B).opacity(0.06), radius: 11, x: 0, y: 10)
+        .padding(.horizontal, 20)
+        .padding(.top, 14)
+    }
+
+    // MARK: - Search Results
+
+    private var searchResults: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                // People matches
+                let personResults = viewModel.results.filter { $0.match_type == "person" }
+                let uniqueClusters = uniqueMatchedClusters(from: personResults)
+
+                if !uniqueClusters.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        KindredEyebrow(text: "People")
+                            .padding(.horizontal, 20)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                ForEach(uniqueClusters, id: \.clusterId) { match in
+                                    matchedPersonCard(
+                                        match: match,
+                                        photoCount: personResults.filter { $0.match_cluster_id == match.clusterId }.count
+                                    )
+                                }
+                            }
+                            .padding(.horizontal, 20)
+                        }
+                    }
+                }
+
+                // Photo results grid
+                let items = viewModel.results.map { PhotoGridItem(from: $0) }
+                if !items.isEmpty {
+                    KindredEyebrow(text: "\(items.count) results")
+                        .padding(.horizontal, 20)
+
+                    PhotoGridView(photoURLs: items) { item in
+                        selectedPhoto = item
+                    }
+                }
+            }
+            .padding(.top, 16)
+            .padding(.bottom, 110)
+        }
+    }
+
+    // MARK: - Default Browse Content (empty state)
+
+    private var defaultBrowseContent: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 44, weight: .light))
+                .foregroundStyle(KindredTheme.pine.opacity(0.4))
+            Text("Search your photos")
+                .font(.kindredH3)
+                .foregroundStyle(KindredTheme.ash)
+            Text("Try names, places, or things\u{2026}")
+                .font(.kindredBody)
+                .foregroundStyle(KindredTheme.mist)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Matched Person Card
 
     struct MatchedCluster {
         let clusterId: String
@@ -165,37 +184,15 @@ struct SearchView: View {
 
     private func matchedPersonCard(match: MatchedCluster, photoCount: Int) -> some View {
         VStack(spacing: 6) {
-            if let urlStr = match.thumbURL, let url = URL(string: urlStr) {
-                AsyncImage(url: url) { phase in
-                    if case .success(let image) = phase {
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 72, height: 72)
-                            .clipShape(Circle())
-                    } else {
-                        Circle()
-                            .fill(KindredTheme.pine.opacity(0.15))
-                            .frame(width: 72, height: 72)
-                    }
-                }
-            } else {
-                Circle()
-                    .fill(KindredTheme.pine.opacity(0.15))
-                    .frame(width: 72, height: 72)
-                    .overlay {
-                        Image(systemName: "person.fill")
-                            .foregroundStyle(KindredTheme.pine.opacity(0.5))
-                    }
-            }
+            KindredAvatar(url: match.thumbURL, size: 56)
             Text(match.name)
-                .font(.system(.caption, design: .rounded, weight: .semibold))
-                .foregroundStyle(KindredTheme.darkAccent)
+                .font(.display(12, weight: .bold))
+                .foregroundStyle(KindredTheme.ash)
                 .lineLimit(1)
             Text("\(photoCount) photos")
-                .font(.system(.caption2, design: .rounded))
-                .foregroundStyle(.secondary)
+                .font(.kindredMicro)
+                .foregroundStyle(KindredTheme.mist)
         }
-        .frame(width: 90)
+        .frame(width: 72)
     }
 }

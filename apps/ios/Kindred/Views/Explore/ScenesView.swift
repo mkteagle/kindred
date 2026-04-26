@@ -13,7 +13,7 @@ struct ScenesView: View {
         Group {
             if viewModel.isLoadingScenes {
                 ProgressView("Loading landmarks...")
-                    .font(.system(.body, design: .rounded))
+                    .font(.kindredBody)
             } else if viewModel.scenes.isEmpty {
                 ContentUnavailableView(
                     "No Landmarks",
@@ -39,10 +39,11 @@ struct ScenesView: View {
                                 } label: {
                                     HStack {
                                         Text(sceneName.capitalized)
-                                            .font(.system(.headline, design: .rounded, weight: .semibold))
+                                            .font(.kindredCardTitle)
+                                            .foregroundStyle(KindredTheme.ash)
                                         Spacer()
                                         Text("\(photos.count)")
-                                            .font(.system(.caption, design: .rounded, weight: .medium))
+                                            .font(.kindredMeta)
                                             .foregroundStyle(KindredTheme.pine)
                                             .padding(.horizontal, 8)
                                             .padding(.vertical, 3)
@@ -59,7 +60,7 @@ struct ScenesView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(KindredTheme.warmBackground.ignoresSafeArea())
+        .background(KindredTheme.paper.ignoresSafeArea())
         .navigationTitle("Landmarks")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $selectedPhoto) { item in

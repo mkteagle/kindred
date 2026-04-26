@@ -5,7 +5,7 @@ final class LibraryViewModel {
     var selectedCategory: ClusterCategory = .people
     var clusters: [ClusterSummary] = []
     var noiseCount: Int = 0
-    var isLoading = false
+    var isLoading = true
     var error: String?
 
     // Detail

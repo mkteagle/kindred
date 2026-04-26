@@ -9,7 +9,7 @@ struct LocationsView: View {
         Group {
             if viewModel.isLoadingLocations {
                 ProgressView("Loading locations...")
-                    .font(.system(.body, design: .rounded))
+                    .font(.kindredBody)
             } else if viewModel.locations.isEmpty {
                 ContentUnavailableView(
                     "No Locations",
@@ -43,10 +43,11 @@ struct LocationsView: View {
                                 HStack {
                                     VStack(alignment: .leading) {
                                         Text(location.name)
-                                            .font(.system(.headline, design: .rounded, weight: .semibold))
+                                            .font(.kindredCardTitle)
+                                            .foregroundStyle(KindredTheme.ash)
                                         Text("\(location.count) photos")
-                                            .font(.system(.caption, design: .rounded))
-                                            .foregroundStyle(.secondary)
+                                            .font(.kindredMeta)
+                                            .foregroundStyle(KindredTheme.mist)
                                     }
                                     Spacer()
                                 }
@@ -59,7 +60,7 @@ struct LocationsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(KindredTheme.warmBackground.ignoresSafeArea())
+        .background(KindredTheme.paper.ignoresSafeArea())
         .navigationTitle("Locations")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $selectedPhoto) { item in

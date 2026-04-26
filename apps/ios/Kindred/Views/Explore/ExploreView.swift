@@ -24,7 +24,7 @@ struct ExploreView: View {
                     }
                 } header: {
                     Text("Browse")
-                        .font(.system(.caption, design: .rounded, weight: .semibold))
+                        .font(.kindredMeta)
                 }
 
                 Section {
@@ -33,12 +33,12 @@ struct ExploreView: View {
                     }
                 } header: {
                     Text("Cleanup")
-                        .font(.system(.caption, design: .rounded, weight: .semibold))
+                        .font(.kindredMeta)
                 }
             }
             .scrollContentBackground(.hidden)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(KindredTheme.warmBackground.ignoresSafeArea())
+        .background(KindredTheme.paper.ignoresSafeArea())
             .navigationTitle("Explore")
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
@@ -65,14 +65,14 @@ struct ExploreView: View {
         } label: {
             HStack(spacing: 14) {
                 Image(systemName: icon)
-                    .font(.system(.body, design: .rounded, weight: .semibold))
+                    .font(.kindredLabel)
                     .foregroundStyle(.white)
                     .frame(width: 32, height: 32)
                     .background(color)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
                 Text(title)
-                    .font(.system(.body, design: .rounded, weight: .medium))
+                    .font(.kindredBody)
             }
             .padding(.vertical, 2)
         }

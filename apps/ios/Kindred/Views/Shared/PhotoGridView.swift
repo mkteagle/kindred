@@ -24,23 +24,21 @@ struct PhotoGridView: View {
                                 .frame(width: geo.size.width, height: geo.size.height)
                                 .clipped()
                         case .failure:
-                            KindredTheme.warmCardBackground
+                            KindredTheme.canvas
                                 .overlay {
                                     Image(systemName: "photo")
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(KindredTheme.mist)
                                 }
                         case .empty:
-                            KindredTheme.warmCardBackground
-                                .overlay {
-                                    ProgressView()
-                                }
+                            KindredTheme.canvas
+                                .overlay { ProgressView().tint(KindredTheme.ember) }
                         @unknown default:
-                            KindredTheme.warmCardBackground
+                            KindredTheme.canvas
                         }
                     }
                 }
                 .aspectRatio(1, contentMode: .fill)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusXS))
                 .contentShape(Rectangle())
                 .onTapGesture {
                     onTap?(item)
@@ -84,5 +82,13 @@ extension PhotoGridItem {
         self.thumbURL = sceneGroup.thumb_url
         self.flickrURL = sceneGroup.flickr_url
         self.title = sceneGroup.photo_title
+    }
+
+    init(from togetherPhoto: TogetherPhoto) {
+        self.id = togetherPhoto.photo_id
+        self.photoURL = togetherPhoto.photo_url
+        self.thumbURL = togetherPhoto.thumb_url
+        self.flickrURL = togetherPhoto.flickr_url
+        self.title = togetherPhoto.photo_title
     }
 }

@@ -4,38 +4,23 @@ struct ContentView: View {
     @State private var selectedTab = 0
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            LibraryView()
-                .tabItem {
-                    Label("Library", systemImage: "person.3.fill")
+        ZStack(alignment: .bottom) {
+            // Content area — fills entire screen
+            Group {
+                switch selectedTab {
+                case 0: HomeView()
+                case 1: LibraryView()
+                case 2: SearchView()
+                case 3: SettingsView()
+                default: HomeView()
                 }
-                .tag(0)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            ExploreView()
-                .tabItem {
-                    Label("Explore", systemImage: "sparkle.magnifyingglass")
-                }
-                .tag(1)
-
-            UploadView()
-                .tabItem {
-                    Label("Backup", systemImage: "arrow.clockwise.icloud.fill")
-                }
-                .tag(2)
-
-            SearchView()
-                .tabItem {
-                    Label("Search", systemImage: "magnifyingglass")
-                }
-                .tag(3)
-
-            SettingsView()
-                .tabItem {
-                    Label("Settings", systemImage: "gearshape.fill")
-                }
-                .tag(4)
+            // Glassmorphic tab bar overlays the bottom, extends into safe area
+            KindredTabBar(selectedTab: $selectedTab)
         }
-        .tint(KindredTheme.pine)
+        .ignoresSafeArea(.keyboard)
     }
 }
 

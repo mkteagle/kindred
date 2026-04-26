@@ -4,7 +4,7 @@ import Foundation
 final class ExploreViewModel {
     // Timeline
     var timeline: [TimelineMonth] = []
-    var isLoadingTimeline = false
+    var isLoadingTimeline = true
 
     // Locations
     var locations: [LocationGroup] = []

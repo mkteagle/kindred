@@ -6,7 +6,6 @@ struct KindredApp: App {
         configureAppearance()
         Analytics.configure()
         SyncManager.shared.configure()
-        // Load Flickr consumer credentials from backend
         Task {
             await OAuthHelper.loadConfig(from: "https://api.kindredphotos.app")
         }
@@ -26,32 +25,37 @@ struct KindredApp: App {
     }
 
     private func configureAppearance() {
-        let warmBg = UIColor(KindredTheme.warmBackground)
+        let warmBg = UIColor(KindredTheme.paper)
 
         let tabAppearance = UITabBarAppearance()
         tabAppearance.configureWithOpaqueBackground()
         tabAppearance.backgroundColor = warmBg
         UITabBar.appearance().standardAppearance = tabAppearance
         UITabBar.appearance().scrollEdgeAppearance = tabAppearance
+        // Hide system tab bar — we use our own KindredTabBar
+        UITabBar.appearance().isHidden = true
 
         let navAppearance = UINavigationBarAppearance()
         navAppearance.configureWithOpaqueBackground()
         navAppearance.backgroundColor = warmBg
-        if let roundedDesc = UIFontDescriptor.preferredFontDescriptor(withTextStyle: .largeTitle)
-            .withDesign(.rounded) {
+        navAppearance.shadowColor = .clear
+        // Use Space Grotesk for nav titles
+        if let boldDesc = UIFontDescriptor(name: "SpaceGrotesk-Bold", size: 34).withSymbolicTraits(.traitBold) {
             navAppearance.largeTitleTextAttributes = [
-                .font: UIFont(descriptor: roundedDesc.withSymbolicTraits(.traitBold) ?? roundedDesc, size: 0)
+                .font: UIFont(descriptor: boldDesc, size: 34),
+                .foregroundColor: UIColor(KindredTheme.ash),
             ]
         }
-        if let roundedInline = UIFontDescriptor.preferredFontDescriptor(withTextStyle: .headline)
-            .withDesign(.rounded) {
+        if let titleDesc = UIFontDescriptor(name: "SpaceGrotesk-Bold", size: 17).withSymbolicTraits(.traitBold) {
             navAppearance.titleTextAttributes = [
-                .font: UIFont(descriptor: roundedInline.withSymbolicTraits(.traitBold) ?? roundedInline, size: 0)
+                .font: UIFont(descriptor: titleDesc, size: 17),
+                .foregroundColor: UIColor(KindredTheme.ash),
             ]
         }
         UINavigationBar.appearance().standardAppearance = navAppearance
         UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
         UINavigationBar.appearance().compactAppearance = navAppearance
+        UINavigationBar.appearance().tintColor = UIColor(KindredTheme.ember)
 
         UITableView.appearance().backgroundColor = warmBg
     }
@@ -59,10 +63,16 @@ struct KindredApp: App {
 
 struct RootView: View {
     @State private var session = SessionManager.shared
+    @State private var hasSeenOnboarding = UserDefaults.standard.bool(forKey: "hasSeenOnboarding")
 
     var body: some View {
         if session.isAuthenticated {
             ContentView()
+        } else if !hasSeenOnboarding {
+            OnboardingView {
+                hasSeenOnboarding = true
+                UserDefaults.standard.set(true, forKey: "hasSeenOnboarding")
+            }
         } else {
             LoginView()
         }

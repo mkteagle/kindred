@@ -177,6 +177,14 @@ actor APIClient {
         try await request("/duplicates?threshold=\(threshold)")
     }
 
+    // MARK: - Together (multi-person photo finder)
+
+    func getPhotosTogether(clusterIds: [String], limit: Int = 100) async throws -> TogetherResponse {
+        let ids = clusterIds.joined(separator: ",")
+        let encoded = ids.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ids
+        return try await request("/photos/together?people=\(encoded)&limit=\(limit)")
+    }
+
     // MARK: - Photo Processing
 
     func processPhoto(photoId: String, url: String?) async throws {

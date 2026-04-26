@@ -10,7 +10,7 @@ struct DuplicatesView: View {
         Group {
             if viewModel.isLoadingDuplicates {
                 ProgressView("Finding duplicates...")
-                    .font(.system(.body, design: .rounded))
+                    .font(.kindredBody)
             } else if viewModel.duplicates.isEmpty {
                 ContentUnavailableView(
                     "No Duplicates",
@@ -24,11 +24,11 @@ struct DuplicatesView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
                                     Text("\(group.photos.count) similar photos")
-                                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                                        .font(.kindredCardTitle)
                                         .foregroundStyle(KindredTheme.darkAccent)
                                     Spacer()
                                     Text("\(Int(group.similarity * 100))% similar")
-                                        .font(.system(.caption, design: .rounded, weight: .medium))
+                                        .font(.kindredMeta)
                                         .foregroundStyle(KindredTheme.pine)
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 3)

@@ -52,7 +52,7 @@ struct UploadView: View {
             Label("Photo Access", systemImage: "photo.on.rectangle")
         } description: {
             Text("Kindred needs access to your photo library to back up photos and videos.")
-                .font(.system(.body, design: .rounded))
+                .font(.kindredBody)
         } actions: {
             Button("Grant Access") {
                 Task { await viewModel.requestAccess() }
@@ -67,7 +67,7 @@ struct UploadView: View {
             Label("Access Denied", systemImage: "lock.shield")
         } description: {
             Text("Photo library access was denied. Please enable it in Settings.")
-                .font(.system(.body, design: .rounded))
+                .font(.kindredBody)
         } actions: {
             Button("Open Settings") {
                 if let url = URL(string: UIApplication.openSettingsURLString) {
@@ -107,10 +107,10 @@ struct UploadView: View {
                             .font(.system(size: 48, weight: .light))
                             .foregroundStyle(KindredTheme.pine)
                         Text("All Backed Up")
-                            .font(.system(.title3, design: .rounded, weight: .semibold))
+                            .font(.kindredH3)
                             .foregroundStyle(KindredTheme.darkAccent)
                         Text("Every photo and video on this device is safely backed up.")
-                            .font(.system(.subheadline, design: .rounded))
+                            .font(.kindredCaption)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                     }
@@ -131,11 +131,11 @@ struct UploadView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Auto Backup")
-                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                        .font(.kindredLabel)
                         .foregroundStyle(KindredTheme.darkAccent)
                     if let lastSync = syncManager.lastSyncDate {
                         Text("Last sync \(lastSync, style: .relative) ago")
-                            .font(.system(.caption, design: .rounded))
+                            .font(.kindredMeta)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -151,11 +151,11 @@ struct UploadView: View {
                 VStack(spacing: 6) {
                     HStack {
                         Text("Syncing...")
-                            .font(.system(.caption, design: .rounded, weight: .medium))
+                            .font(.kindredMeta)
                             .foregroundStyle(KindredTheme.pine)
                         Spacer()
                         Text("\(syncManager.syncedCount)/\(syncManager.totalToSync)")
-                            .font(.system(.caption, design: .rounded))
+                            .font(.kindredMeta)
                             .foregroundStyle(.secondary)
                     }
                     ProgressView(value: syncManager.syncProgress)
@@ -166,7 +166,7 @@ struct UploadView: View {
                     Task { await syncManager.syncNewPhotos() }
                 } label: {
                     Label("Sync Now", systemImage: "arrow.triangle.2.circlepath")
-                        .font(.system(.subheadline, design: .rounded, weight: .medium))
+                        .font(.kindredLabel)
                         .frame(maxWidth: .infinity)
                         .frame(height: 40)
                 }
@@ -176,7 +176,7 @@ struct UploadView: View {
 
             if let error = syncManager.syncError {
                 Text(error)
-                    .font(.system(.caption, design: .rounded))
+                    .font(.kindredMeta)
                     .foregroundStyle(.red)
             }
         }
@@ -207,10 +207,10 @@ struct UploadView: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(viewModel.photoManager.uploadedCount) backed up")
-                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                        .font(.kindredLabel)
                         .foregroundStyle(KindredTheme.darkAccent)
                     Text("\(viewModel.photoManager.notUploadedPhotos.count) remaining · \(viewModel.photoManager.totalDevicePhotos) total")
-                        .font(.system(.caption, design: .rounded))
+                        .font(.kindredMeta)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -224,7 +224,7 @@ struct UploadView: View {
                     HStack {
                         Image(systemName: "arrow.up.trash")
                         Text("Free up \(viewModel.formattedSavings)")
-                            .font(.system(.subheadline, design: .rounded, weight: .medium))
+                            .font(.kindredLabel)
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 40)
@@ -268,21 +268,21 @@ struct UploadView: View {
         VStack(spacing: 8) {
             HStack {
                 Text("Uploading...")
-                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .font(.kindredLabel)
                     .foregroundStyle(KindredTheme.pine)
                 Spacer()
                 Text("\(viewModel.uploadedCount)/\(viewModel.totalUploadCount)")
-                    .font(.system(.caption, design: .rounded, weight: .medium))
+                    .font(.kindredMeta)
                     .foregroundStyle(.secondary)
             }
             ProgressView(value: viewModel.uploadProgress)
                 .tint(KindredTheme.pine)
             Text(viewModel.currentPhotoTitle)
-                .font(.system(.caption, design: .rounded))
+                .font(.kindredMeta)
                 .foregroundStyle(.secondary)
             if let error = viewModel.uploadError {
                 Text(error)
-                    .font(.system(.caption, design: .rounded))
+                    .font(.kindredMeta)
                     .foregroundStyle(.red)
             }
         }
@@ -297,11 +297,11 @@ struct UploadView: View {
         VStack(spacing: 12) {
             HStack {
                 Text("Not Backed Up")
-                    .font(.system(.headline, design: .rounded, weight: .bold))
+                    .font(.kindredH3)
                     .foregroundStyle(KindredTheme.darkAccent)
                 Spacer()
                 Text("\(viewModel.photoManager.notUploadedPhotos.count)")
-                    .font(.system(.subheadline, design: .rounded, weight: .medium))
+                    .font(.kindredLabel)
                     .foregroundStyle(.secondary)
             }
 
@@ -314,20 +314,20 @@ struct UploadView: View {
                         viewModel.clearSelection()
                     }
                 }
-                .font(.system(.caption, design: .rounded, weight: .medium))
+                .font(.kindredMeta)
 
                 Spacer()
 
                 if !viewModel.selectedAssets.isEmpty {
                     Text("\(viewModel.selectedAssets.count) selected")
-                        .font(.system(.caption, design: .rounded))
+                        .font(.kindredMeta)
                         .foregroundStyle(.secondary)
 
                     Button {
                         Task { await viewModel.uploadSelected() }
                     } label: {
                         Label("Upload", systemImage: "icloud.and.arrow.up")
-                            .font(.system(.caption, design: .rounded, weight: .semibold))
+                            .font(.kindredMeta)
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(KindredTheme.pine)
@@ -385,7 +385,7 @@ struct PhotoAssetCell: View {
                         Image(systemName: "video.fill")
                             .font(.caption2)
                         Text(formatDuration(asset.duration))
-                            .font(.system(.caption2, design: .rounded, weight: .medium))
+                            .font(.kindredMicro)
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 6)

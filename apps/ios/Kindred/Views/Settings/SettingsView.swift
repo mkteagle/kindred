@@ -2,61 +2,71 @@ import SwiftUI
 
 struct SettingsView: View {
     @State private var viewModel = SettingsViewModel()
+    @State private var syncManager = SyncManager.shared
     @State private var showLogoutConfirm = false
+    @State private var showPrivacyInfo = false
+    @State private var showBackendURL = false
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    // Account card
-                    accountCard
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Page header
+                    KindredPageHeader(eyebrow: "Settings", title: "Your household.")
 
-                    // System status card
-                    systemCard
+                    // Household card
+                    householdCard
 
-                    // Sync card
-                    syncCard
+                    // Members section
+                    membersSection
 
-                    // About card
-                    aboutCard
+                    // Library section
+                    librarySection
+
+                    // Privacy section
+                    privacySection
 
                     // Sign out
-                    Button(role: .destructive) {
+                    KindredButton(
+                        title: "Sign Out",
+                        icon: "rectangle.portrait.and.arrow.right",
+                        style: .danger,
+                        isFullWidth: true
+                    ) {
                         showLogoutConfirm = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "rectangle.portrait.and.arrow.right")
-                            Text("Sign Out")
-                                .font(.system(.body, design: .rounded, weight: .medium))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(.red)
-                    .alert("Sign Out", isPresented: $showLogoutConfirm) {
-                        Button("Sign Out", role: .destructive) {
-                            viewModel.logout()
+                    .padding(.horizontal, 16)
+                    .padding(.top, 20)
+
+                    // Footer
+                    VStack(spacing: 6) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "flame")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(KindredTheme.ember)
+                            Text("Kindling Signal")
+                                .font(.kindredMeta)
+                                .foregroundStyle(KindredTheme.mist)
                         }
-                        Button("Cancel", role: .cancel) {}
-                    } message: {
-                        Text("Are you sure you want to sign out?")
+                        Text("Kindred Photos \u{00b7} v1.0")
+                            .font(.kindredMicro)
+                            .foregroundStyle(KindredTheme.muted)
+                        Text("\u{00a9} \(String(Calendar.current.component(.year, from: Date()))) Kindling Signal")
+                            .font(.kindredMicro)
+                            .foregroundStyle(KindredTheme.muted)
                     }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 24)
+                    .padding(.bottom, 110)
                 }
-                .padding()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(KindredTheme.warmBackground.ignoresSafeArea())
-            .navigationTitle("Settings")
-            .toolbarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Image("KindredLogo")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 32, height: 32)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                }
+            .kindredPaperBackground()
+            .navigationBarHidden(true)
+            .alert("Sign Out", isPresented: $showLogoutConfirm) {
+                Button("Sign Out", role: .destructive) { viewModel.logout() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Are you sure you want to sign out?")
             }
             .task {
                 await viewModel.checkHealth()
@@ -64,200 +74,368 @@ struct SettingsView: View {
                 await viewModel.checkActiveJob()
             }
         }
-        .tint(KindredTheme.pine)
     }
 
-    // MARK: - Account Card
+    // MARK: - Household Card
 
-    private var accountCard: some View {
+    private var householdCard: some View {
         VStack(spacing: 0) {
-            if let user = viewModel.session.currentUser {
-                HStack(spacing: 14) {
-                    ZStack {
-                        Circle()
-                            .fill(KindredTheme.pine)
-                            .frame(width: 48, height: 48)
-                        Text(String(user.display_name.prefix(1)).uppercased())
-                            .font(.system(.title3, design: .rounded, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
+            HStack(spacing: 12) {
+                if let user = viewModel.session.currentUser {
+                    KindredInitialsAvatar(
+                        initials: String(user.display_name.prefix(2)).uppercased(),
+                        size: 44
+                    )
                     VStack(alignment: .leading, spacing: 2) {
                         Text(user.display_name)
-                            .font(.system(.headline, design: .rounded, weight: .semibold))
+                            .font(.display(17, weight: .bold))
+                            .foregroundStyle(KindredTheme.ash)
                         Text("@\(user.username) · \(user.role)")
-                            .font(.system(.caption, design: .rounded))
-                            .foregroundStyle(.secondary)
+                            .font(.kindredMeta)
+                            .foregroundStyle(KindredTheme.mist)
                     }
                     Spacer()
-                    Image(systemName: "checkmark.seal.fill")
-                        .foregroundStyle(KindredTheme.pine)
-                        .font(.title3)
                 }
-                .padding()
             }
+
+            // Flickr storage — unlimited
+            HStack(spacing: 6) {
+                Image(systemName: "infinity")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(KindredTheme.forest)
+                Text("Unlimited storage via Flickr")
+                    .font(.kindredMeta)
+                    .foregroundStyle(KindredTheme.mist)
+            }
+            .padding(.top, 12)
         }
-        .background(KindredTheme.warmCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .padding(16)
+        .background(KindredTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusMD))
+        .overlay(
+            RoundedRectangle(cornerRadius: KindredTheme.radiusMD)
+                .stroke(KindredTheme.line, lineWidth: 1)
+        )
+        .shadow(color: Color(hex: 0x11161B).opacity(0.07), radius: 13, x: 0, y: 12)
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
     }
 
-    // MARK: - System Card
+    // MARK: - Members Section
 
-    private var systemCard: some View {
-        VStack(spacing: 0) {
-            settingsRow(icon: "server.rack", title: "Backend", trailing: {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(viewModel.isHealthy ? Color.green : .red)
-                        .frame(width: 8, height: 8)
-                    Text(viewModel.isHealthy ? "Online" : "Offline")
-                        .font(.system(.caption, design: .rounded, weight: .medium))
-                        .foregroundStyle(.secondary)
+    private var membersSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            KindredEyebrow(text: "Household")
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
+                .padding(.bottom, 6)
+
+            VStack(spacing: 0) {
+                if let user = viewModel.session.currentUser {
+                    memberRow(name: user.display_name, role: user.role, isLast: true)
                 }
-            })
-
-            Divider().padding(.leading, 48)
-
-            settingsRow(icon: "link", title: "API", trailing: {
-                Text("api.kindredphotos.app")
-                    .font(.system(.caption, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            })
+            }
+            .kindredGroupedCard()
+            .padding(.horizontal, 16)
         }
-        .background(KindredTheme.warmCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
-    // MARK: - Sync Card
-
-    private var syncCard: some View {
-        VStack(spacing: 0) {
-            if let activeJob = viewModel.activeJob {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .foregroundStyle(KindredTheme.pine)
-                            .frame(width: 24)
-                        Text("Scan Running")
-                            .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                            .foregroundStyle(KindredTheme.pine)
-                        Spacer()
-                        ProgressView()
-                    }
-                    ProgressView(value: Double(activeJob.progress), total: Double(max(activeJob.total, 1)))
-                        .tint(KindredTheme.pine)
-                    Text(activeJob.message)
-                        .font(.system(.caption, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
-                .padding()
-
-                Divider().padding(.leading, 48)
+    private func memberRow(name: String, role: String, isLast: Bool = false) -> some View {
+        HStack(spacing: 12) {
+            KindredInitialsAvatar(
+                initials: String(name.prefix(1)).uppercased(),
+                size: 32
+            )
+            Text(name)
+                .font(.kindredLabel)
+                .foregroundStyle(KindredTheme.ash)
+            Spacer()
+            Text(role.uppercased())
+                .font(.kindredMicro)
+                .tracking(0.6)
+                .foregroundStyle(KindredTheme.mist)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .if(!isLast) { view in
+            view.overlay(alignment: .bottom) {
+                Rectangle().fill(KindredTheme.line).frame(height: 1)
             }
+        }
+    }
 
-            if let lastSync = viewModel.lastSyncDate {
-                settingsRow(icon: "clock.arrow.circlepath", title: "Last Sync", trailing: {
-                    Text(lastSync)
-                        .font(.system(.caption, design: .rounded))
-                        .foregroundStyle(.secondary)
-                })
-            }
+    // MARK: - Library Section
 
-            if !viewModel.syncs.isEmpty {
-                Divider().padding(.leading, 48)
+    private var librarySection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            KindredEyebrow(text: "Library")
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
+                .padding(.bottom, 6)
 
+            VStack(spacing: 0) {
+                // Backup row — links to backup detail
                 NavigationLink {
-                    syncHistoryView
+                    BackupDetailView()
                 } label: {
-                    settingsRow(icon: "list.bullet.clipboard", title: "Sync History", trailing: {
+                    settingsRow(title: "Backup & storage", detail: viewModel.isHealthy ? "Connected" : "Offline") {
                         Image(systemName: "chevron.right")
                             .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    })
+                            .foregroundStyle(KindredTheme.mist)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Divider().padding(.leading, 14)
+
+                settingsRow(title: "Auto-backup", detail: nil) {
+                    KindredToggle(isOn: Binding(
+                        get: { syncManager.autoSyncEnabled },
+                        set: { syncManager.setAutoSync($0) }
+                    ))
+                }
+
+                Divider().padding(.leading, 14)
+
+                settingsRow(title: "On-device intelligence", detail: "On") {
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(KindredTheme.mist)
+                }
+            }
+            .kindredGroupedCard()
+            .padding(.horizontal, 16)
+        }
+    }
+
+    // MARK: - Privacy Section
+
+    private var privacySection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            KindredEyebrow(text: "Privacy")
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
+                .padding(.bottom, 6)
+
+            VStack(spacing: 0) {
+                Button {
+                    showPrivacyInfo = true
+                } label: {
+                    settingsRow(title: "Library is private to household", detail: nil) {
+                        HStack(spacing: 6) {
+                            Text("Confirmed")
+                                .font(.kindredMicro)
+                                .tracking(0.6)
+                                .foregroundStyle(KindredTheme.forest)
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(KindredTheme.mist)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Divider().padding(.leading, 14)
+
+                Button {
+                    showBackendURL = true
+                } label: {
+                    settingsRow(title: "Backend status", detail: nil) {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(viewModel.isHealthy ? KindredTheme.forest : KindredTheme.rosehip)
+                                .frame(width: 8, height: 8)
+                            Text(viewModel.isHealthy ? "Online" : "Offline")
+                                .font(.kindredMicro)
+                                .foregroundStyle(KindredTheme.mist)
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(KindredTheme.mist)
+                        }
+                    }
                 }
                 .buttonStyle(.plain)
             }
+            .kindredGroupedCard()
+            .padding(.horizontal, 16)
         }
-        .background(KindredTheme.warmCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-    }
-
-    // MARK: - About Card
-
-    private var aboutCard: some View {
-        VStack(spacing: 0) {
-            settingsRow(icon: "info.circle", title: "Version", trailing: {
-                Text("1.0.0")
-                    .font(.system(.caption, design: .rounded))
-                    .foregroundStyle(.secondary)
-            })
-
-            Divider().padding(.leading, 48)
-
-            settingsRow(icon: "heart.fill", title: "Built by", trailing: {
-                Text("Kindling Signal")
-                    .font(.system(.caption, design: .rounded))
-                    .foregroundStyle(.secondary)
-            })
+        .alert("Privacy", isPresented: $showPrivacyInfo) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Your photo library is stored privately within your household. No data is shared outside your account. All on-device intelligence runs locally and never leaves your phone.")
         }
-        .background(KindredTheme.warmCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .alert("Backend", isPresented: $showBackendURL) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Server: https://api.kindredphotos.app\nStatus: \(viewModel.isHealthy ? "Online" : "Offline")")
+        }
     }
 
     // MARK: - Settings Row Helper
 
-    private func settingsRow<Trailing: View>(icon: String, title: String, @ViewBuilder trailing: () -> Trailing) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .foregroundStyle(KindredTheme.pine)
-                .frame(width: 24)
-            Text(title)
-                .font(.system(.body, design: .rounded))
+    private func settingsRow<Trailing: View>(
+        title: String,
+        detail: String?,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.kindredLabel)
+                    .foregroundStyle(KindredTheme.ash)
+                if let detail {
+                    Text(detail)
+                        .font(.kindredMeta)
+                        .foregroundStyle(KindredTheme.mist)
+                }
+            }
             Spacer()
             trailing()
         }
-        .padding(.horizontal)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+    }
+}
+
+// MARK: - Backup Detail View (nested under Settings)
+
+struct BackupDetailView: View {
+    @State private var uploadVM = UploadViewModel()
+    @State private var syncManager = SyncManager.shared
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                // Page header
+                KindredPageHeader(
+                    eyebrow: "Backup status",
+                    title: backupTitle
+                )
+
+                // Progress ring
+                progressRing
+                    .padding(.top, 20)
+
+                // Settings list
+                settingsList
+                    .padding(.top, 20)
+
+                Spacer().frame(height: 40)
+            }
+        }
+        .kindredPaperBackground()
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await uploadVM.requestAccess()
+        }
     }
 
-    // MARK: - Sync History
+    private var backupTitle: String {
+        let remaining = uploadVM.photoManager.notUploadedPhotos.count
+        if remaining == 0 { return "You're caught up." }
+        return "\(remaining) remaining."
+    }
 
-    private var syncHistoryView: some View {
-        ScrollView {
-            LazyVStack(spacing: 8) {
-                ForEach(viewModel.syncs) { sync in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(sync.status == "completed" ? Color.green : sync.status == "failed" ? .red : KindredTheme.pine)
-                                    .frame(width: 8, height: 8)
-                                Text(sync.status.capitalized)
-                                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                            }
-                            if let started = sync.started_at {
-                                Text(started)
-                                    .font(.system(.caption, design: .rounded))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        Spacer()
-                        if let total = sync.total_photos {
-                            Text("\(total) photos")
-                                .font(.system(.caption, design: .rounded, weight: .medium))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding()
-                    .background(KindredTheme.warmCardBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
+    // MARK: - Progress Ring
+
+    private var progressRing: some View {
+        let progress = backupProgress
+
+        return ZStack {
+            // Track
+            Circle()
+                .stroke(Color(hex: 0x4A281A).opacity(0.08), lineWidth: 14)
+
+            // Progress arc
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(
+                    LinearGradient(
+                        colors: [KindredTheme.forest, KindredTheme.lichen],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    style: StrokeStyle(lineWidth: 14, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+                .animation(.easeOut(duration: 1.2), value: progress)
+
+            // Center text
+            VStack(spacing: 6) {
+                Text("\(Int(progress * 100))%")
+                    .font(.display(42, weight: .bold))
+                    .foregroundStyle(KindredTheme.ash)
+                Text("\(uploadVM.photoManager.uploadedCount) OF \(uploadVM.photoManager.totalDevicePhotos)")
+                    .font(.kindredMicro)
+                    .tracking(1.4)
+                    .foregroundStyle(KindredTheme.mist)
             }
-            .padding()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(KindredTheme.warmBackground.ignoresSafeArea())
-        .navigationTitle("Sync History")
-        .navigationBarTitleDisplayMode(.inline)
+        .frame(width: 200, height: 200)
+    }
+
+    private var backupProgress: CGFloat {
+        let total = uploadVM.photoManager.totalDevicePhotos
+        guard total > 0 else { return 0 }
+        return CGFloat(uploadVM.photoManager.uploadedCount) / CGFloat(total)
+    }
+
+    // MARK: - Settings List
+
+    private var settingsList: some View {
+        VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Auto-backup")
+                        .font(.kindredLabel)
+                        .foregroundStyle(KindredTheme.ash)
+                    Text("On · Wi-Fi only")
+                        .font(.kindredMeta)
+                        .foregroundStyle(KindredTheme.mist)
+                }
+                Spacer()
+                KindredToggle(isOn: Binding(
+                    get: { syncManager.autoSyncEnabled },
+                    set: { syncManager.setAutoSync($0) }
+                ))
+            }
+            .padding(14)
+
+            Divider().padding(.leading, 14)
+
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Including videos")
+                        .font(.kindredLabel)
+                        .foregroundStyle(KindredTheme.ash)
+                    Text("On")
+                        .font(.kindredMeta)
+                        .foregroundStyle(KindredTheme.mist)
+                }
+                Spacer()
+                KindredToggle(isOn: .constant(true))
+            }
+            .padding(14)
+
+            Divider().padding(.leading, 14)
+
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Free up device space")
+                        .font(.kindredLabel)
+                        .foregroundStyle(KindredTheme.ash)
+                    Text("\(uploadVM.formattedSavings) available")
+                        .font(.kindredMeta)
+                        .foregroundStyle(KindredTheme.mist)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(KindredTheme.mist)
+            }
+            .padding(14)
+        }
+        .kindredGroupedCard()
+        .padding(.horizontal, 16)
     }
 }
