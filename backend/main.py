@@ -1027,6 +1027,12 @@ def save_resend_key(request: FastAPIRequest, admin=Depends(require_admin)):
     key = request.headers.get("X-Integration-Secret", "").strip()
     if not key:
         raise HTTPException(400, "API key must be sent in X-Integration-Secret header")
+    if not key.startswith("re_"):
+        raise HTTPException(400, "Invalid Resend key — must start with 're_'")
+    if len(key) < 20 or len(key) > 100:
+        raise HTTPException(400, "Invalid Resend key length")
+    if " " in key or "\n" in key:
+        raise HTTPException(400, "Invalid Resend key — contains whitespace")
     # Store with a simple obfuscation prefix so it's not raw in DB
     import base64
     stored = base64.b64encode(key.encode()).decode()

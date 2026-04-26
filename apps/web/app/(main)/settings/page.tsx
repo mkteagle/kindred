@@ -163,14 +163,29 @@ export default function SettingsPage() {
   };
 
   // ── Resend integration ────────────────────────────────────────────
+  const validateResendKey = (key: string): string | null => {
+    const trimmed = key.trim();
+    if (!trimmed) return "API key cannot be empty.";
+    if (!trimmed.startsWith("re_")) return "Resend keys start with \"re_\" — this doesn't look right.";
+    if (trimmed.length < 20) return "This key looks too short. Resend keys are typically 30+ characters.";
+    if (trimmed.length > 100) return "This key looks too long. Check that you haven't pasted extra characters.";
+    if (/\s/.test(trimmed)) return "API keys shouldn't contain spaces.";
+    return null;
+  };
+
   const saveResendKey = async () => {
-    if (!resendKeyInput.trim()) return;
+    const key = resendKeyInput.trim();
+    const validationError = validateResendKey(key);
+    if (validationError) {
+      setResendSaveMsg({ type: "error", text: validationError });
+      return;
+    }
     setSavingResend(true);
     setResendSaveMsg(null);
     try {
       const resp = await fetch(`${BACKEND}/settings/integrations/resend`, {
         method: "PUT",
-        headers: { "X-Integration-Secret": resendKeyInput.trim() },
+        headers: { "X-Integration-Secret": key },
       });
       const data = await resp.json();
       if (resp.ok) {
