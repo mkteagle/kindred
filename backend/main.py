@@ -2456,6 +2456,21 @@ async def _upload_to_flickr(file_data: bytes, filename: str, title: str, descrip
     import time as _t
     import urllib.parse
 
+    # Convert HEIC/HEIF to JPEG — Flickr doesn't accept HEIC
+    ext = os.path.splitext(filename)[1].lower()
+    if ext in (".heic", ".heif"):
+        try:
+            from PIL import Image
+            import io
+            img = Image.open(io.BytesIO(file_data))
+            buf = io.BytesIO()
+            img.convert("RGB").save(buf, format="JPEG", quality=92)
+            file_data = buf.getvalue()
+            filename = os.path.splitext(filename)[0] + ".jpg"
+            print(f"[upload] Converted HEIC to JPEG: {len(file_data)} bytes")
+        except Exception as e:
+            print(f"[upload] HEIC conversion failed: {e}, uploading as-is")
+
     upload_url = "https://up.flickr.com/services/upload/"
 
     # Parameters that go into the OAuth signature (everything EXCEPT the photo binary)
