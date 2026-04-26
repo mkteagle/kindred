@@ -36,7 +36,7 @@ struct TimelineView: View {
                             }
                             .padding(.top, 8)
 
-                            Spacer().frame(height: 40)
+                            Spacer().frame(height: 110)
                         }
                     }
                     .onChange(of: scrollTarget) {

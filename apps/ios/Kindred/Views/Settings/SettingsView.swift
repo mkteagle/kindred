@@ -200,7 +200,7 @@ struct SettingsView: View {
                 NavigationLink {
                     IntelligenceView()
                 } label: {
-                    settingsRow(title: "On-device intelligence", detail: IntelligenceState.shared.enabled ? "On" : "Off") {
+                    settingsRow(title: "Intelligence", detail: IntelligenceState.shared.enabled ? "On" : "Off") {
                         Image(systemName: "chevron.right")
                             .font(.caption)
                             .foregroundStyle(KindredTheme.mist)
@@ -220,6 +220,22 @@ struct SettingsView: View {
                     }
                 }
                 .buttonStyle(.plain)
+
+                // Admin-only: Scan & maintenance
+                if viewModel.session.currentUser?.role == "admin" {
+                    Divider().padding(.leading, 14)
+
+                    NavigationLink {
+                        AdminScanView()
+                    } label: {
+                        settingsRow(title: "Scan & maintenance", detail: nil) {
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(KindredTheme.mist)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .kindredGroupedCard()
             .padding(.horizontal, 16)
@@ -280,7 +296,7 @@ struct SettingsView: View {
         .alert("Privacy", isPresented: $showPrivacyInfo) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Your photo library is stored privately within your household. No data is shared outside your account. All on-device intelligence runs locally and never leaves your phone.")
+            Text("Your photo library is stored privately within your household. No data is shared outside your account. All intelligence processing runs on your server and never leaves your household.")
         }
         .alert("Backend", isPresented: $showBackendURL) {
             Button("OK", role: .cancel) {}
@@ -338,7 +354,7 @@ struct BackupDetailView: View {
                 settingsList
                     .padding(.top, 20)
 
-                Spacer().frame(height: 40)
+                Spacer().frame(height: 110)
             }
         }
         .kindredPaperBackground()

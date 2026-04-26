@@ -28,7 +28,7 @@ struct ClusterDetailView: View {
                 // Photos grid
                 photosGrid
             }
-            .padding(.bottom, 40)
+            .padding(.bottom, 110)
         }
         .kindredPaperBackground()
         .navigationBarTitleDisplayMode(.inline)

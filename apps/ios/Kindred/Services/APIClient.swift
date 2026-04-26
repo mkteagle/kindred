@@ -209,6 +209,10 @@ actor APIClient {
         try await request("/jobs/active")
     }
 
+    func triggerScan() async throws -> TriggerScanResponse {
+        try await request("/scan/auto", method: "POST")
+    }
+
     // MARK: - Errors
 
     enum APIError: LocalizedError {

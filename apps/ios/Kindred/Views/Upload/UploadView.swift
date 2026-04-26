@@ -118,6 +118,7 @@ struct UploadView: View {
                 }
             }
             .padding()
+            .padding(.bottom, 90)
         }
         .refreshable {
             await viewModel.refreshPhotos()

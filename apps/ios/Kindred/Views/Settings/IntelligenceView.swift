@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Intelligence State Manager
 
-/// Manages on-device intelligence settings with UserDefaults persistence.
+/// Manages server-side intelligence settings with UserDefaults persistence.
 @Observable
 final class IntelligenceState {
     static let shared = IntelligenceState()
@@ -30,7 +30,7 @@ final class IntelligenceState {
     let modelVersion = "Kindred Vision \u{00b7} v3.2.1"
     let modelSize = "214 MB"
     let lastUpdated = "Apr 18"
-    let batteryUse = "Light \u{00b7} 1.2%"
+    let serverStatus = "Connected"
     let totalIndexed = 12_407
 
     private init() {
@@ -82,7 +82,7 @@ struct IntelligenceView: View {
                     } else {
                         disabledContent
                     }
-                    Spacer().frame(height: intelligence.enabled ? 40 : 100)
+                    Spacer().frame(height: intelligence.enabled ? 110 : 140)
                 }
             }
             .kindredPaperBackground()
@@ -138,7 +138,7 @@ struct IntelligenceView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will re-run on every photo and takes approximately 40 minutes. Battery use will spike during the run. Plug in for best results.")
+            Text("This will re-run on every photo on your server and takes approximately 40 minutes.")
         }
     }
 
@@ -203,19 +203,19 @@ struct IntelligenceView: View {
                     .offset(x: 30, y: -30)
 
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("ON-DEVICE INTELLIGENCE")
+                    Text("PRIVATE INTELLIGENCE")
                         .font(.kindredEyebrow)
                         .tracking(1.8)
                         .foregroundStyle(KindredTheme.ember)
 
-                    Text("Your photos stay\non your phone.")
+                    Text("Your photos stay\nin your household.")
                         .font(.display(22, weight: .bold))
                         .foregroundStyle(KindredTheme.ash)
                         .lineSpacing(-2)
                         .tracking(-0.11)
                         .padding(.top, 6)
 
-                    Text("Kindred clusters faces, recognises pets, places, and objects right here on this device. Nothing is sent to a server for analysis.")
+                    Text("Kindred clusters faces, recognises pets, places, and objects on your server. Nothing is sent to any third party for analysis.")
                         .font(.body(13))
                         .foregroundStyle(KindredTheme.pine)
                         .lineSpacing(3)
@@ -325,9 +325,9 @@ struct IntelligenceView: View {
     private var statusCard: some View {
         VStack(spacing: 0) {
             statusRow(label: "Model", value: intelligence.modelVersion, isLast: false)
-            statusRow(label: "Size on disk", value: intelligence.modelSize, isLast: false)
+            statusRow(label: "Model size", value: intelligence.modelSize, isLast: false)
             statusRow(label: "Last updated", value: intelligence.lastUpdated, isLast: false)
-            statusRow(label: "Battery use today", value: intelligence.batteryUse, isLast: true)
+            statusRow(label: "Server status", value: intelligence.serverStatus, isLast: true)
         }
         .kindredGroupedCard()
     }
@@ -426,7 +426,7 @@ struct IntelligenceView: View {
                     iconTint: KindredTheme.pine,
                     iconBg: Color(hex: 0x4A281A).opacity(0.06),
                     label: "Re-index library",
-                    caption: "Will re-run on every photo \u{00b7} ~40 min",
+                    caption: "Will re-run on your server \u{00b7} ~40 min",
                     isLast: false
                 )
             }
@@ -539,13 +539,13 @@ struct IntelligenceExplainerSheet: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     // Eyebrow + title
-                    Text("WHAT RUNS ON YOUR PHONE")
+                    Text("WHAT RUNS ON YOUR SERVER")
                         .font(.kindredEyebrow)
                         .tracking(1.8)
                         .foregroundStyle(KindredTheme.ember)
                         .padding(.top, 4)
 
-                    Text("Recognition happens here, not in the cloud.")
+                    Text("Recognition happens on your server, not in the cloud.")
                         .font(.display(22, weight: .bold))
                         .foregroundStyle(KindredTheme.ash)
                         .lineSpacing(-2)
@@ -586,12 +586,12 @@ struct IntelligenceExplainerSheet: View {
     private var diagramCard: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                // Phone column
+                // Server column
                 VStack(spacing: 8) {
-                    Image(systemName: "iphone")
+                    Image(systemName: "server.rack")
                         .font(.system(size: 28, weight: .light))
                         .foregroundStyle(KindredTheme.ash)
-                    Text("This phone")
+                    Text("Your server")
                         .font(.display(11, weight: .bold))
                         .foregroundStyle(KindredTheme.ash)
                     Text("FACE \u{00b7} PET \u{00b7} OBJECT")
@@ -648,7 +648,7 @@ struct IntelligenceExplainerSheet: View {
                 .overlay(KindredTheme.line)
                 .padding(.top, 14)
 
-            Text("Faces, pet detections, and place names are computed on this phone. They never leave it as data \u{2014} only the photo bytes themselves are backed up.")
+            Text("Faces, pet detections, and place names are processed on your server. They never leave your household \u{2014} only the photo bytes themselves are backed up to Flickr.")
                 .font(.body(11.5))
                 .foregroundStyle(KindredTheme.pine)
                 .lineSpacing(3)
@@ -668,12 +668,12 @@ struct IntelligenceExplainerSheet: View {
 
     private var qaSection: some View {
         let qas: [(String, String)] = [
-            ("Does Kindred see my photos?", "No human at Kindred can see your library. Storage is end-to-end with Flickr."),
+            ("Does Kindred see my photos?", "No. Recognition runs on your own server. Storage is end-to-end with Flickr."),
             ("What if I share with the household?", "Detections sync as labels (e.g. \u{201c}Maya\u{201d}, \u{201c}Lake Galena\u{201d}) \u{2014} not raw recognition data."),
             ("Can I turn it off?", "Yes. Existing groups freeze; new photos stop being sorted."),
         ]
 
-        return VStack(spacing: 0) {
+        return VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(qas.enumerated()), id: \.offset) { index, qa in
                 VStack(alignment: .leading, spacing: 3) {
                     Text(qa.0)
@@ -684,6 +684,7 @@ struct IntelligenceExplainerSheet: View {
                         .foregroundStyle(KindredTheme.pine)
                         .lineSpacing(3)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 10)
 
                 if index < qas.count - 1 {
@@ -760,9 +761,9 @@ struct IntelligenceOnboardingView: View {
 
                 // Body
                 (Text("Kindred recognises faces, pets, and places ")
-                + Text("on this device")
+                + Text("on your server")
                     .italic()
-                + Text(" \u{2014} so search and Memories work without sending your photos anywhere."))
+                + Text(" \u{2014} so search and Memories work without sending your photos to any third party."))
                     .font(.body(13.5))
                     .foregroundStyle(KindredTheme.pine)
                     .lineSpacing(3)
@@ -807,9 +808,9 @@ struct IntelligenceOnboardingView: View {
 
     private var trustPoints: some View {
         let points: [(icon: String, title: String, subtitle: String)] = [
-            ("shield.fill", "Stays on this phone", "No cloud analysis"),
+            ("shield.fill", "Stays on your server", "No third-party analysis"),
             ("slider.horizontal.3", "You stay in control", "Toggle any category off, anytime"),
-            ("clock.fill", "~40 min for first sort", "Plug in & it\u{2019}ll be done by morning"),
+            ("clock.fill", "~40 min for first sort", "Runs on your server in the background"),
         ]
 
         return VStack(spacing: 0) {

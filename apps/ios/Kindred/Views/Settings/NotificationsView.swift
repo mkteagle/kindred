@@ -89,7 +89,6 @@ final class NotificationState {
         // Admin
         NotificationType(id: "admin.storage_warning", label: "Storage warning", caption: "< 10% free", group: .admin, pushEnabled: true, emailEnabled: true, inAppEnabled: true, isAdmin: true),
         NotificationType(id: "admin.signin_new_device", label: "Sign-in from new device", caption: "Always", group: .admin, pushEnabled: true, emailEnabled: true, inAppEnabled: true, isAdmin: true),
-        NotificationType(id: "admin.billing", label: "Billing", caption: "Renewals + receipts", group: .admin, pushEnabled: false, emailEnabled: true, inAppEnabled: false, inAppLocked: false, isAdmin: true),
     ]
 
     func typesFor(group: NotificationGroup) -> [NotificationType] {
@@ -200,7 +199,7 @@ struct NotificationsSettingsView: View {
                     }
                 }
 
-                Spacer().frame(height: 40)
+                Spacer().frame(height: 110)
             }
         }
         .kindredPaperBackground()
@@ -404,7 +403,7 @@ struct NotificationTypeDetailView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 18)
 
-                Spacer().frame(height: 40)
+                Spacer().frame(height: 110)
             }
         }
         .kindredPaperBackground()
@@ -639,27 +638,151 @@ struct NotificationTypeDetailView: View {
     }
 }
 
+// MARK: - Inbox View Model
+
+@Observable
+final class InboxViewModel {
+    var syncLogs: [SyncLog] = []
+    var isLoading = false
+    var hasLoaded = false
+
+    func loadSyncHistory() async {
+        guard !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false; hasLoaded = true }
+
+        do {
+            syncLogs = try await APIClient.shared.getSyncs()
+        } catch {
+            syncLogs = []
+        }
+    }
+
+    /// Convert sync logs into inbox items grouped by date
+    var groups: [(eyebrow: String, items: [InboxItem])] {
+        let calendar = Calendar.current
+        let now = Date()
+
+        // Parse sync logs into inbox items
+        var items: [InboxItem] = []
+        for (index, log) in syncLogs.enumerated() {
+            let date = parseDate(log.finished_at ?? log.started_at)
+            let timeString = formatTime(date)
+            let isRecent = calendar.isDateInToday(date ?? now)
+
+            if log.status == "completed" || log.status == "done" {
+                let photosText = (log.total_photos ?? 0).formatted()
+                let facesText = log.new_faces ?? 0
+                let petsText = log.new_pets ?? 0
+
+                var details: [String] = []
+                if facesText > 0 { details.append("\(facesText) new face\(facesText == 1 ? "" : "s") found") }
+                if petsText > 0 { details.append("\(petsText) new pet\(petsText == 1 ? "" : "s") found") }
+
+                let title = "Scan completed \u{2014} \(photosText) photos indexed"
+                let body = details.isEmpty ? "All photos up to date." : details.joined(separator: ", ").prefix(1).uppercased() + details.joined(separator: ", ").dropFirst()
+
+                items.append(InboxItem(
+                    id: "sync_\(log.id)_\(index)",
+                    kind: .sync,
+                    title: title,
+                    body: String(body),
+                    time: timeString,
+                    isNew: isRecent
+                ))
+
+                // Generate cluster notification if new faces found
+                if facesText > 0 {
+                    items.append(InboxItem(
+                        id: "cluster_\(log.id)_\(index)",
+                        kind: .together,
+                        title: "\(facesText) new people cluster\(facesText == 1 ? "" : "s") detected",
+                        body: "Review and label in People.",
+                        time: timeString,
+                        isNew: isRecent
+                    ))
+                }
+            } else if log.status == "failed" || log.status == "error" {
+                items.append(InboxItem(
+                    id: "error_\(log.id)_\(index)",
+                    kind: .admin,
+                    title: "Scan failed",
+                    body: log.error ?? "An error occurred during scanning.",
+                    time: timeString,
+                    isAdmin: true
+                ))
+            }
+        }
+
+        // Group by date
+        var todayItems: [InboxItem] = []
+        var yesterdayItems: [InboxItem] = []
+        var earlierItems: [InboxItem] = []
+
+        for (index, item) in items.enumerated() {
+            // Use the corresponding sync log's date if available
+            let logIndex = index < syncLogs.count ? index : syncLogs.count - 1
+            let logDate: String? = logIndex >= 0 ? (syncLogs[logIndex].finished_at ?? syncLogs[logIndex].started_at) : nil
+            let date = parseDate(logDate)
+
+            if let date = date {
+                if calendar.isDateInToday(date) {
+                    todayItems.append(item)
+                } else if calendar.isDateInYesterday(date) {
+                    yesterdayItems.append(item)
+                } else {
+                    earlierItems.append(item)
+                }
+            } else {
+                earlierItems.append(item)
+            }
+        }
+
+        var result: [(eyebrow: String, items: [InboxItem])] = []
+        if !todayItems.isEmpty { result.append(("Today", todayItems)) }
+        if !yesterdayItems.isEmpty { result.append(("Yesterday", yesterdayItems)) }
+        if !earlierItems.isEmpty { result.append(("Earlier", earlierItems)) }
+
+        // If no sync data at all, show empty state
+        return result
+    }
+
+    private func parseDate(_ dateString: String?) -> Date? {
+        guard let dateString = dateString else { return nil }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = formatter.date(from: dateString) { return d }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: dateString)
+    }
+
+    private func formatTime(_ date: Date?) -> String {
+        guard let date = date else { return "" }
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) || calendar.isDateInYesterday(date) {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "h:mma"
+            formatter.amSymbol = "am"
+            formatter.pmSymbol = "pm"
+            return formatter.string(from: date)
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM d"
+            return formatter.string(from: date)
+        }
+    }
+}
+
 // MARK: - Inbox View (Screen 07)
 
 struct NotificationInboxView: View {
     @State private var filter: InboxFilter = .all
+    @State private var viewModel = InboxViewModel()
     @Environment(\.dismiss) private var dismiss
 
-    private let groups: [(eyebrow: String, items: [InboxItem])] = [
-        ("Today", [
-            InboxItem(id: "1", kind: .memory, title: "A new memory is ready.", body: "\u{201c}Cabin weekend, Lake Galena\u{201d} \u{2014} 14 photos.", time: "9:24am", isNew: true, thumbnailURL: "https://images.unsplash.com/photo-1502086223501-7ea6ecd79368?auto=format&fit=crop&w=120&q=80"),
-            InboxItem(id: "2", kind: .together, title: "Maya & Theo together \u{2014} 23 new shots.", body: "From the past 4 weeks.", time: "9:24am", isNew: true),
-            InboxItem(id: "3", kind: .sync, title: "1,242 photos backed up overnight.", body: "Sync finished at 4:18am.", time: "8:00am"),
-        ]),
-        ("Yesterday", [
-            InboxItem(id: "4", kind: .household, title: "Sarah joined Wright household.", body: "Invited by Mom.", time: "5:42pm"),
-            InboxItem(id: "5", kind: .cover, title: "Cover photo updated for Maya.", body: "By Mom.", time: "10:11am"),
-        ]),
-        ("Earlier", [
-            InboxItem(id: "6", kind: .admin, title: "Storage at 92%.", body: "Review largest months.", time: "Aug 14", isAdmin: true),
-            InboxItem(id: "7", kind: .signin, title: "Sign-in from new iPad.", body: "Was this you?", time: "Aug 12", isAdmin: true),
-        ]),
-    ]
+    private var groups: [(eyebrow: String, items: [InboxItem])] {
+        viewModel.groups
+    }
 
     private var filteredGroups: [(eyebrow: String, items: [InboxItem])] {
         switch filter {
@@ -764,23 +887,43 @@ struct NotificationInboxView: View {
                 // Inbox content
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
-                        ForEach(Array(filteredGroups.enumerated()), id: \.element.eyebrow) { _, group in
-                            KindredEyebrow(text: group.eyebrow, color: KindredTheme.pine)
-                                .padding(.horizontal, 20)
-                                .padding(.top, 10)
-                                .padding(.bottom, 6)
+                        if viewModel.isLoading {
+                            ProgressView()
+                                .tint(KindredTheme.ember)
+                                .padding(.top, 40)
+                        } else if filteredGroups.isEmpty {
+                            VStack(spacing: 12) {
+                                Image(systemName: "bell.slash")
+                                    .font(.system(size: 36, weight: .light))
+                                    .foregroundStyle(KindredTheme.pine.opacity(0.4))
+                                Text("No notifications yet")
+                                    .font(.kindredH3)
+                                    .foregroundStyle(KindredTheme.ash)
+                                Text("Scan history will appear here.")
+                                    .font(.kindredBody)
+                                    .foregroundStyle(KindredTheme.mist)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 60)
+                        } else {
+                            ForEach(Array(filteredGroups.enumerated()), id: \.element.eyebrow) { _, group in
+                                KindredEyebrow(text: group.eyebrow, color: KindredTheme.pine)
+                                    .padding(.horizontal, 20)
+                                    .padding(.top, 10)
+                                    .padding(.bottom, 6)
 
-                            VStack(spacing: 0) {
-                                ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
-                                    inboxRow(item: item)
+                                VStack(spacing: 0) {
+                                    ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
+                                        inboxRow(item: item)
 
-                                    if index < group.items.count - 1 {
-                                        Divider().overlay(KindredTheme.line).padding(.leading, 14)
+                                        if index < group.items.count - 1 {
+                                            Divider().overlay(KindredTheme.line).padding(.leading, 14)
+                                        }
                                     }
                                 }
+                                .kindredGroupedCard()
+                                .padding(.horizontal, 16)
                             }
-                            .kindredGroupedCard()
-                            .padding(.horizontal, 16)
                         }
                         Spacer().frame(height: 110)
                     }
@@ -788,6 +931,9 @@ struct NotificationInboxView: View {
             }
             .kindredPaperBackground()
             .navigationBarHidden(true)
+            .task {
+                await viewModel.loadSyncHistory()
+            }
         }
     }
 
