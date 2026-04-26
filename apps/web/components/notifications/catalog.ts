@@ -107,7 +107,6 @@ export const NOTIF_CATALOG: NotifTypeDef[] = [
     glyphStyle: "cover",
   },
   {
-  {
     id: "admin.signin_new_device",
     title: "Sign-in from new device",
     description: "Always tell the admin",
