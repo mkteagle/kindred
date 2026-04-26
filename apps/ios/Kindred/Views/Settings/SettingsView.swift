@@ -679,7 +679,7 @@ struct BackupDetailView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Remove \(uploadVM.photoManager.uploadedCount) photos from this device that are already backed up? They'll stay safe in your Kindred library on Flickr.")
+            Text("Remove \(uploadVM.photoManager.uploadedCount) photos from this device that are already backed up to Flickr?\n\nThey'll move to Recently Deleted in Photos where you can recover them for 30 days.")
         }
         .alert("Space freed", isPresented: $showFreedAlert) {
             Button("OK") {}
