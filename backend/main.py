@@ -1047,10 +1047,15 @@ def save_resend_key(request: FastAPIRequest, admin=Depends(require_admin)):
 @app.get("/settings/integrations/resend")
 def get_resend_status(admin=Depends(require_admin)):
     """Check whether a Resend API key is configured (admin only)."""
+    import base64
     rows = db_query("SELECT value FROM settings WHERE key = 'resend_api_key'")
     if not rows or not rows[0]["value"]:
         return {"configured": False, "key_preview": None}
-    return {"configured": True, "key_preview": _mask_key(rows[0]["value"])}
+    try:
+        decoded = base64.b64decode(rows[0]["value"]).decode()
+    except Exception:
+        decoded = rows[0]["value"]
+    return {"configured": True, "key_preview": _mask_key(decoded)}
 
 @app.delete("/settings/integrations/resend")
 def remove_resend_key(admin=Depends(require_admin)):
@@ -1087,7 +1092,7 @@ def send_email_invite(req: EmailInviteRequest, request: FastAPIRequest, admin=De
 
     # Send the email via Resend (using httpx to avoid Cloudflare blocks)
     email_payload = {
-        "from": "Kindred Photos <noreply@kindredphotos.app>",
+        "from": os.getenv("RESEND_FROM_EMAIL", "Kindred Photos <onboarding@resend.dev>"),
         "to": [req.email],
         "subject": f"{admin.get('display_name', 'Someone')} invited you to Kindred Photos",
         "html": _build_invite_email_html(
