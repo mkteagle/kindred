@@ -1147,8 +1147,8 @@ def _build_invite_email_html(inviter_name: str, invite_code: str, recipient_name
         <table width="520" cellpadding="0" cellspacing="0" style="background:#fffdf8;border-radius:12px;border:1px solid rgba(74,40,26,.12);overflow:hidden;">
           <!-- Wordmark -->
           <tr>
-            <td style="padding:28px 36px 0;text-align:center;">
-              <img src="{app_url}/kindred-wordmark.png" alt="Kindred Photos" width="140" style="display:inline-block;" />
+            <td style="padding:28px 36px 16px;text-align:center;">
+              <span style="font-family:'Space Grotesk','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:18px;font-weight:700;color:#2a201b;letter-spacing:-0.01em;">Kindred Photos</span>
             </td>
           </tr>
           <!-- Header -->
