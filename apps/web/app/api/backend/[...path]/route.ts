@@ -23,6 +23,12 @@ async function handleRequest(
       headers["X-Session-Token"] = session.session_token;
     }
 
+    // Forward integration secrets (e.g., Resend API key)
+    const integrationSecret = req.headers.get("X-Integration-Secret");
+    if (integrationSecret) {
+      headers["X-Integration-Secret"] = integrationSecret;
+    }
+
     const opts: RequestInit = {
       method: req.method,
       headers,
