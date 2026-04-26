@@ -28,17 +28,8 @@ struct ContentView: View {
                 .opacity(selectedTab == 3 ? 1 : 0)
                 .allowsHitTesting(selectedTab == 3)
 
-            // Demo mode banner (above tab bar)
-            VStack(spacing: 0) {
-                Spacer()
-                if demo.isActive {
-                    DemoModeBanner {
-                        DemoDataProvider.shared.deactivate()
-                        SessionManager.shared.logout()
-                    }
-                }
-                KindredTabBar(selectedTab: $selectedTab)
-            }
+            // Tab bar
+            KindredTabBar(selectedTab: $selectedTab)
         }
         .ignoresSafeArea(.keyboard)
     }

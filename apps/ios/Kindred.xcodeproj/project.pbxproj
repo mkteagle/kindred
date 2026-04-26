@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		6E76377EC2FC22A166E689FE /* family-group-2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 0EE7E94CB0BB4214F11B8BFB /* family-group-2.jpg */; };
+		0B10B78D1D9F77D49CFC0FF2 /* family-group-1.jpg in Resources */ = {isa = PBXBuildFile; fileRef = E0E338BBE15A803E1EAA7FCE /* family-group-1.jpg */; };
 		04E9688757D435178D8671F7 /* uncle-2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 549C4D11791776572822ACFA /* uncle-2.jpg */; };
 		8B6BCA7A18FCF384E0E07056 /* uncle-1.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A03D1EFEC4D3CAB12B38D65C /* uncle-1.jpg */; };
 		15D7DBD599527252A51824E5 /* theo-2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 5CA16463661B72D31096F4F5 /* theo-2.jpg */; };
@@ -123,6 +125,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0EE7E94CB0BB4214F11B8BFB /* family-group-2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = family-group-2.jpg; sourceTree = "<group>"; };
+		E0E338BBE15A803E1EAA7FCE /* family-group-1.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = family-group-1.jpg; sourceTree = "<group>"; };
 		549C4D11791776572822ACFA /* uncle-2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = uncle-2.jpg; sourceTree = "<group>"; };
 		A03D1EFEC4D3CAB12B38D65C /* uncle-1.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = uncle-1.jpg; sourceTree = "<group>"; };
 		5CA16463661B72D31096F4F5 /* theo-2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = theo-2.jpg; sourceTree = "<group>"; };
@@ -236,6 +240,8 @@
 			isa = PBXGroup;
 			children = (
 				824EEAF1AB6C9A7134E6B126 /* autumn-walk.jpg */,
+				0EE7E94CB0BB4214F11B8BFB /* family-group-2.jpg */,
+				E0E338BBE15A803E1EAA7FCE /* family-group-1.jpg */,
 				549C4D11791776572822ACFA /* uncle-2.jpg */,
 				A03D1EFEC4D3CAB12B38D65C /* uncle-1.jpg */,
 				5CA16463661B72D31096F4F5 /* theo-2.jpg */,
@@ -571,6 +577,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6E76377EC2FC22A166E689FE /* family-group-2.jpg in Resources */,
+				0B10B78D1D9F77D49CFC0FF2 /* family-group-1.jpg in Resources */,
 				04E9688757D435178D8671F7 /* uncle-2.jpg in Resources */,
 				8B6BCA7A18FCF384E0E07056 /* uncle-1.jpg in Resources */,
 				15D7DBD599527252A51824E5 /* theo-2.jpg in Resources */,

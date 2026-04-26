@@ -114,18 +114,19 @@ final class DemoDataProvider {
     }
 
     /// Per-cluster photo collections — each person gets their own photos
+    // Per-person collections — shared family photos appear in multiple people's clusters (realistic)
     private static let clusterPhotos: [String: [String]] = [
-        "demo_p1": ["young-woman", "maya-1", "maya-2", "maya-3", "family-beach", "kids-birthday"],         // Maya
-        "demo_p2": ["dad-portrait", "dad-2", "dad-3", "family-dinner", "road-trip", "sunset-portrait"],    // Dad
-        "demo_p3": ["mom-portrait", "mom-2", "mom-3", "family-beach", "family-dinner", "kids-birthday"],   // Mom
-        "demo_p4": ["sam-1", "sam-2", "friends-laughing", "beach-waves", "road-trip"],                     // Sam
-        "demo_p5": ["theo-1", "theo-2", "man-portrait", "mountain-lake", "autumn-walk"],                   // Theo
-        "demo_p6": ["grandma-1", "grandma-2", "grandma-3", "family-dinner"],                               // Grandma
-        "demo_p7": ["uncle-1", "uncle-2", "sunset-portrait", "road-trip"],                                  // Uncle Jim
-        "demo_p8": ["baby-playing", "baby-2", "baby-3", "family-beach"],                                   // Baby Lily
-        "demo_pet1": ["dog-golden", "luna-2", "luna-3", "dog-park"],                                       // Luna
-        "demo_pet2": ["cat-sitting", "mochi-2"],                                                            // Mochi
-        "demo_pet3": ["dog-park", "dog-golden", "luna-3"],                                                  // Buddy
+        "demo_p1": ["young-woman", "maya-1", "maya-2", "maya-3", "family-beach", "family-group-1", "kids-birthday", "family-dinner"],  // Maya
+        "demo_p2": ["dad-portrait", "dad-2", "dad-3", "family-group-1", "family-group-2", "family-dinner", "road-trip", "family-beach"],  // Dad
+        "demo_p3": ["mom-portrait", "mom-2", "mom-3", "family-group-1", "family-group-2", "family-beach", "family-dinner", "kids-birthday"],  // Mom
+        "demo_p4": ["sam-1", "sam-2", "friends-laughing", "family-group-1", "beach-waves", "road-trip", "birthday-cake"],  // Sam
+        "demo_p5": ["theo-1", "theo-2", "man-portrait", "family-group-2", "mountain-lake", "autumn-walk"],  // Theo
+        "demo_p6": ["grandma-1", "grandma-2", "grandma-3", "family-group-1", "family-dinner", "kids-birthday"],  // Grandma
+        "demo_p7": ["uncle-1", "uncle-2", "family-group-2", "sunset-portrait", "road-trip"],  // Uncle Jim
+        "demo_p8": ["baby-playing", "baby-2", "baby-3", "family-beach", "family-group-1", "mom-2"],  // Baby Lily
+        "demo_pet1": ["dog-golden", "luna-2", "luna-3", "dog-park", "family-beach"],  // Luna
+        "demo_pet2": ["cat-sitting", "mochi-2"],  // Mochi
+        "demo_pet3": ["dog-park", "dog-golden", "luna-3"],  // Buddy
     ]
 
     func getClusterDetail(category: String, clusterId: String) -> ClusterDetail {
