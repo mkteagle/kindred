@@ -9,6 +9,7 @@ struct HomeView: View {
     @State private var showTogether = false
     @State private var showMemory = false
     @State private var showInbox = false
+    @State private var lastLoadedAt: Date?
 
     /// Callback for tab navigation from notification taps
     var onNavigateToTab: ((Int) -> Void)? = nil
@@ -76,11 +77,24 @@ struct HomeView: View {
                 await libraryVM.loadClusters()
                 await exploreVM.loadTimeline()
                 await inboxVM.loadSyncHistory()
+                lastLoadedAt = Date()
             }
             .refreshable {
                 await libraryVM.loadClusters()
                 await exploreVM.loadTimeline()
                 await inboxVM.loadSyncHistory()
+                lastLoadedAt = Date()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                // Refresh if data is older than 5 minutes
+                if let loaded = lastLoadedAt, Date().timeIntervalSince(loaded) > 300 {
+                    Task {
+                        await libraryVM.loadClusters()
+                        await exploreVM.loadTimeline()
+                        await inboxVM.loadSyncHistory()
+                        lastLoadedAt = Date()
+                    }
+                }
             }
         }
     }
