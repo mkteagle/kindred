@@ -470,7 +470,7 @@ struct BackupDetailView: View {
                     Text("Auto-backup")
                         .font(.kindredLabel)
                         .foregroundStyle(KindredTheme.ash)
-                    Text("On · Wi-Fi only")
+                    Text("On")
                         .font(.kindredMeta)
                         .foregroundStyle(KindredTheme.mist)
                 }

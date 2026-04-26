@@ -291,6 +291,87 @@ actor APIClient {
         return components.url
     }
 
+    // MARK: - Photo Upload (proxied through backend to Flickr)
+
+    struct UploadResponse: Codable {
+        let photo_id: String
+        let status: String
+    }
+
+    struct BatchUploadResult: Codable {
+        let filename: String?
+        let photo_id: String?
+        let status: String
+        let error: String?
+    }
+
+    struct BatchUploadResponse: Codable {
+        let results: [BatchUploadResult]
+        let uploaded: Int
+        let failed: Int
+    }
+
+    /// Upload a single photo/video through the backend proxy to Flickr.
+    /// Any authenticated household member can upload — the backend uses the admin's Flickr credentials.
+    func uploadPhoto(data: Data, filename: String, title: String, description: String = "") async throws -> UploadResponse {
+        guard let url = URL(string: "\(baseURL)/photos/upload") else {
+            throw APIError.invalidURL
+        }
+
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 300  // 5 min for large files
+
+        if let token = sessionToken {
+            req.setValue(token, forHTTPHeaderField: "X-Session-Token")
+        }
+
+        var body = Data()
+
+        // Title field
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"title\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(title)\r\n".data(using: .utf8)!)
+
+        // Description field
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"description\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(description)\r\n".data(using: .utf8)!)
+
+        // Photo file
+        let contentType = mimeType(for: filename)
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"photo\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(contentType)\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+
+        req.httpBody = body
+
+        let (responseData, response) = try await session.data(for: req)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            throw APIError.httpError(code)
+        }
+        return try decoder.decode(UploadResponse.self, from: responseData)
+    }
+
+    private func mimeType(for filename: String) -> String {
+        let ext = (filename as NSString).pathExtension.lowercased()
+        switch ext {
+        case "heic", "heif": return "image/heic"
+        case "jpg", "jpeg": return "image/jpeg"
+        case "png": return "image/png"
+        case "gif": return "image/gif"
+        case "mov": return "video/quicktime"
+        case "mp4", "m4v": return "video/mp4"
+        default: return "application/octet-stream"
+        }
+    }
+
     // MARK: - Errors
 
     enum APIError: LocalizedError {

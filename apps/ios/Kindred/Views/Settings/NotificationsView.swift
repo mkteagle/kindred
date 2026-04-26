@@ -78,7 +78,7 @@ final class NotificationState {
         NotificationType(id: "photos.backed_up", label: "New photos backed up", caption: "Daily digest", group: .photos, pushEnabled: false, inAppEnabled: true, frequency: .daily),
         NotificationType(id: "photos.memory_ready", label: "Memory ready", caption: "On this day, trips, spotlights", group: .photos, pushEnabled: true, inAppEnabled: true),
         NotificationType(id: "photos.together_found", label: "Together found", caption: "When 2+ people now share a photo", group: .photos, pushEnabled: true, inAppEnabled: true),
-        NotificationType(id: "photos.sync_paused", label: "Sync paused", caption: "Out of Wi-Fi range", group: .photos, pushEnabled: true, inAppEnabled: true),
+        NotificationType(id: "photos.sync_paused", label: "Sync paused", caption: "No network connection", group: .photos, pushEnabled: true, inAppEnabled: true),
         // Household
         NotificationType(id: "household.member_joined", label: "Member joined or left", caption: "Always", group: .household, pushEnabled: true, inAppEnabled: true),
         NotificationType(id: "household.activity", label: "Photo activity", caption: "Comments and hearts", group: .household, pushEnabled: false, inAppEnabled: true),

@@ -2,11 +2,11 @@
 Kindred backend — FastAPI + PostgreSQL/pgvector
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 import numpy as np
 import json
 import uuid
@@ -2420,6 +2420,364 @@ def appears_with(cluster_id: str, limit: int = 15):
 
     return {"appears_with": [dict(r) for r in rows]}
 
+# ── Photo Upload (proxy to Flickr via admin credentials) ────────────────────
+
+UPLOAD_MAX_SIZE = 50 * 1024 * 1024  # 50 MB
+UPLOAD_ALLOWED_TYPES = {
+    "image/jpeg", "image/png", "image/gif", "image/heic", "image/heif",
+    "video/mp4", "video/quicktime",
+}
+UPLOAD_ALLOWED_EXTENSIONS = {
+    ".jpg", ".jpeg", ".png", ".gif", ".heic", ".heif", ".mp4", ".mov",
+}
+
+def _content_type_for_filename(filename: str) -> str:
+    ext = os.path.splitext(filename)[1].lower()
+    mapping = {
+        ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".png": "image/png", ".gif": "image/gif",
+        ".heic": "image/heic", ".heif": "image/heif",
+        ".mp4": "video/mp4", ".mov": "video/quicktime",
+    }
+    return mapping.get(ext, "application/octet-stream")
+
+def _validate_upload_file(file: UploadFile) -> None:
+    """Validate an upload file's extension and content type."""
+    if not file.filename:
+        raise HTTPException(400, "Filename is required")
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in UPLOAD_ALLOWED_EXTENSIONS:
+        raise HTTPException(400, f"Unsupported file type: {ext}. Allowed: {', '.join(sorted(UPLOAD_ALLOWED_EXTENSIONS))}")
+
+async def _upload_to_flickr(file_data: bytes, filename: str, title: str, description: str, creds: dict) -> str:
+    """Upload a single file to Flickr using the admin's OAuth credentials. Returns the Flickr photo ID."""
+    import hmac
+    import hashlib
+    import time as _t
+    import urllib.parse
+
+    upload_url = "https://up.flickr.com/services/upload/"
+
+    # Parameters that go into the OAuth signature (everything EXCEPT the photo binary)
+    flickr_params = {
+        "title": title,
+        "description": description,
+        "is_public": "0",
+        "is_friend": "0",
+        "is_family": "1",
+    }
+
+    # Build OAuth header (POST method for upload)
+    oauth_params = {
+        "oauth_consumer_key": FLICKR_API_KEY,
+        "oauth_token": creds["oauth_token"],
+        "oauth_signature_method": "HMAC-SHA1",
+        "oauth_timestamp": str(int(_t.time())),
+        "oauth_nonce": uuid.uuid4().hex,
+        "oauth_version": "1.0",
+    }
+    all_sign_params = {**flickr_params, **oauth_params}
+    sorted_params = "&".join(
+        f"{urllib.parse.quote(k, '')}={urllib.parse.quote(str(v), '')}"
+        for k, v in sorted(all_sign_params.items())
+    )
+    base_string = f"POST&{urllib.parse.quote(upload_url, '')}&{urllib.parse.quote(sorted_params, '')}"
+    signing_key = f"{urllib.parse.quote(FLICKR_SECRET, '')}&{urllib.parse.quote(creds['oauth_secret'], '')}"
+    sig = base64.b64encode(
+        hmac.new(signing_key.encode(), base_string.encode(), hashlib.sha1).digest()
+    ).decode()
+    oauth_params["oauth_signature"] = sig
+
+    auth_header = "OAuth " + ", ".join(
+        f'{k}="{urllib.parse.quote(str(v), "")}"'
+        for k, v in oauth_params.items()
+    )
+
+    # Build multipart body
+    boundary = f"Boundary-{uuid.uuid4().hex}"
+    content_type = _content_type_for_filename(filename)
+
+    body = b""
+    for key, value in flickr_params.items():
+        body += f"--{boundary}\r\n".encode()
+        body += f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode()
+        body += f"{value}\r\n".encode()
+    body += f"--{boundary}\r\n".encode()
+    body += f'Content-Disposition: form-data; name="photo"; filename="{filename}"\r\n'.encode()
+    body += f"Content-Type: {content_type}\r\n\r\n".encode()
+    body += file_data
+    body += f"\r\n--{boundary}--\r\n".encode()
+
+    async with httpx.AsyncClient(timeout=300) as client:
+        resp = await client.post(
+            upload_url,
+            content=body,
+            headers={
+                "Authorization": auth_header,
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+            },
+        )
+
+    if resp.status_code not in range(200, 300):
+        raise HTTPException(502, f"Flickr upload failed (HTTP {resp.status_code}): {resp.text[:500]}")
+
+    # Parse photo ID from XML response: <photoid>12345</photoid>
+    response_text = resp.text
+    import re
+    match = re.search(r"<photoid>(\d+)</photoid>", response_text)
+    if not match:
+        # Check for error
+        err_match = re.search(r'<err code="(\d+)" msg="([^"]*)"', response_text)
+        if err_match:
+            raise HTTPException(502, f"Flickr upload error {err_match.group(1)}: {err_match.group(2)}")
+        raise HTTPException(502, f"Could not parse Flickr upload response: {response_text[:500]}")
+
+    return match.group(1)
+
+
+@app.post("/photos/upload")
+async def upload_photo(
+    background_tasks: BackgroundTasks,
+    request: FastAPIRequest,
+    photo: UploadFile = File(...),
+    title: str = Form(""),
+    description: str = Form(""),
+    user=Depends(get_current_user),
+):
+    """Upload a photo/video to Flickr via the household's admin credentials.
+
+    Any authenticated household member can upload — the admin's Flickr OAuth
+    tokens are used so members don't need their own Flickr accounts.
+    """
+    _validate_upload_file(photo)
+
+    # Read file data and enforce size limit
+    file_data = await photo.read()
+    if len(file_data) > UPLOAD_MAX_SIZE:
+        raise HTTPException(413, f"File too large. Maximum size is {UPLOAD_MAX_SIZE // (1024*1024)}MB")
+    if len(file_data) == 0:
+        raise HTTPException(400, "Empty file")
+
+    # Get admin Flickr credentials
+    creds = get_flickr_credentials()
+    if not creds:
+        raise HTTPException(500, "Flickr OAuth not configured — ask your household admin to connect Flickr")
+
+    filename = photo.filename or "upload.jpg"
+    if not title:
+        title = os.path.splitext(filename)[0]
+
+    photo_id = await _upload_to_flickr(file_data, filename, title, description, creds)
+
+    # Trigger async ML processing for images (not videos)
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in (".mp4", ".mov"):
+        background_tasks.add_task(_process_uploaded_photo, photo_id)
+
+    uploader_name = user.get("display_name") or user.get("username") or "A member"
+    create_notification("photo_uploaded", f"{uploader_name} uploaded a photo",
+        title or filename,
+        {"photo_id": photo_id, "uploader": user.get("username", "")})
+
+    return {"photo_id": photo_id, "status": "ok"}
+
+
+@app.post("/photos/upload-batch")
+async def upload_photos_batch(
+    background_tasks: BackgroundTasks,
+    request: FastAPIRequest,
+    photos: List[UploadFile] = File(...),
+    title: str = Form(""),
+    description: str = Form(""),
+    user=Depends(get_current_user),
+):
+    """Upload multiple photos/videos (up to 10) to Flickr via admin credentials."""
+    if len(photos) > 10:
+        raise HTTPException(400, "Maximum 10 files per batch upload")
+    if len(photos) == 0:
+        raise HTTPException(400, "No files provided")
+
+    creds = get_flickr_credentials()
+    if not creds:
+        raise HTTPException(500, "Flickr OAuth not configured — ask your household admin to connect Flickr")
+
+    results = []
+    for i, photo_file in enumerate(photos):
+        try:
+            _validate_upload_file(photo_file)
+            file_data = await photo_file.read()
+            if len(file_data) > UPLOAD_MAX_SIZE:
+                results.append({"filename": photo_file.filename, "status": "error", "error": "File too large"})
+                continue
+            if len(file_data) == 0:
+                results.append({"filename": photo_file.filename, "status": "error", "error": "Empty file"})
+                continue
+
+            filename = photo_file.filename or f"upload_{i}.jpg"
+            file_title = title or os.path.splitext(filename)[0]
+
+            photo_id = await _upload_to_flickr(file_data, filename, file_title, description, creds)
+
+            # Trigger async ML processing for images
+            ext = os.path.splitext(filename)[1].lower()
+            if ext not in (".mp4", ".mov"):
+                background_tasks.add_task(_process_uploaded_photo, photo_id)
+
+            results.append({"filename": filename, "photo_id": photo_id, "status": "ok"})
+        except HTTPException as e:
+            results.append({"filename": photo_file.filename or f"file_{i}", "status": "error", "error": e.detail})
+        except Exception as e:
+            results.append({"filename": photo_file.filename or f"file_{i}", "status": "error", "error": str(e)})
+
+    ok_count = sum(1 for r in results if r["status"] == "ok")
+    uploader_name = user.get("display_name") or user.get("username") or "A member"
+    if ok_count > 0:
+        create_notification("photos_uploaded", f"{uploader_name} uploaded {ok_count} photo{'s' if ok_count != 1 else ''}",
+            f"{ok_count} of {len(photos)} uploaded successfully",
+            {"count": ok_count, "uploader": user.get("username", "")})
+
+    return {"results": results, "uploaded": ok_count, "failed": len(photos) - ok_count}
+
+
+async def _process_uploaded_photo(photo_id: str) -> None:
+    """Background task: run ML pipeline on a newly uploaded photo."""
+    import urllib.parse
+
+    try:
+        # Fetch photo URL from Flickr
+        flickr_creds = get_flickr_credentials()
+        if not flickr_creds:
+            return
+
+        flickr_url = "https://api.flickr.com/services/rest"
+        params = {
+            "method": "flickr.photos.getInfo",
+            "photo_id": photo_id,
+            "format": "json",
+            "nojsoncallback": "1",
+        }
+        oauth_params = _flickr_oauth_sign(flickr_url, params)
+        auth_header = "OAuth " + ", ".join(
+            f'{k}="{urllib.parse.quote(str(v), "")}"'
+            for k, v in oauth_params.items()
+        )
+        qs = urllib.parse.urlencode(params)
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(f"{flickr_url}?{qs}", headers={"Authorization": auth_header})
+            data = resp.json()
+
+        if data.get("stat") != "ok":
+            print(f"[upload-process] Could not fetch photo info for {photo_id}: {data.get('message')}")
+            return
+
+        info = data["photo"]
+        server = info.get("server", "")
+        secret = info.get("secret", "")
+        photo_url = f"https://live.staticflickr.com/{server}/{photo_id}_{secret}_z.jpg"
+        owner_id = (flickr_creds or {}).get("user_id", "") or ""
+
+        photo = {
+            "id": photo_id,
+            "url": photo_url,
+            "title": info.get("title", {}).get("_content", "") if isinstance(info.get("title"), dict) else str(info.get("title", "")),
+            "owner": owner_id,
+            "thumb": photo_url.replace("_z.jpg", "_q.jpg"),
+            "flickr_url": f"https://www.flickr.com/photos/{owner_id}/{photo_id}" if owner_id else "",
+        }
+
+        # Run ML processing
+        import cv2
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(photo_url)
+            resp.raise_for_status()
+        arr = np.frombuffer(resp.content, np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if img is None:
+            print(f"[upload-process] Could not decode image for {photo_id}")
+            return
+
+        face_app = get_face_app()
+        yolo = get_yolo()
+        conn = get_db()
+        counts = {"people": 0, "pets": 0, "vehicles": 0}
+
+        try:
+            faces = face_app.get(img)
+            for face in faces:
+                bbox = face.bbox.tolist()
+                bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
+                if bw < 24 or bh < 24:
+                    continue
+                x1, y1 = max(0, int(bbox[0])), max(0, int(bbox[1]))
+                x2, y2 = min(img.shape[1], int(bbox[2])), min(img.shape[0], int(bbox[3]))
+                face_crop = img[y1:y2, x1:x2]
+                if face_crop.size > 0:
+                    gray = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
+                    if cv2.Laplacian(gray, cv2.CV_64F).var() < 15:
+                        continue
+                if float(face.det_score) < 0.35:
+                    continue
+                insert_detection(conn, photo, "people", "face",
+                    bbox, float(face.det_score),
+                    face.embedding.tolist(), img)
+                counts["people"] += 1
+
+            yolo_results = yolo(img[:, :, ::-1], verbose=False)
+            for box in yolo_results[0].boxes:
+                cls_id = int(box.cls[0])
+                score = float(box.conf[0])
+                if score < 0.4:
+                    continue
+                xyxy = box.xyxy[0].tolist()
+                clip_emb = clip_embed_image(img, bbox=xyxy)
+                emb_list = clip_emb.tolist() if clip_emb is not None else []
+                if cls_id in PET_CLASSES:
+                    insert_detection(conn, photo, "pets", PET_CLASSES[cls_id],
+                        xyxy, score, emb_list, img)
+                    counts["pets"] += 1
+                elif cls_id in VEHICLE_CLASSES:
+                    insert_detection(conn, photo, "vehicles", VEHICLE_CLASSES[cls_id],
+                        xyxy, score, emb_list, img)
+                    counts["vehicles"] += 1
+
+            photo_clip = clip_embed_image(img)
+            if photo_clip is not None:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO photo_embeddings (photo_id, clip_embedding)
+                        VALUES (%s, %s) ON CONFLICT (photo_id) DO NOTHING
+                    """, (photo_id, np.array(photo_clip, dtype=np.float32)))
+
+            try:
+                colors = _extract_dominant_colors(img)
+                if colors:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            INSERT INTO photo_colors (photo_id, colors)
+                            VALUES (%s, %s) ON CONFLICT (photo_id) DO NOTHING
+                        """, (photo_id, json.dumps(colors)))
+            except Exception:
+                pass
+
+            conn.commit()
+
+            for cat in ("people", "pets", "vehicles"):
+                if counts[cat] > 0:
+                    try:
+                        run_clustering(cat, distance_threshold=0.80)
+                    except Exception as e:
+                        print(f"  upload-process cluster {cat} failed: {e}")
+
+        except Exception as e:
+            conn.rollback()
+            print(f"[upload-process] ML processing failed for {photo_id}: {e}")
+        finally:
+            conn.close()
+
+    except Exception as e:
+        print(f"[upload-process] Failed to process uploaded photo {photo_id}: {e}")
+
+
 @app.get("/search")
 def search_photos(q: str, limit: int = 50):
     """Search photos — checks named people first (fuzzy trigram matching), then CLIP visual search."""
@@ -3156,9 +3514,10 @@ def clear_all(admin=Depends(require_admin)):
 
 # ── Feature 1: Photo metadata from Flickr ────────────────────────────────────
 
-def _flickr_oauth_sign(url: str, params: dict, creds: dict | None = None) -> dict:
+def _flickr_oauth_sign(url: str, params: dict, creds: dict | None = None, method: str = "GET") -> dict:
     """Sign a Flickr API request using OAuth 1.0a.
     creds: { oauth_token, oauth_secret, user_id } — from get_flickr_credentials()
+    method: HTTP method (GET or POST) — affects the signature base string.
     """
     import hmac
     import hashlib
@@ -3183,7 +3542,7 @@ def _flickr_oauth_sign(url: str, params: dict, creds: dict | None = None) -> dic
         f"{urllib.parse.quote(k, '')}={urllib.parse.quote(str(v), '')}"
         for k, v in sorted(all_params.items())
     )
-    base_string = f"GET&{urllib.parse.quote(url, '')}&{urllib.parse.quote(sorted_params, '')}"
+    base_string = f"{method}&{urllib.parse.quote(url, '')}&{urllib.parse.quote(sorted_params, '')}"
     signing_key = f"{urllib.parse.quote(FLICKR_SECRET, '')}&{urllib.parse.quote(creds['oauth_secret'], '')}"
     sig = base64.b64encode(
         hmac.new(signing_key.encode(), base_string.encode(), hashlib.sha1).digest()
