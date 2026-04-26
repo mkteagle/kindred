@@ -6,10 +6,13 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { Spinner } from "@/components/ui";
 import type { SearchResult } from "@/types";
 import { BACKEND } from "@/lib/constants";
+import { useLightbox } from "@/components/photo-lightbox";
+import type { LightboxPhoto } from "@/components/photo-lightbox";
 
 function SearchContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { openLightbox } = useLightbox();
   const initialQ = searchParams.get("q") || "";
   const [input, setInput] = useState(initialQ);
   const [debouncedQ, setDebouncedQ] = useState(initialQ);
@@ -72,28 +75,36 @@ function SearchContent() {
             {results.length} results for &ldquo;{debouncedQ}&rdquo;
           </p>
           <div className="clip-results-grid">
-            {results.map((result) => (
-              <a
-                key={result.photo_id}
-                href={result.flickr_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="clip-result-card"
-              >
-                <img
-                  src={result.thumb_url || result.photo_url}
-                  alt={result.photo_title || "Search result"}
-                />
-                <div className="clip-result-info">
-                  <span className="clip-result-title">
-                    {result.photo_title || "Untitled"}
-                  </span>
-                  <span className="clip-result-score">
-                    {Math.round((1 - result.distance) * 100)}% match
-                  </span>
-                </div>
-              </a>
-            ))}
+            {(() => {
+              const lbPhotos: LightboxPhoto[] = results.map((r) => ({
+                photo_id: r.photo_id,
+                thumb_url: r.thumb_url || r.photo_url,
+                flickr_url: r.flickr_url,
+                photo_url: r.photo_url,
+                photo_title: r.photo_title,
+              }));
+              return results.map((result) => (
+                <button
+                  key={result.photo_id}
+                  className="clip-result-card"
+                  onClick={() => openLightbox(result.photo_id, lbPhotos)}
+                  style={{ border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
+                >
+                  <img
+                    src={result.thumb_url || result.photo_url}
+                    alt={result.photo_title || "Search result"}
+                  />
+                  <div className="clip-result-info">
+                    <span className="clip-result-title">
+                      {result.photo_title || "Untitled"}
+                    </span>
+                    <span className="clip-result-score">
+                      {Math.round((1 - result.distance) * 100)}% match
+                    </span>
+                  </div>
+                </button>
+              ));
+            })()}
           </div>
         </>
       )}

@@ -6,6 +6,8 @@ import { Button, Spinner } from "./ui";
 import { MergeDialog } from "./dialogs";
 import type { ClusterSummary, ClusterDetail, Detection } from "@/types";
 import { BACKEND, CATEGORIES, fmt, toBackendCategory } from "@/lib/constants";
+import { useLightbox } from "@/components/photo-lightbox";
+import type { LightboxPhoto } from "@/components/photo-lightbox";
 
 const getUniquePhotos = (items: Detection[]): Detection[] => {
   const seen = new Map<string, Detection>();
@@ -38,6 +40,7 @@ export function ReviewMode({
   onDeleteDetection,
   onClose,
 }: ReviewModeProps) {
+  const { openLightbox } = useLightbox();
   const backendCat = toBackendCategory(category);
   const categoryInfo = CATEGORIES.find((c) => c.id === category) || CATEGORIES[0];
 
@@ -281,12 +284,21 @@ export function ReviewMode({
                 <div className="rv-photos">
                   <label className="rv-label">Photos</label>
                   <div className="rv-photos-grid">
-                    {uniquePhotos.slice(0, 6).map((p) => (
-                      <button key={p.photo_id} className="rv-ph"
-                        onClick={() => window.open(p.flickr_url || p.photo_url, "_blank")}>
-                        <img src={p.thumb_url || p.photo_url} alt={p.photo_title || ""} />
-                      </button>
-                    ))}
+                    {uniquePhotos.slice(0, 6).map((p) => {
+                      const lbPhotos: LightboxPhoto[] = uniquePhotos.map((ph) => ({
+                        photo_id: ph.photo_id,
+                        thumb_url: ph.thumb_url || ph.photo_url,
+                        flickr_url: ph.flickr_url,
+                        photo_url: ph.photo_url,
+                        photo_title: ph.photo_title,
+                      }));
+                      return (
+                        <button key={p.photo_id} className="rv-ph"
+                          onClick={() => openLightbox(p.photo_id, lbPhotos)}>
+                          <img src={p.thumb_url || p.photo_url} alt={p.photo_title || ""} />
+                        </button>
+                      );
+                    })}
                     {uniquePhotos.length > 6 && (
                       <span className="rv-ph-more">+{uniquePhotos.length - 6}</span>
                     )}

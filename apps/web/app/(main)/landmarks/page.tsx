@@ -5,6 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Button, Spinner } from "@/components/ui";
 import type { ScenesResponse, SceneGroup } from "@/types";
 import { BACKEND } from "@/lib/constants";
+import { useLightbox } from "@/components/photo-lightbox";
+import type { LightboxPhoto } from "@/components/photo-lightbox";
 
 const SCENE_LABELS = [
   "beach",
@@ -39,6 +41,7 @@ function SceneCard({
   label: string;
   photos: SceneGroup[];
 }) {
+  const { openLightbox } = useLightbox();
   const [expanded, setExpanded] = useState(false);
   const preview = photos.slice(0, 6);
   const remaining = photos.length - preview.length;
@@ -63,28 +66,32 @@ function SceneCard({
         )}
       </div>
       <div className="scene-photo-grid">
-        {(expanded ? photos : preview).map((photo) => (
-          <a
-            key={photo.photo_id}
-            href={photo.flickr_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="clip-result-card"
-          >
-            <img
-              src={photo.thumb_url || photo.photo_url}
-              alt={photo.photo_title || label}
-            />
-            <div className="clip-result-info">
-              <span className="clip-result-title">
-                {photo.photo_title || "Untitled"}
-              </span>
-              <span className="clip-result-score">
-                {Math.round((1 - photo.distance) * 100)}% match
-              </span>
+        {(expanded ? photos : preview).map((photo) => {
+          const lbPhotos: LightboxPhoto[] = photos.map((p) => ({
+            photo_id: p.photo_id, thumb_url: p.thumb_url || p.photo_url, flickr_url: p.flickr_url, photo_url: p.photo_url, photo_title: p.photo_title,
+          }));
+          return (
+            <button
+              key={photo.photo_id}
+              className="clip-result-card"
+              onClick={() => openLightbox(photo.photo_id, lbPhotos)}
+              style={{ border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
+            >
+              <img
+                src={photo.thumb_url || photo.photo_url}
+                alt={photo.photo_title || label}
+              />
+              <div className="clip-result-info">
+                <span className="clip-result-title">
+                  {photo.photo_title || "Untitled"}
+                </span>
+                <span className="clip-result-score">
+                  {Math.round((1 - photo.distance) * 100)}% match
+                </span>
             </div>
-          </a>
-        ))}
+          </button>
+          );
+        })}
       </div>
       {!expanded && remaining > 0 && (
         <p

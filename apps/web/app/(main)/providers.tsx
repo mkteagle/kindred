@@ -1,8 +1,9 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { initPostHog } from "@/lib/posthog";
+import { LightboxProvider } from "@/components/photo-lightbox";
 
 /**
  * Global 401 interceptor — when the backend returns 401 on any /api/* route
@@ -63,6 +64,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <Suspense fallback={null}>
+        <LightboxProvider>{children}</LightboxProvider>
+      </Suspense>
+    </QueryClientProvider>
   );
 }

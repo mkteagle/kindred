@@ -6,6 +6,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Button, Spinner } from "@/components/ui";
 import type { LocationsResponse, LocationGroup } from "@/types";
 import { BACKEND, fmt } from "@/lib/constants";
+import { useLightbox } from "@/components/photo-lightbox";
+import type { LightboxPhoto } from "@/components/photo-lightbox";
 
 // Leaflet must be loaded client-side only (no SSR)
 const LocationMap = dynamic(() => import("./map"), { ssr: false });
@@ -20,9 +22,17 @@ function LocationCard({
   onSelect: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const { openLightbox } = useLightbox();
   const preview = location.photos.slice(0, 6);
   const remaining = location.photos.length - preview.length;
   const visible = expanded ? location.photos : preview;
+
+  const lbPhotos: LightboxPhoto[] = location.photos.map((p) => ({
+    photo_id: p.photo_id,
+    thumb_url: p.thumb_url,
+    flickr_url: p.flickr_url,
+    photo_title: p.photo_title,
+  }));
 
   return (
     <article
@@ -50,12 +60,12 @@ function LocationCard({
       </div>
       <div className="scene-photo-grid">
         {visible.map((photo) => (
-          <a key={photo.photo_id} href={photo.flickr_url} target="_blank" rel="noopener noreferrer" className="clip-result-card">
+          <button key={photo.photo_id} className="clip-result-card" onClick={() => openLightbox(photo.photo_id, lbPhotos)} style={{ border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
             <img src={photo.thumb_url} alt={photo.photo_title || ""} />
             <div className="clip-result-info">
               <span className="clip-result-title">{photo.photo_title || "Untitled"}</span>
             </div>
-          </a>
+          </button>
         ))}
       </div>
       {!expanded && remaining > 0 && (

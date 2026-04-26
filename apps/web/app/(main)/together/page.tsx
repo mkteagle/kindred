@@ -6,6 +6,8 @@ import { useSearchParams } from "next/navigation";
 import { Button, Spinner } from "@/components/ui";
 import { BACKEND, fmt } from "@/lib/constants";
 import type { ClustersSummaryResponse, ClusterSummary } from "@/types";
+import { useLightbox } from "@/components/photo-lightbox";
+import type { LightboxPhoto } from "@/components/photo-lightbox";
 
 interface TogetherPhoto {
   photo_id: string;
@@ -31,6 +33,7 @@ export default function TogetherPage() {
 
 function TogetherPageInner() {
   const searchParams = useSearchParams();
+  const { openLightbox } = useLightbox();
   const [selectedPeople, setSelectedPeople] = useState<Set<string>>(new Set());
 
   // Initialize from URL params
@@ -136,20 +139,19 @@ function TogetherPageInner() {
             </div>
             {results.photos.length > 0 ? (
               <div className="clip-results-grid">
-                {results.photos.map((photo) => (
-                  <a
-                    key={photo.photo_id}
-                    href={photo.flickr_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="clip-result-card"
-                  >
-                    <img src={photo.thumb_url || photo.photo_url} alt={photo.photo_title || ""} />
-                    <div className="clip-result-info">
-                      <span className="clip-result-title">{photo.photo_title || "Untitled"}</span>
-                    </div>
-                  </a>
-                ))}
+                {results.photos.map((photo) => {
+                  const lbPhotos: LightboxPhoto[] = results.photos.map((p) => ({
+                    photo_id: p.photo_id, thumb_url: p.thumb_url || p.photo_url, flickr_url: p.flickr_url, photo_url: p.photo_url, photo_title: p.photo_title,
+                  }));
+                  return (
+                    <button key={photo.photo_id} className="clip-result-card" onClick={() => openLightbox(photo.photo_id, lbPhotos)} style={{ border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+                      <img src={photo.thumb_url || photo.photo_url} alt={photo.photo_title || ""} />
+                      <div className="clip-result-info">
+                        <span className="clip-result-title">{photo.photo_title || "Untitled"}</span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               <div className="empty-state" style={{ minHeight: 120 }}>

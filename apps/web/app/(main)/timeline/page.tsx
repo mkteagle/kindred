@@ -5,6 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Button, Spinner } from "@/components/ui";
 import type { TimelineResponse, TimelineMonth } from "@/types";
 import { BACKEND, fmt } from "@/lib/constants";
+import { useLightbox } from "@/components/photo-lightbox";
+import type { LightboxPhoto } from "@/components/photo-lightbox";
 
 function formatMonth(monthStr: string): string {
   const [year, month] = monthStr.split("-");
@@ -14,9 +16,18 @@ function formatMonth(monthStr: string): string {
 
 function MonthSection({ month }: { month: TimelineMonth }) {
   const [expanded, setExpanded] = useState(false);
+  const { openLightbox } = useLightbox();
   const preview = month.photos.slice(0, 12);
   const remaining = month.photos.length - preview.length;
   const visible = expanded ? month.photos : preview;
+
+  const lbPhotos: LightboxPhoto[] = month.photos.map((p) => ({
+    photo_id: p.photo_id,
+    thumb_url: p.thumb_url,
+    flickr_url: p.flickr_url,
+    photo_title: p.photo_title,
+    date_taken: p.date_taken,
+  }));
 
   return (
     <section className="timeline-month">
@@ -35,12 +46,11 @@ function MonthSection({ month }: { month: TimelineMonth }) {
       </div>
       <div className="clip-results-grid">
         {visible.map((photo) => (
-          <a
+          <button
             key={photo.photo_id}
-            href={photo.flickr_url}
-            target="_blank"
-            rel="noopener noreferrer"
             className="clip-result-card"
+            onClick={() => openLightbox(photo.photo_id, lbPhotos)}
+            style={{ border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
           >
             <img src={photo.thumb_url} alt={photo.photo_title || ""} />
             <div className="clip-result-info">
@@ -53,7 +63,7 @@ function MonthSection({ month }: { month: TimelineMonth }) {
                   : ""}
               </span>
             </div>
-          </a>
+          </button>
         ))}
       </div>
       {!expanded && remaining > 0 && (

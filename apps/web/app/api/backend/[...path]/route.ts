@@ -33,6 +33,20 @@ async function handleRequest(
     }
 
     const backendResp = await fetch(url, opts);
+
+    // Check if response is binary (image, etc.) — don't try to parse as JSON
+    const contentType = backendResp.headers.get("content-type") || "";
+    if (contentType.startsWith("image/") || contentType.startsWith("application/octet-stream")) {
+      const buffer = await backendResp.arrayBuffer();
+      return new NextResponse(buffer, {
+        status: backendResp.status,
+        headers: {
+          "Content-Type": contentType,
+          "Cache-Control": backendResp.headers.get("cache-control") || "private, max-age=3600",
+        },
+      });
+    }
+
     const data = await backendResp.json();
     return NextResponse.json(data, { status: backendResp.status });
   } catch (err) {

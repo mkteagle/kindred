@@ -5,6 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Spinner } from "@/components/ui";
 import type { SearchResult } from "@/types";
 import { BACKEND, fmt } from "@/lib/constants";
+import { useLightbox } from "@/components/photo-lightbox";
+import type { LightboxPhoto } from "@/components/photo-lightbox";
 
 const PRESET_COLORS = [
   { name: "Red", hex: "ff0000" },
@@ -20,6 +22,7 @@ const PRESET_COLORS = [
 ];
 
 export default function ColorsPage() {
+  const { openLightbox } = useLightbox();
   const [selectedHex, setSelectedHex] = useState("");
   const [hexInput, setHexInput] = useState("");
   const [threshold, setThreshold] = useState(50);
@@ -137,30 +140,34 @@ export default function ColorsPage() {
               #{activeHex}
             </p>
             <div className="clip-results-grid">
-              {results.map((result) => (
-                <a
-                  key={result.photo_id}
-                  href={result.flickr_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="clip-result-card"
-                >
-                  <img
-                    src={result.thumb_url || result.photo_url}
-                    alt={result.photo_title || "Color match"}
-                  />
-                  <div className="clip-result-info">
-                    <span className="clip-result-title">
-                      {result.photo_title || "Untitled"}
-                    </span>
-                    {result.distance !== undefined && (
-                      <span className="clip-result-score">
-                        {Math.round((1 - result.distance) * 100)}% match
+              {results.map((result) => {
+                const lbPhotos: LightboxPhoto[] = results.map((r) => ({
+                  photo_id: r.photo_id, thumb_url: r.thumb_url || r.photo_url, flickr_url: r.flickr_url, photo_url: r.photo_url, photo_title: r.photo_title,
+                }));
+                return (
+                  <button
+                    key={result.photo_id}
+                    className="clip-result-card"
+                    onClick={() => openLightbox(result.photo_id, lbPhotos)}
+                    style={{ border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
+                  >
+                    <img
+                      src={result.thumb_url || result.photo_url}
+                      alt={result.photo_title || "Color match"}
+                    />
+                    <div className="clip-result-info">
+                      <span className="clip-result-title">
+                        {result.photo_title || "Untitled"}
                       </span>
-                    )}
-                  </div>
-                </a>
-              ))}
+                      {result.distance !== undefined && (
+                        <span className="clip-result-score">
+                          {Math.round((1 - result.distance) * 100)}% match
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </>
         )}

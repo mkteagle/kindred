@@ -21,6 +21,9 @@ import type {
   Job,
 } from "@/types";
 import { BACKEND, CATEGORIES, fmt, toBackendCategory } from "@/lib/constants";
+import { useLightbox } from "@/components/photo-lightbox";
+import type { LightboxPhoto } from "@/components/photo-lightbox";
+import { useUser } from "@/lib/use-user";
 
 const API = "/api";
 
@@ -345,6 +348,7 @@ export default function CategoryPage() {
   const router = useRouter();
   const categoryParam = (params.category as string) || "people";
   const qc = useQueryClient();
+  const { isAdmin: isEffectiveAdmin } = useUser();
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -801,7 +805,7 @@ export default function CategoryPage() {
   return (
     <div className="app-shell">
       <main className="page">
-        {scanning && (
+        {isEffectiveAdmin && scanning && (
           <section className="scan-card">
             <div className="scan-top">
               <Spinner />
@@ -922,7 +926,7 @@ export default function CategoryPage() {
                   {clustering ? "Building groups" : "Build groups"}
                 </Button>
               ) : (
-                user &&
+                isEffectiveAdmin && user &&
                 !search && (
                   <Button variant="primary" onClick={startScan}>
                     <span className="icon">+</span>
@@ -937,36 +941,40 @@ export default function CategoryPage() {
         {!summaryLoading && hasClusters && (
           <>
             <div className="grid-toolbar">
-              <Button
-                small
-                variant={groupByVisual ? "primary" : "ghost"}
-                onClick={() => {
-                  const newParams = new URLSearchParams(searchParams.toString());
-                  if (groupByVisual) {
-                    newParams.delete("group");
-                  } else {
-                    newParams.set("group", "visual");
-                  }
-                  sortOrderRef.current = [];
-                  router.replace(`/${activeCategory}?${newParams.toString()}`, { scroll: false });
-                }}
-              >
-                {groupByVisual ? "Grouped by similarity" : "Group similar"}
-              </Button>
-              <Button small variant="ghost" onClick={buildGroups} disabled={clustering}>
-                {clustering ? "Reclustering..." : "Recluster"}
-              </Button>
-              {activeCategory === "animals" && (
-                <Button small variant="primary" onClick={reclassifySpecies} disabled={reclassifying}>
-                  {reclassifying ? "Reclassifying..." : "Reclassify species"}
-                </Button>
+              {isEffectiveAdmin && (
+                <>
+                  <Button
+                    small
+                    variant={groupByVisual ? "primary" : "ghost"}
+                    onClick={() => {
+                      const newParams = new URLSearchParams(searchParams.toString());
+                      if (groupByVisual) {
+                        newParams.delete("group");
+                      } else {
+                        newParams.set("group", "visual");
+                      }
+                      sortOrderRef.current = [];
+                      router.replace(`/${activeCategory}?${newParams.toString()}`, { scroll: false });
+                    }}
+                  >
+                    {groupByVisual ? "Grouped by similarity" : "Group similar"}
+                  </Button>
+                  <Button small variant="ghost" onClick={buildGroups} disabled={clustering}>
+                    {clustering ? "Reclustering..." : "Recluster"}
+                  </Button>
+                  {activeCategory === "animals" && (
+                    <Button small variant="primary" onClick={reclassifySpecies} disabled={reclassifying}>
+                      {reclassifying ? "Reclassifying..." : "Reclassify species"}
+                    </Button>
+                  )}
+                  {unnamedClusters.length > 0 && (
+                    <Button small variant="primary" onClick={() => setReviewOpen(true)}>
+                      Review {fmt.format(unnamedClusters.length)} unnamed
+                    </Button>
+                  )}
+                </>
               )}
-              {unnamedClusters.length > 0 && (
-                <Button small variant="primary" onClick={() => setReviewOpen(true)}>
-                  Review {fmt.format(unnamedClusters.length)} unnamed
-                </Button>
-              )}
-              {gridSelecting ? (
+              {isEffectiveAdmin && gridSelecting ? (
                 <Button
                   small
                   variant="ghost"
@@ -977,7 +985,7 @@ export default function CategoryPage() {
                 >
                   Done
                 </Button>
-              ) : (
+              ) : isEffectiveAdmin ? (
                 <Button
                   small
                   variant="ghost"
@@ -985,8 +993,8 @@ export default function CategoryPage() {
                 >
                   Select
                 </Button>
-              )}
-              {gridSelecting && (
+              ) : null}
+              {isEffectiveAdmin && gridSelecting && (
                 <span
                   style={{
                     fontSize: 13,
@@ -997,7 +1005,7 @@ export default function CategoryPage() {
                   {gridSelected.size} selected
                 </span>
               )}
-              {gridSelecting && gridSelected.size > 0 && (
+              {isEffectiveAdmin && gridSelecting && gridSelected.size > 0 && (
                 <>
                   <Button
                     small
@@ -1031,7 +1039,7 @@ export default function CategoryPage() {
                   </Button>
                 </>
               )}
-              {gridSelecting && (
+              {isEffectiveAdmin && gridSelecting && (
                 <>
                   <Button
                     small
@@ -1152,7 +1160,7 @@ export default function CategoryPage() {
           </>
         )}
 
-        {(summary?.noise_count ?? 0) > 0 && (
+        {isEffectiveAdmin && (summary?.noise_count ?? 0) > 0 && (
           <UnmatchedSection
             category={activeCategory}
             count={summary!.noise_count!}
@@ -1221,7 +1229,7 @@ export default function CategoryPage() {
         </footer>
       </main>
 
-      {reviewOpen && unnamedClusters.length > 0 && (
+      {isEffectiveAdmin && reviewOpen && unnamedClusters.length > 0 && (
         <ReviewMode
           category={activeCategory}
           clusters={unnamedClusters}

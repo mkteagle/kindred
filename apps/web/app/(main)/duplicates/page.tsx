@@ -5,8 +5,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Spinner } from "@/components/ui";
 import type { DuplicatesResponse } from "@/types";
 import { BACKEND, fmt } from "@/lib/constants";
+import { useLightbox } from "@/components/photo-lightbox";
+import type { LightboxPhoto } from "@/components/photo-lightbox";
 
 export default function DuplicatesPage() {
+  const { openLightbox } = useLightbox();
   const [threshold, setThreshold] = useState(0.05);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
@@ -163,7 +166,15 @@ export default function DuplicatesPage() {
                   <img
                     src={photo.thumb_url || photo.photo_url}
                     alt="Duplicate photo"
-                    onClick={() => window.open(photo.flickr_url, "_blank")}
+                    onClick={() => {
+                      const lbPhotos: LightboxPhoto[] = group.photos.map((p) => ({
+                        photo_id: p.photo_id,
+                        thumb_url: p.thumb_url || p.photo_url,
+                        flickr_url: p.flickr_url,
+                        photo_url: p.photo_url,
+                      }));
+                      openLightbox(photo.photo_id, lbPhotos);
+                    }}
                   />
                   {photoIdx === 0 && (
                     <span className="dup-original-badge">Original</span>

@@ -267,6 +267,57 @@ img {
 .nb-user-header strong { display: block; font-size: 13px; line-height: 1.3; }
 .nb-user-header span { display: block; font-size: 11px; color: var(--mist); }
 
+/* Popover section label (e.g. "ADMIN" in More dropdown) */
+.nb-popover-section-label {
+  padding: 6px 10px 2px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .16em;
+  color: var(--ember);
+}
+
+/* Admin tray — visually grouped admin tools in navbar */
+.nb-admin-tray {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 4px 10px;
+  border: 1px solid rgba(201,85,28,.18);
+  background: rgba(201,85,28,.06);
+  border-radius: 8px;
+}
+
+.nb-admin-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .16em;
+  color: var(--ember);
+  margin-right: 4px;
+}
+
+.nb-admin-icon {
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  border: none; border-radius: 6px;
+  background: var(--card);
+  color: var(--mist);
+  cursor: pointer;
+  transition: color .12s, background .12s;
+  text-decoration: none;
+}
+.nb-admin-icon:hover { color: var(--ash); background: rgba(18,18,24,.06); }
+.nb-admin-icon:disabled { opacity: .5; cursor: default; }
+
+/* Vertical divider in nav actions */
+.nb-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--line);
+  margin: 0 4px;
+}
+
 /* Right actions */
 .nb-actions {
   display: flex;

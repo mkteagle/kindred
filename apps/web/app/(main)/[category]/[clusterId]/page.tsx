@@ -9,6 +9,8 @@ import { PhotoTagDialog } from "@/components/photo-tag-dialog";
 import { FocalPointDialog } from "@/components/focal-point-dialog";
 import type { ClustersSummaryResponse, ClusterDetail, Detection } from "@/types";
 import { BACKEND, fmt, toBackendCategory } from "@/lib/constants";
+import { useLightbox } from "@/components/photo-lightbox";
+import type { LightboxPhoto } from "@/components/photo-lightbox";
 
 const getUniquePhotos = (items: Detection[]): Detection[] => {
   const photoMap = new Map<string, Detection>();
@@ -24,6 +26,7 @@ export default function ClusterDetailPage() {
   const backendCat = toBackendCategory(category);
   const clusterId = (params.clusterId as string) || "";
   const qc = useQueryClient();
+  const { openLightbox } = useLightbox();
 
   const [coverPickMode, setCoverPickMode] = useState(false);
   const [focalPickPhoto, setFocalPickPhoto] = useState<string | null>(null);
@@ -380,6 +383,16 @@ export default function ClusterDetailPage() {
                         setFocalPickPhoto(item.photo_id)
                       }
                       onTagPhoto={() => setTagPhotoId(item.photo_id)}
+                      onOpenLightbox={() => {
+                        const lbPhotos: LightboxPhoto[] = uniquePhotos.map((p) => ({
+                          photo_id: p.photo_id,
+                          thumb_url: p.thumb_url || p.photo_url,
+                          flickr_url: p.flickr_url,
+                          photo_url: p.photo_url,
+                          photo_title: p.photo_title,
+                        }));
+                        openLightbox(item.photo_id, lbPhotos);
+                      }}
                     />
                   );
                 })}
@@ -623,6 +636,7 @@ function PhotoThumb({
   onSetCover,
   onToggleFocalPick,
   onTagPhoto,
+  onOpenLightbox,
 }: {
   item: Detection;
   isCover: boolean;
@@ -630,6 +644,7 @@ function PhotoThumb({
   onSetCover: () => void;
   onToggleFocalPick: () => void;
   onTagPhoto: () => void;
+  onOpenLightbox: () => void;
 }) {
   return (
     <div
@@ -639,7 +654,7 @@ function PhotoThumb({
         if (coverPickMode) {
           onSetCover();
         } else {
-          window.open(item.flickr_url || item.photo_url, "_blank");
+          onOpenLightbox();
         }
       }}
       title={
@@ -784,6 +799,7 @@ interface TogetherPhoto {
 }
 
 function SharedPhotos({ clusterId, otherClusterId }: { clusterId: string; otherClusterId: string }) {
+  const { openLightbox } = useLightbox();
   const { data, isLoading } = useQuery<{ photos: TogetherPhoto[] }>({
     queryKey: ["together", clusterId, otherClusterId],
     queryFn: () => fetch(`${BACKEND}/photos/together?people=${clusterId},${otherClusterId}&limit=30`).then((r) => r.json()),
@@ -794,12 +810,20 @@ function SharedPhotos({ clusterId, otherClusterId }: { clusterId: string; otherC
   const photos = data?.photos || [];
   if (photos.length === 0) return <p style={{ color: "var(--mist)", fontSize: 12, padding: "8px 0" }}>No shared photos found.</p>;
 
+  const lbPhotos: LightboxPhoto[] = photos.map((p) => ({
+    photo_id: p.photo_id,
+    thumb_url: p.thumb_url || p.photo_url,
+    flickr_url: p.flickr_url,
+    photo_url: p.photo_url,
+    photo_title: p.photo_title,
+  }));
+
   return (
     <div className="clip-results-grid" style={{ marginTop: 8, marginBottom: 12 }}>
       {photos.map((photo) => (
-        <a key={photo.photo_id} href={photo.flickr_url} target="_blank" rel="noopener noreferrer" className="clip-result-card">
+        <button key={photo.photo_id} className="clip-result-card" onClick={() => openLightbox(photo.photo_id, lbPhotos)} style={{ border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
           <img src={photo.thumb_url || photo.photo_url} alt={photo.photo_title || ""} />
-        </a>
+        </button>
       ))}
     </div>
   );

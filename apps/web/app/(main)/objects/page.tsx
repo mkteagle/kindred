@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Spinner } from "@/components/ui";
 import { BACKEND, fmt } from "@/lib/constants";
+import { useLightbox } from "@/components/photo-lightbox";
+import type { LightboxPhoto } from "@/components/photo-lightbox";
 
 interface ObjectPhoto {
   photo_id: string;
@@ -19,6 +21,7 @@ interface ObjectsResponse {
 }
 
 function ObjectCard({ label, photos }: { label: string; photos: ObjectPhoto[] }) {
+  const { openLightbox } = useLightbox();
   const [expanded, setExpanded] = useState(false);
   const preview = photos.slice(0, 6);
   const remaining = photos.length - preview.length;
@@ -40,21 +43,20 @@ function ObjectCard({ label, photos }: { label: string; photos: ObjectPhoto[] })
         )}
       </div>
       <div className="scene-photo-grid">
-        {visible.map((photo) => (
-          <a
-            key={photo.photo_id}
-            href={photo.flickr_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="clip-result-card"
-          >
-            <img src={photo.thumb_url || photo.photo_url} alt={photo.photo_title || ""} />
-            <div className="clip-result-info">
-              <span className="clip-result-title">{photo.photo_title || "Untitled"}</span>
-              <span className="clip-result-score">{Math.round((1 - photo.distance) * 100)}%</span>
-            </div>
-          </a>
-        ))}
+        {visible.map((photo) => {
+          const lbPhotos: LightboxPhoto[] = photos.map((p) => ({
+            photo_id: p.photo_id, thumb_url: p.thumb_url || p.photo_url, flickr_url: p.flickr_url, photo_url: p.photo_url, photo_title: p.photo_title,
+          }));
+          return (
+            <button key={photo.photo_id} className="clip-result-card" onClick={() => openLightbox(photo.photo_id, lbPhotos)} style={{ border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+              <img src={photo.thumb_url || photo.photo_url} alt={photo.photo_title || ""} />
+              <div className="clip-result-info">
+                <span className="clip-result-title">{photo.photo_title || "Untitled"}</span>
+                <span className="clip-result-score">{Math.round((1 - photo.distance) * 100)}%</span>
+              </div>
+            </button>
+          );
+        })}
       </div>
       {!expanded && remaining > 0 && (
         <p className="summary-note" style={{ textAlign: "left", marginTop: 10 }}>

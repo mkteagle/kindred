@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Spinner } from "@/components/ui";
 import { BACKEND, fmt } from "@/lib/constants";
+import { useLightbox } from "@/components/photo-lightbox";
+import type { LightboxPhoto } from "@/components/photo-lightbox";
 
 interface EventPhoto {
   photo_id: string;
@@ -40,6 +42,7 @@ function EventCard({
   onLabel: (key: string, name: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const { openLightbox } = useLightbox();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(event.custom_name || "");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -97,20 +100,19 @@ function EventCard({
         </div>
       </div>
       <div className="scene-photo-grid">
-        {visible.map((photo) => (
-          <a
-            key={photo.photo_id}
-            href={photo.flickr_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="clip-result-card"
-          >
-            <img src={photo.thumb_url || photo.photo_url} alt={photo.photo_title || ""} />
-            <div className="clip-result-info">
-              <span className="clip-result-title">{photo.photo_title || "Untitled"}</span>
-            </div>
-          </a>
-        ))}
+        {visible.map((photo) => {
+          const lbPhotos: LightboxPhoto[] = event.photos.map((p) => ({
+            photo_id: p.photo_id, thumb_url: p.thumb_url || p.photo_url, flickr_url: p.flickr_url, photo_url: p.photo_url, photo_title: p.photo_title,
+          }));
+          return (
+            <button key={photo.photo_id} className="clip-result-card" onClick={() => openLightbox(photo.photo_id, lbPhotos)} style={{ border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+              <img src={photo.thumb_url || photo.photo_url} alt={photo.photo_title || ""} />
+              <div className="clip-result-info">
+                <span className="clip-result-title">{photo.photo_title || "Untitled"}</span>
+              </div>
+            </button>
+          );
+        })}
       </div>
       {!expanded && remaining > 0 && (
         <p className="summary-note" style={{ textAlign: "left", marginTop: 10 }}>
