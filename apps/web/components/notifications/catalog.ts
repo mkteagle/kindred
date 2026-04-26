@@ -61,7 +61,7 @@ export const NOTIF_CATALOG: NotifTypeDef[] = [
   {
     id: "photos.sync_paused",
     title: "Sync paused",
-    description: "Out of Wi-Fi or storage",
+    description: "Out of Wi-Fi range",
     section: "photos",
     pushDefault: true,
     inboxDefault: true,
@@ -107,17 +107,6 @@ export const NOTIF_CATALOG: NotifTypeDef[] = [
     glyphStyle: "cover",
   },
   {
-    id: "admin.storage_warning",
-    title: "Storage warning",
-    description: "< 10% of plan free",
-    section: "admin",
-    pushDefault: true,
-    inboxDefault: true,
-    inboxLocked: true,
-    frequency: "realtime",
-    triggers: "Storage % crosses 90 / 95 / 99",
-    glyphStyle: "admin",
-  },
   {
     id: "admin.signin_new_device",
     title: "Sign-in from new device",
@@ -157,7 +146,7 @@ export function getGlyphStyle(type: string): string {
   if (type.includes("together") || type === "photos.together_found") return "together";
   if (type.includes("sync") || type.includes("backed_up") || type === "scan_complete" || type === "photo_processed") return "sync";
   if (type.includes("household") || type.includes("member")) return "household";
-  if (type.includes("admin") || type.includes("storage") || type.includes("signin") || type === "photos_deleted") return "admin";
+  if (type.includes("admin") || type.includes("signin") || type === "photos_deleted") return "admin";
   if (type.includes("activity") || type.includes("comment") || type.includes("heart")) return "activity";
   if (type.includes("cover")) return "cover";
   return "sync";

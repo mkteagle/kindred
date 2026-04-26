@@ -78,13 +78,12 @@ final class NotificationState {
         NotificationType(id: "photos.backed_up", label: "New photos backed up", caption: "Daily digest", group: .photos, pushEnabled: false, inAppEnabled: true, frequency: .daily),
         NotificationType(id: "photos.memory_ready", label: "Memory ready", caption: "On this day, trips, spotlights", group: .photos, pushEnabled: true, inAppEnabled: true),
         NotificationType(id: "photos.together_found", label: "Together found", caption: "When 2+ people now share a photo", group: .photos, pushEnabled: true, inAppEnabled: true),
-        NotificationType(id: "photos.sync_paused", label: "Sync paused", caption: "Out of Wi-Fi or storage", group: .photos, pushEnabled: true, inAppEnabled: true),
+        NotificationType(id: "photos.sync_paused", label: "Sync paused", caption: "Out of Wi-Fi range", group: .photos, pushEnabled: true, inAppEnabled: true),
         // Household
         NotificationType(id: "household.member_joined", label: "Member joined or left", caption: "Always", group: .household, pushEnabled: true, inAppEnabled: true),
         NotificationType(id: "household.activity", label: "Photo activity", caption: "Comments and hearts", group: .household, pushEnabled: false, inAppEnabled: true),
         NotificationType(id: "household.cover_updated", label: "Cover updated", caption: "", group: .household, pushEnabled: false, inAppEnabled: true),
         // Admin
-        NotificationType(id: "admin.storage_warning", label: "Storage warning", caption: "< 10% free", group: .admin, pushEnabled: true, inAppEnabled: true, isAdmin: true),
         NotificationType(id: "admin.signin_new_device", label: "Sign-in from new device", caption: "Always", group: .admin, pushEnabled: true, inAppEnabled: true, isAdmin: true),
     ]
 
@@ -646,11 +645,6 @@ final class NotificationReadState: ObservableObject {
         persist()
     }
 
-    var unreadCount: Int {
-        // This is updated externally by the view model
-        0
-    }
-
     private func persist() {
         UserDefaults.standard.set(Array(readIDs), forKey: key)
     }
@@ -836,7 +830,7 @@ final class InboxViewModel {
 struct NotificationInboxView: View {
     @State private var filter: InboxFilter = .all
     @State private var viewModel = InboxViewModel()
-    @StateObject private var readState = NotificationReadState.shared
+    @ObservedObject private var readState = NotificationReadState.shared
     @Environment(\.dismiss) private var dismiss
 
     /// Callback to navigate: 1 = Library tab, 3 = Settings tab
