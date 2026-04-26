@@ -273,3 +273,14 @@ struct TogetherPhoto: Codable, Identifiable {
 struct HealthResponse: Codable {
     let status: String
 }
+
+// MARK: - Auth Me Response
+
+struct MeResponse: Codable {
+    let loggedIn: Bool
+    let userId: String?
+    let username: String?
+    let display_name: String?
+    let role: String?
+    let avatar_url: String?
+}

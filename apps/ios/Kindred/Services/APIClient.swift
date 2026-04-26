@@ -110,6 +110,12 @@ actor APIClient {
         }
     }
 
+    // MARK: - Generic GET
+
+    func get<T: Decodable>(_ path: String) async throws -> T {
+        try await request(path)
+    }
+
     // MARK: - Health
 
     func healthCheck() async throws -> HealthResponse {

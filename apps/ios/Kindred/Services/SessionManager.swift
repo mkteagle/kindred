@@ -106,6 +106,29 @@ final class SessionManager {
         await APIClient.shared.setSessionToken(response.session.token)
     }
 
+    // MARK: - Refresh (sync latest user data from server)
+
+    func refreshUser() async {
+        guard isAuthenticated, sessionToken != nil else { return }
+        do {
+            let me: MeResponse = try await APIClient.shared.get("/auth/me")
+            guard me.loggedIn else { return }
+            let updated = UserInfo(
+                id: me.userId ?? currentUser?.id ?? "",
+                username: me.username ?? currentUser?.username ?? "",
+                display_name: me.display_name ?? currentUser?.display_name ?? "",
+                role: me.role ?? currentUser?.role ?? "member",
+                avatar_url: me.avatar_url
+            )
+            await MainActor.run {
+                self.currentUser = updated
+                KeychainHelper.saveCodable(updated, forKey: userKey)
+            }
+        } catch {
+            // Silently fail — user data will be stale but functional
+        }
+    }
+
     // MARK: - Restore (used by Flickr OAuth login flow)
 
     func restoreSession(token: String, user: UserInfo) {

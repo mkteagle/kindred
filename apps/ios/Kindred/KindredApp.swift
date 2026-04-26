@@ -68,6 +68,9 @@ struct RootView: View {
     var body: some View {
         if session.isAuthenticated {
             ContentView()
+                .task {
+                    await session.refreshUser()
+                }
         } else if !hasSeenOnboarding {
             OnboardingView {
                 hasSeenOnboarding = true
