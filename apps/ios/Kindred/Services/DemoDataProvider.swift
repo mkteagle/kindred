@@ -161,28 +161,45 @@ final class DemoDataProvider {
 
 // MARK: - DemoThumbnailView
 
-/// A colored gradient rectangle that serves as a placeholder thumbnail in demo mode.
-/// Uses the Kindred warm palette — no actual images are bundled.
+/// Loads a real bundled stock photo for demo mode.
+/// Falls back to a warm gradient if the image isn't found.
 struct DemoThumbnailView: View {
     let urlString: String
     var cornerRadius: CGFloat = KindredTheme.radiusXS
 
-    private var colors: (Color, Color) {
+    /// Map demo URL indices to bundled photo filenames
+    private static let photoFiles = [
+        "family-beach", "family-dinner", "friends-laughing", "sunset-portrait",
+        "woman-smiling", "man-portrait", "woman-outdoor", "mom-portrait",
+        "dad-portrait", "young-woman", "kids-birthday", "birthday-cake",
+        "baby-playing", "dog-golden", "cat-sitting", "dog-park",
+        "road-trip", "mountain-lake", "beach-waves", "autumn-walk",
+    ]
+
+    private var image: UIImage? {
         let idx = DemoDataProvider.paletteIndex(for: urlString)
-        return DemoDataProvider.palette[idx]
+        let filename = Self.photoFiles[idx % Self.photoFiles.count]
+        if let path = Bundle.main.path(forResource: filename, ofType: "jpg", inDirectory: "DemoData/Photos") {
+            return UIImage(contentsOfFile: path)
+        }
+        // Try without subdirectory (flat bundle)
+        if let path = Bundle.main.path(forResource: filename, ofType: "jpg") {
+            return UIImage(contentsOfFile: path)
+        }
+        return nil
     }
 
     var body: some View {
-        LinearGradient(
-            colors: [colors.0, colors.1],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .overlay {
-            // Subtle camera icon
-            Image(systemName: "photo")
-                .font(.system(size: 16, weight: .light))
-                .foregroundStyle(.white.opacity(0.35))
+        Group {
+            if let uiImage = image {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                // Fallback gradient if photo not found
+                let colors = DemoDataProvider.palette[DemoDataProvider.paletteIndex(for: urlString)]
+                LinearGradient(colors: [colors.0, colors.1], startPoint: .topLeading, endPoint: .bottomTrailing)
+            }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
