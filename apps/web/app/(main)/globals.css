@@ -4289,9 +4289,8 @@ dialog::backdrop { background: rgba(18, 18, 24, .6); backdrop-filter: blur(6px);
   min-height: 100vh;
 }
 .legal-content {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 48px 24px 64px;
+  width: 100%;
+  padding: 48px 40px 64px;
 }
 .legal-content h1 {
   font-family: var(--display);

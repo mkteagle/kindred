@@ -12,6 +12,8 @@ export function middleware(request: NextRequest) {
     pathname === "/login" ||
     pathname.startsWith("/join") ||
     pathname.startsWith("/reset") ||
+    pathname === "/privacy" ||
+    pathname === "/terms" ||
     pathname.startsWith("/api/") ||
     pathname.startsWith("/docs") ||
     pathname.startsWith("/_next") ||
