@@ -113,17 +113,31 @@ final class DemoDataProvider {
         )
     }
 
+    /// Per-cluster photo collections — each person gets their own photos
+    private static let clusterPhotos: [String: [String]] = [
+        "demo_1": ["young-woman", "maya-1", "maya-2", "maya-3", "family-beach", "kids-birthday"],         // Maya
+        "demo_2": ["dad-portrait", "dad-2", "dad-3", "family-dinner", "road-trip", "sunset-portrait"],    // Dad
+        "demo_3": ["mom-portrait", "mom-2", "mom-3", "family-beach", "family-dinner", "kids-birthday"],   // Mom
+        "demo_4": ["sam-1", "sam-2", "friends-laughing", "beach-waves", "road-trip"],                     // Sam
+        "demo_5": ["theo-1", "theo-2", "man-portrait", "mountain-lake", "autumn-walk"],                   // Theo
+        "demo_6": ["grandma-1", "grandma-2", "grandma-3", "family-dinner"],                               // Grandma
+        "demo_7": ["uncle-1", "uncle-2", "sunset-portrait", "road-trip"],                                  // Uncle Jim
+        "demo_8": ["baby-playing", "baby-2", "baby-3", "family-beach"],                                   // Baby Lily
+        "demo_pet_1": ["dog-golden", "luna-2", "luna-3", "dog-park"],                                     // Luna
+        "demo_pet_2": ["cat-sitting", "mochi-2"],                                                          // Mochi
+        "demo_pet_3": ["dog-park", "dog-golden", "luna-3"],                                                // Buddy
+    ]
+
     func getClusterDetail(category: String, clusterId: String) -> ClusterDetail {
-        // Generate a small set of fake detections for any cluster
-        let count = 6
-        let detections = (0..<count).map { i in
+        let photos = Self.clusterPhotos[clusterId] ?? ["family-beach", "family-dinner", "road-trip", "mountain-lake"]
+        let detections = photos.enumerated().map { (i, filename) in
             Detection(
                 id: "\(clusterId)_det_\(i)",
                 category: category,
                 subtype: category == "people" ? "face" : category == "pets" ? "animal" : "vehicle",
                 photo_id: "\(clusterId)_photo_\(i)",
-                photo_url: "demo://photo_\(String(format: "%02d", (i % 20) + 1))",
-                thumb_url: "demo://thumb_\(String(format: "%02d", (i % 20) + 1))",
+                photo_url: "demo://file_\(filename)",
+                thumb_url: "demo://file_\(filename)",
                 flickr_url: nil,
                 photo_title: "Demo photo \(i + 1)",
                 owner: nil,
@@ -194,23 +208,24 @@ struct DemoThumbnailView: View {
     ]
 
     private var image: UIImage? {
-        let idx = DemoDataProvider.paletteIndex(for: urlString)
-        let filename = Self.photoFiles[idx % Self.photoFiles.count]
-        // Try with subdirectory first
-        if let path = Bundle.main.path(forResource: filename, ofType: "jpg", inDirectory: "DemoData/Photos"),
-           let img = UIImage(contentsOfFile: path) {
-            return img
+        let filename: String
+        // Support both demo://file_FILENAME and demo://thumb_NN patterns
+        if urlString.hasPrefix("demo://file_") {
+            filename = String(urlString.dropFirst("demo://file_".count))
+        } else {
+            let idx = DemoDataProvider.paletteIndex(for: urlString)
+            filename = Self.photoFiles[idx % Self.photoFiles.count]
         }
-        // Flat bundle (Xcode copies resources flat by default)
+        // Try flat bundle (Xcode copies resources flat by default)
         if let path = Bundle.main.path(forResource: filename, ofType: "jpg"),
            let img = UIImage(contentsOfFile: path) {
             return img
         }
-        // Try URL-based loading as last resort
-        if let url = Bundle.main.url(forResource: filename, withExtension: "jpg") {
-            return UIImage(contentsOfFile: url.path)
+        // Try with subdirectory
+        if let path = Bundle.main.path(forResource: filename, ofType: "jpg", inDirectory: "DemoData/Photos"),
+           let img = UIImage(contentsOfFile: path) {
+            return img
         }
-        print("[DemoThumbnail] Failed to load: \(filename).jpg for URL: \(urlString)")
         return nil
     }
 
