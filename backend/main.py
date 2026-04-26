@@ -931,8 +931,11 @@ async def set_user_avatar(request: FastAPIRequest, user=Depends(get_current_user
         photo_id = body.get("photo_id")
         if not photo_id:
             raise HTTPException(400, "photo_id is required")
-        # Verify the photo exists in the library
-        rows = db_query("SELECT photo_id FROM photos WHERE photo_id = %s", (photo_id,))
+        # Verify the photo exists in the library (check detections or photo_metadata)
+        rows = db_query(
+            "SELECT photo_id FROM photo_metadata WHERE photo_id = %s UNION SELECT DISTINCT photo_id FROM detections WHERE photo_id = %s LIMIT 1",
+            (photo_id, photo_id),
+        )
         if not rows:
             raise HTTPException(404, "Photo not found in library")
         # Store photo_id reference, clear uploaded avatar
