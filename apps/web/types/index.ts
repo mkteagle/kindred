@@ -74,6 +74,7 @@ export interface User {
   display_name?: string;
   role?: "admin" | "member";
   auth_method?: "flickr" | "password";
+  avatar_url?: string;
 }
 
 export interface CategoryInfo {

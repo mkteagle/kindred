@@ -14,7 +14,7 @@ async function handleRequest(
     const queryString = req.nextUrl.search;
     const url = `${BACKEND_URL}/${pathStr}${queryString}`;
 
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const headers: Record<string, string> = {};
     if (API_KEY) headers["X-API-Key"] = API_KEY;
 
     // Forward session token from cookie to backend
@@ -29,7 +29,17 @@ async function handleRequest(
     };
 
     if (["POST", "PUT", "PATCH"].includes(req.method)) {
-      opts.body = await req.text();
+      const reqContentType = req.headers.get("content-type") || "";
+      if (reqContentType.includes("multipart/form-data")) {
+        // Forward multipart body as-is (browser sets boundary in content-type)
+        headers["Content-Type"] = reqContentType;
+        opts.body = await req.arrayBuffer();
+      } else {
+        headers["Content-Type"] = "application/json";
+        opts.body = await req.text();
+      }
+    } else {
+      headers["Content-Type"] = "application/json";
     }
 
     const backendResp = await fetch(url, opts);

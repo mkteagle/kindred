@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useNotifications,
   groupByDay,
@@ -26,6 +27,19 @@ function filterMatch(type: string, filter: InboxFilter): boolean {
   return true;
 }
 
+/** Map notification type to the correct route */
+function routeForNotificationType(type: string): string {
+  if (type === "scan_complete" || type === "photo_processed" || type === "photos.backed_up") return "/people";
+  if (type === "photos.together_found") return "/together";
+  if (type === "photos.memory_ready") return "/";
+  if (type === "photos.sync_paused") return "/sync";
+  if (type.startsWith("household.")) return "/settings";
+  if (type === "admin.storage_warning") return "/settings";
+  if (type === "admin.signin_new_device") return "/settings";
+  if (type === "photos_deleted") return "/people";
+  return "/inbox";
+}
+
 const SIDEBAR_FILTERS: { id: InboxFilter; label: string; icon: string }[] = [
   { id: "all", label: "All", icon: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" },
   { id: "photos", label: "Photos", icon: "M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z M12 13a3 3 0 100-6 3 3 0 000 6z" },
@@ -48,6 +62,7 @@ function SidebarIcon({ d, size = 14 }: { d: string; size?: number }) {
 export default function InboxPage() {
   const [filter, setFilter] = useState<InboxFilter>("all");
   const [focusedIdx, setFocusedIdx] = useState(-1);
+  const router = useRouter();
   const { notifications, unreadCount, isLoading, markAllRead, markRead } = useNotifications(100);
 
   const filtered = notifications.filter((n) => filterMatch(n.type, filter));
@@ -153,7 +168,13 @@ export default function InboxPage() {
                     key={n.id}
                     className={`inbox-row ${!n.read ? "inbox-row-unread" : ""} ${isFocused ? "inbox-row-focus" : ""}`}
                     tabIndex={0}
-                    onClick={() => markRead(n.id)}
+                    role="button"
+                    style={{ cursor: "pointer" }}
+                    onClick={() => {
+                      markRead(n.id);
+                      const route = routeForNotificationType(n.type);
+                      if (route !== "/inbox") router.push(route);
+                    }}
                   >
                     <div
                       className="inbox-glyph"

@@ -4,7 +4,7 @@ struct HomeView: View {
     @State private var libraryVM = LibraryViewModel()
     @State private var exploreVM = ExploreViewModel()
     @State private var inboxVM = InboxViewModel()
-    @StateObject private var readState = NotificationReadState.shared
+    @ObservedObject private var readState = NotificationReadState.shared
     @State private var selectedPhoto: PhotoGridItem?
     @State private var showTogether = false
     @State private var showMemory = false
@@ -18,9 +18,10 @@ struct HomeView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     // App bar
-                    KindredAppBar(unreadCount: inboxVM.unreadCount(readState: readState)) {
-                        showInbox = true
-                    }
+                    KindredAppBar(
+                        unreadCount: inboxVM.unreadCount(readState: readState),
+                        onBellTap: { showInbox = true }
+                    )
 
                     // Greeting
                     greetingBlock
@@ -79,6 +80,7 @@ struct HomeView: View {
             .refreshable {
                 await libraryVM.loadClusters()
                 await exploreVM.loadTimeline()
+                await inboxVM.loadSyncHistory()
             }
         }
     }

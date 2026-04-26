@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { BellIcon, NotifGlyphIcon } from "./icons";
 import { useNotifications, groupByDay, shortTime } from "./use-notifications";
 import { getGlyphStyle, GLYPH_STYLES } from "./catalog";
@@ -17,10 +18,24 @@ function filterMatch(type: string, filter: Filter): boolean {
   return true;
 }
 
+/** Map notification type to the correct route */
+function routeForNotificationType(type: string): string {
+  if (type === "scan_complete" || type === "photo_processed" || type === "photos.backed_up") return "/people";
+  if (type === "photos.together_found") return "/together";
+  if (type === "photos.memory_ready") return "/";
+  if (type === "photos.sync_paused") return "/sync";
+  if (type.startsWith("household.")) return "/settings";
+  if (type === "admin.storage_warning") return "/settings";
+  if (type === "admin.signin_new_device") return "/settings";
+  if (type === "photos_deleted") return "/people";
+  return "/inbox";
+}
+
 export function NotifBell({ isAdmin = false }: { isAdmin?: boolean }) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<Filter>("All");
   const ref = useRef<HTMLDivElement>(null);
+  const router = useRouter();
   const { notifications, unreadCount, markAllRead, markRead } = useNotifications(20);
 
   // Click outside to close
@@ -71,9 +86,11 @@ export function NotifBell({ isAdmin = false }: { isAdmin?: boolean }) {
     return notifications.filter((n) => !n.read && filterMatch(n.type, f)).length;
   }, [notifications]);
 
-  const handleRowClick = (id: number) => {
+  const handleRowClick = (id: number, type: string) => {
     markRead(id);
     setOpen(false);
+    const route = routeForNotificationType(type);
+    router.push(route);
   };
 
   return (
@@ -145,7 +162,7 @@ export function NotifBell({ isAdmin = false }: { isAdmin?: boolean }) {
                     <button
                       key={n.id}
                       className={`nbell-row ${!n.read ? "nbell-row-unread" : ""}`}
-                      onClick={() => handleRowClick(n.id)}
+                      onClick={() => handleRowClick(n.id, n.type)}
                     >
                       <div
                         className="nbell-glyph"
