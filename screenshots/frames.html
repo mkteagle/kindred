@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kindred Photos -- App Store Screenshot Frames</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Instrument+Sans:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ===== RESET & BASE ===== */
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --paper:  #fbf4e7;
+    --canvas: #f7ebd4;
+    --ash:    #2a201b;
+    --ember:  #c9551c;
+    --gold:   #e9b85d;
+    --pine:   #6d3c24;
+    --mist:   #7d553f;
+    --forest: #2f4a36;
+
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-body:    'Instrument Sans', sans-serif;
+    --font-mono:    'IBM Plex Mono', monospace;
+
+    /* Frame dimensions (iPhone 15 Pro Max) */
+    --frame-w: 1290px;
+    --frame-h: 2796px;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background: #1a120e;
+    color: var(--ash);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ===== OVERVIEW GRID ===== */
+  .overview {
+    padding: 80px 60px 60px;
+    text-align: center;
+  }
+  .overview h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 42px;
+    color: var(--paper);
+    margin-bottom: 8px;
+    letter-spacing: -0.01em;
+  }
+  .overview p {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--mist);
+    margin-bottom: 48px;
+    letter-spacing: 0.04em;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 24px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+  .grid-item {
+    aspect-ratio: 1290 / 2796;
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    position: relative;
+  }
+  .grid-item:hover {
+    transform: scale(1.03);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+  }
+  .grid-item .grid-label {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 12px 10px 10px;
+    background: linear-gradient(transparent, rgba(26,18,14,0.85));
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--gold);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    text-align: center;
+  }
+  .grid-item img,
+  .grid-item canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  /* ===== INDIVIDUAL FRAMES ===== */
+  .frames-section {
+    padding: 80px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 80px;
+  }
+
+  .frame-wrapper {
+    position: relative;
+  }
+
+  .frame-number {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--mist);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    text-align: center;
+    margin-bottom: 16px;
+  }
+
+  /* ===== THE FRAME ITSELF ===== */
+  .frame {
+    width: var(--frame-w);
+    height: var(--frame-h);
+    position: relative;
+    overflow: hidden;
+    border-radius: 8px;
+  }
+
+  /* Background layers */
+  .frame .bg-gradient {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+  }
+  .frame .bg-glow {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .frame .bg-texture {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    opacity: 0.03;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(42,32,27,0.4) 1px, transparent 1px),
+      radial-gradient(circle at 80% 60%, rgba(42,32,27,0.3) 1px, transparent 1px),
+      radial-gradient(circle at 50% 80%, rgba(42,32,27,0.35) 1px, transparent 1px);
+    background-size: 80px 80px, 120px 120px, 60px 60px;
+  }
+
+  /* Decorative polaroids */
+  .frame .polaroids {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .frame .polaroid {
+    position: absolute;
+    background: rgba(255,252,245,0.08);
+    border: 1px solid rgba(255,252,245,0.04);
+    border-radius: 3px;
+    box-shadow: 0 2px 8px rgba(42,32,27,0.06);
+  }
+  .frame .polaroid::after {
+    content: '';
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    top: 8%;
+    bottom: 28%;
+    background: rgba(201,85,28,0.04);
+    border-radius: 1px;
+  }
+
+  /* Content layer */
+  .frame .content {
+    position: relative;
+    z-index: 10;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* Eyebrow pill */
+  .frame .eyebrow {
+    margin-top: 320px;
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 24px 9px;
+    border-radius: 100px;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 22px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    line-height: 1;
+  }
+  .eyebrow-ember {
+    background: rgba(201,85,28,0.1);
+    color: var(--ember);
+    border: 1.5px solid rgba(201,85,28,0.18);
+  }
+  .eyebrow-gold {
+    background: rgba(233,184,93,0.12);
+    color: #b8882a;
+    border: 1.5px solid rgba(233,184,93,0.2);
+  }
+  .eyebrow-forest {
+    background: rgba(47,74,54,0.1);
+    color: var(--forest);
+    border: 1.5px solid rgba(47,74,54,0.18);
+  }
+
+  /* Headline */
+  .frame .headline {
+    margin-top: 36px;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 92px;
+    line-height: 1.08;
+    color: var(--ash);
+    text-align: center;
+    letter-spacing: -0.02em;
+    padding: 0 100px;
+    white-space: pre-line;
+  }
+
+  /* Subline */
+  .frame .subline {
+    margin-top: 28px;
+    font-family: var(--font-body);
+    font-weight: 400;
+    font-size: 38px;
+    line-height: 1.35;
+    color: var(--mist);
+    text-align: center;
+    padding: 0 160px;
+    letter-spacing: 0.005em;
+  }
+
+  /* ===== DEVICE FRAME ===== */
+  .device-container {
+    position: absolute;
+    bottom: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+  }
+
+  .device {
+    width: 620px;
+    height: 1340px;
+    border-radius: 72px;
+    background: #1a120e;
+    padding: 14px;
+    position: relative;
+    box-shadow:
+      0 30px 60px rgba(74,40,26,0.28),
+      0 8px 20px rgba(42,32,27,0.18),
+      inset 0 1px 0 rgba(255,255,255,0.06);
+  }
+  .device::before {
+    /* Subtle bezel highlight */
+    content: '';
+    position: absolute;
+    inset: 1px;
+    border-radius: 71px;
+    border: 1px solid rgba(255,255,255,0.04);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  /* Dynamic Island */
+  .device .dynamic-island {
+    position: absolute;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 190px;
+    height: 54px;
+    background: #000;
+    border-radius: 28px;
+    z-index: 20;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+
+  /* Screen area */
+  .device .screen {
+    width: 100%;
+    height: 100%;
+    border-radius: 58px;
+    overflow: hidden;
+    position: relative;
+    z-index: 1;
+  }
+  .device .screen-content {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 18px;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* Side buttons (power + volume) */
+  .device .btn-power {
+    position: absolute;
+    right: -4px;
+    top: 260px;
+    width: 4px;
+    height: 100px;
+    background: #1a120e;
+    border-radius: 0 3px 3px 0;
+    box-shadow: 1px 0 2px rgba(0,0,0,0.3);
+  }
+  .device .btn-vol-up {
+    position: absolute;
+    left: -4px;
+    top: 220px;
+    width: 4px;
+    height: 60px;
+    background: #1a120e;
+    border-radius: 3px 0 0 3px;
+    box-shadow: -1px 0 2px rgba(0,0,0,0.3);
+  }
+  .device .btn-vol-down {
+    position: absolute;
+    left: -4px;
+    top: 300px;
+    width: 4px;
+    height: 60px;
+    background: #1a120e;
+    border-radius: 3px 0 0 3px;
+    box-shadow: -1px 0 2px rgba(0,0,0,0.3);
+  }
+  .device .btn-silent {
+    position: absolute;
+    left: -4px;
+    top: 160px;
+    width: 4px;
+    height: 36px;
+    background: #1a120e;
+    border-radius: 3px 0 0 3px;
+    box-shadow: -1px 0 2px rgba(0,0,0,0.3);
+  }
+
+  /* ===== DECORATIVE FINE LINE ===== */
+  .frame .fine-line {
+    position: absolute;
+    z-index: 5;
+    pointer-events: none;
+  }
+  .fine-line-top {
+    top: 240px;
+    left: 80px;
+    right: 80px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(201,85,28,0.08), transparent);
+  }
+
+
+</style>
+</head>
+<body>
+
+<!-- ========== OVERVIEW GRID ========== -->
+<section class="overview">
+  <h1>Kindred Photos</h1>
+  <p>App Store Screenshot Frames -- 1290 x 2796 -- iPhone 15 Pro Max</p>
+  <div class="grid" id="overviewGrid"></div>
+</section>
+
+<!-- ========== FULL-SIZE FRAMES ========== -->
+<section class="frames-section" id="framesSection"></section>
+
+<script>
+const FRAMES = [
+  {
+    id: 1,
+    slug: "home-feed",
+    eyebrow: "YOUR HOUSEHOLD",
+    eyebrowStyle: "ember",
+    headline: "A calmer home for\nfamily photos.",
+    subline: "Memories surface. People are found. Nothing leaves your hands.",
+    placeholderColor: "#f7ebd4",
+    placeholderAccent: "#e9b85d"
+  },
+  {
+    id: 2,
+    slug: "library-people",
+    eyebrow: "PEOPLE FIRST",
+    eyebrowStyle: "ember",
+    headline: "Everyone you love,\norganized automatically.",
+    subline: null,
+    placeholderColor: "#fbf4e7",
+    placeholderAccent: "#c9551c"
+  },
+  {
+    id: 3,
+    slug: "library-pets",
+    eyebrow: "PETS TOO",
+    eyebrowStyle: "gold",
+    headline: "They\u2019re family.\nWe know that.",
+    subline: null,
+    placeholderColor: "#fbf4e7",
+    placeholderAccent: "#e9b85d"
+  },
+  {
+    id: 4,
+    slug: "search",
+    eyebrow: "FIND ANYTHING",
+    eyebrowStyle: "ember",
+    headline: "Search the way\nyou remember.",
+    subline: "Names, places, or things.",
+    placeholderColor: "#f7ebd4",
+    placeholderAccent: "#c9551c"
+  },
+  {
+    id: 5,
+    slug: "photo-detail",
+    eyebrow: "EVERY DETAIL",
+    eyebrowStyle: "gold",
+    headline: "See the full story\nbehind every photo.",
+    subline: null,
+    placeholderColor: "#2a201b",
+    placeholderAccent: "#6d3c24"
+  },
+  {
+    id: 6,
+    slug: "together",
+    eyebrow: "TOGETHER",
+    eyebrowStyle: "ember",
+    headline: "Find every photo of\nthe people who matter.",
+    subline: null,
+    placeholderColor: "#fbf4e7",
+    placeholderAccent: "#c9551c"
+  },
+  {
+    id: 7,
+    slug: "memories",
+    eyebrow: "ON THIS DAY",
+    eyebrowStyle: "gold",
+    headline: "The moments that\nkeep coming back.",
+    subline: null,
+    placeholderColor: "#f7ebd4",
+    placeholderAccent: "#e9b85d"
+  },
+  {
+    id: 8,
+    slug: "settings-household",
+    eyebrow: "YOUR HOUSEHOLD",
+    eyebrowStyle: "ember",
+    headline: "Built for the whole family,\nnot just the organized one.",
+    subline: null,
+    placeholderColor: "#fbf4e7",
+    placeholderAccent: "#7d553f"
+  },
+  {
+    id: 9,
+    slug: "notifications",
+    eyebrow: "STAY IN THE LOOP",
+    eyebrowStyle: "gold",
+    headline: "Know what\u2019s happening\nwithout the noise.",
+    subline: null,
+    placeholderColor: "#fbf4e7",
+    placeholderAccent: "#e9b85d"
+  },
+  {
+    id: 10,
+    slug: "onboarding",
+    eyebrow: "WELCOME",
+    eyebrowStyle: "forest",
+    headline: "Private. Warm.\nCompletely yours.",
+    subline: "Backed by Flickr. Sorted by AI. Owned by you.",
+    placeholderColor: "#2f4a36",
+    placeholderAccent: "#e9b85d"
+  }
+];
+
+// Polaroid decoration positions per frame (randomized but curated)
+const POLAROID_SETS = [
+  [ // 1
+    { w:140, h:170, x:'8%',  y:'42%', rot:-12 },
+    { w:110, h:135, x:'82%', y:'35%', rot:8 },
+    { w:120, h:150, x:'5%',  y:'68%', rot:6 },
+    { w:100, h:125, x:'85%', y:'62%', rot:-9 },
+  ],
+  [ // 2
+    { w:130, h:160, x:'6%',  y:'38%', rot:10 },
+    { w:115, h:140, x:'84%', y:'44%', rot:-7 },
+    { w:105, h:130, x:'3%',  y:'72%', rot:-14 },
+  ],
+  [ // 3
+    { w:135, h:165, x:'83%', y:'36%', rot:11 },
+    { w:120, h:145, x:'4%',  y:'50%', rot:-8 },
+    { w:100, h:125, x:'86%', y:'66%', rot:5 },
+  ],
+  [ // 4
+    { w:125, h:155, x:'5%',  y:'40%', rot:-10 },
+    { w:110, h:135, x:'85%', y:'48%', rot:13 },
+    { w:140, h:170, x:'7%',  y:'70%', rot:7 },
+    { w:95,  h:120, x:'82%', y:'72%', rot:-6 },
+  ],
+  [ // 5
+    { w:130, h:160, x:'84%', y:'38%', rot:-9 },
+    { w:105, h:130, x:'3%',  y:'55%', rot:12 },
+    { w:120, h:150, x:'86%', y:'64%', rot:4 },
+  ],
+  [ // 6
+    { w:140, h:170, x:'4%',  y:'36%', rot:8 },
+    { w:115, h:140, x:'83%', y:'42%', rot:-11 },
+    { w:100, h:125, x:'6%',  y:'66%', rot:-5 },
+    { w:110, h:135, x:'85%', y:'70%', rot:9 },
+  ],
+  [ // 7
+    { w:125, h:155, x:'82%', y:'40%', rot:7 },
+    { w:135, h:165, x:'5%',  y:'48%', rot:-13 },
+    { w:105, h:130, x:'84%', y:'68%', rot:-4 },
+  ],
+  [ // 8
+    { w:130, h:160, x:'4%',  y:'38%', rot:11 },
+    { w:110, h:135, x:'85%', y:'46%', rot:-8 },
+    { w:120, h:150, x:'3%',  y:'64%', rot:-6 },
+  ],
+  [ // 9
+    { w:140, h:170, x:'83%', y:'36%', rot:-10 },
+    { w:115, h:140, x:'5%',  y:'52%', rot:9 },
+    { w:100, h:125, x:'86%', y:'66%', rot:6 },
+    { w:125, h:155, x:'4%',  y:'74%', rot:-12 },
+  ],
+  [ // 10
+    { w:135, h:165, x:'6%',  y:'40%', rot:12 },
+    { w:120, h:145, x:'84%', y:'38%', rot:-7 },
+    { w:105, h:130, x:'3%',  y:'68%', rot:-10 },
+    { w:110, h:135, x:'85%', y:'64%', rot:5 },
+  ],
+];
+
+function isDarkPlaceholder(color) {
+  // Simple luminance check
+  const hex = color.replace('#', '');
+  const r = parseInt(hex.substr(0,2), 16);
+  const g = parseInt(hex.substr(2,2), 16);
+  const b = parseInt(hex.substr(4,2), 16);
+  return (r * 0.299 + g * 0.587 + b * 0.114) < 128;
+}
+
+function buildFrame(frame, index) {
+  const dark = isDarkPlaceholder(frame.placeholderColor);
+
+  // Build gradient based on whether it's a dark or light frame
+  let bgGradientCSS, glowCSS, textColor, subColor;
+  if (dark) {
+    bgGradientCSS = `linear-gradient(168deg, #2a201b 0%, ${frame.placeholderColor} 50%, #1a120e 100%)`;
+    glowCSS = `radial-gradient(ellipse 70% 45% at 50% 35%, rgba(233,184,93,0.10) 0%, transparent 70%)`;
+    textColor = '#fbf4e7';
+    subColor = 'rgba(251,244,231,0.55)';
+  } else {
+    bgGradientCSS = `linear-gradient(168deg, #fbf4e7 0%, #f7ebd4 45%, #f0dfc0 100%)`;
+    glowCSS = `radial-gradient(ellipse 65% 40% at 50% 30%, rgba(233,184,93,0.14) 0%, transparent 65%)`;
+    textColor = '#2a201b';
+    subColor = '#7d553f';
+  }
+
+  const polaroids = POLAROID_SETS[index] || [];
+  const polaroidHTML = polaroids.map(p =>
+    `<div class="polaroid" style="width:${p.w}px;height:${p.h}px;left:${p.x};top:${p.y};transform:rotate(${p.rot}deg);"></div>`
+  ).join('\n        ');
+
+  const sublineHTML = frame.subline
+    ? `<div class="subline" style="color:${subColor};">${frame.subline}</div>`
+    : '';
+
+  const screenLabelColor = dark ? 'rgba(255,255,255,0.25)' : 'rgba(42,32,27,0.25)';
+
+  return `
+    <div class="frame-wrapper">
+      <div class="frame-number">${String(frame.id).padStart(2,'0')} / ${frame.slug}</div>
+      <div class="frame" id="frame-${frame.id}" data-slug="${frame.slug}">
+        <!-- Background gradient -->
+        <div class="bg-gradient" style="background:${bgGradientCSS};"></div>
+        <!-- Gold sun glow -->
+        <div class="bg-glow" style="background:${glowCSS};"></div>
+        <!-- Paper texture -->
+        <div class="bg-texture"></div>
+        <!-- Decorative polaroids -->
+        <div class="polaroids">
+          ${polaroidHTML}
+        </div>
+        <!-- Fine line -->
+        <div class="fine-line fine-line-top" style="${dark ? 'background:linear-gradient(90deg,transparent,rgba(233,184,93,0.08),transparent);' : ''}"></div>
+        <!-- Content -->
+        <div class="content">
+          <div class="eyebrow eyebrow-${frame.eyebrowStyle}">${frame.eyebrow}</div>
+          <div class="headline" style="color:${textColor};">${frame.headline}</div>
+          ${sublineHTML}
+          <!-- Device -->
+          <div class="device-container">
+            <div class="device">
+              <div class="dynamic-island"></div>
+              <div class="btn-power"></div>
+              <div class="btn-silent"></div>
+              <div class="btn-vol-up"></div>
+              <div class="btn-vol-down"></div>
+              <div class="screen">
+                <div class="screen-content" style="background:${frame.placeholderColor}; color:${screenLabelColor};">
+                  ${frame.slug}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Frame edge -->
+      </div>
+    </div>`;
+}
+
+// Render overview grid
+const gridEl = document.getElementById('overviewGrid');
+FRAMES.forEach((frame, i) => {
+  const dark = isDarkPlaceholder(frame.placeholderColor);
+  const bg = dark
+    ? `linear-gradient(168deg, #2a201b, ${frame.placeholderColor}, #1a120e)`
+    : `linear-gradient(168deg, #fbf4e7, #f7ebd4, #f0dfc0)`;
+  const labelColor = dark ? 'rgba(251,244,231,0.7)' : 'rgba(42,32,27,0.7)';
+
+  const item = document.createElement('div');
+  item.className = 'grid-item';
+  item.style.background = bg;
+  item.innerHTML = `<div class="grid-label" style="color:${labelColor};">${String(frame.id).padStart(2,'0')}. ${frame.eyebrow}</div>`;
+  item.addEventListener('click', () => {
+    document.getElementById(`frame-${frame.id}`).scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  gridEl.appendChild(item);
+});
+
+// Render full-size frames
+const framesEl = document.getElementById('framesSection');
+FRAMES.forEach((frame, i) => {
+  framesEl.insertAdjacentHTML('beforeend', buildFrame(frame, i));
+});
+</script>
+</body>
+</html>

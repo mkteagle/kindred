@@ -1,0 +1,99 @@
+{
+  "frameSize": {
+    "width": 1290,
+    "height": 2796
+  },
+  "device": "iPhone 15 Pro Max",
+  "frames": [
+    {
+      "id": 1,
+      "slug": "home-feed",
+      "eyebrow": "YOUR HOUSEHOLD",
+      "headline": "A calmer home for\nfamily photos.",
+      "subline": "Memories surface. People are found. Nothing leaves your hands.",
+      "screenshot": "01-home-feed.png",
+      "placeholderColor": "#f7ebd4"
+    },
+    {
+      "id": 2,
+      "slug": "library-people",
+      "eyebrow": "PEOPLE FIRST",
+      "headline": "Everyone you love,\norganized automatically.",
+      "subline": null,
+      "screenshot": "02-library-people.png",
+      "placeholderColor": "#fbf4e7"
+    },
+    {
+      "id": 3,
+      "slug": "library-pets",
+      "eyebrow": "PETS TOO",
+      "headline": "They're family.\nWe know that.",
+      "subline": null,
+      "screenshot": "03-library-pets.png",
+      "placeholderColor": "#fbf4e7"
+    },
+    {
+      "id": 4,
+      "slug": "search",
+      "eyebrow": "FIND ANYTHING",
+      "headline": "Search the way\nyou remember.",
+      "subline": "Names, places, or things.",
+      "screenshot": "04-search.png",
+      "placeholderColor": "#f7ebd4"
+    },
+    {
+      "id": 5,
+      "slug": "photo-detail",
+      "eyebrow": "EVERY DETAIL",
+      "headline": "See the full story\nbehind every photo.",
+      "subline": null,
+      "screenshot": "05-photo-detail.png",
+      "placeholderColor": "#2a201b"
+    },
+    {
+      "id": 6,
+      "slug": "together",
+      "eyebrow": "TOGETHER",
+      "headline": "Find every photo of\nthe people who matter.",
+      "subline": null,
+      "screenshot": "06-together.png",
+      "placeholderColor": "#fbf4e7"
+    },
+    {
+      "id": 7,
+      "slug": "memories",
+      "eyebrow": "ON THIS DAY",
+      "headline": "The moments that\nkeep coming back.",
+      "subline": null,
+      "screenshot": "07-memories.png",
+      "placeholderColor": "#f7ebd4"
+    },
+    {
+      "id": 8,
+      "slug": "settings-household",
+      "eyebrow": "YOUR HOUSEHOLD",
+      "headline": "Built for the whole family,\nnot just the organized one.",
+      "subline": null,
+      "screenshot": "08-settings-household.png",
+      "placeholderColor": "#fbf4e7"
+    },
+    {
+      "id": 9,
+      "slug": "notifications",
+      "eyebrow": "STAY IN THE LOOP",
+      "headline": "Know what's happening\nwithout the noise.",
+      "subline": null,
+      "screenshot": "09-notifications.png",
+      "placeholderColor": "#fbf4e7"
+    },
+    {
+      "id": 10,
+      "slug": "onboarding",
+      "eyebrow": "WELCOME",
+      "headline": "Private. Warm.\nCompletely yours.",
+      "subline": "Backed by Flickr. Sorted by AI. Owned by you.",
+      "screenshot": "10-onboarding.png",
+      "placeholderColor": "#2f4a36"
+    }
+  ]
+}
