@@ -1,4 +1,5 @@
 import SwiftUI
+import Photos
 
 struct SettingsView: View {
     @State private var viewModel = SettingsViewModel()
@@ -550,6 +551,13 @@ struct BackupDetailView: View {
 
     // MARK: - Not Backed Up Section
 
+    private let thumbColumns = [
+        GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2),
+    ]
+
     private var notBackedUpSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -561,10 +569,21 @@ struct BackupDetailView: View {
             }
             .padding(.horizontal, 20)
 
-            Text("These photos haven't been uploaded to Flickr yet. Tap the button above to start.")
-                .font(.kindredCaption)
-                .foregroundStyle(KindredTheme.mist)
-                .padding(.horizontal, 20)
+            LazyVGrid(columns: thumbColumns, spacing: 2) {
+                ForEach(uploadVM.photoManager.notUploadedPhotos.prefix(20), id: \.localIdentifier) { asset in
+                    PhotoAssetCell(asset: asset, isSelected: false)
+                        .aspectRatio(1, contentMode: .fill)
+                }
+            }
+            .padding(.horizontal, 16)
+
+            if uploadVM.photoManager.notUploadedPhotos.count > 20 {
+                Text("+ \(uploadVM.photoManager.notUploadedPhotos.count - 20) more")
+                    .font(.kindredMeta)
+                    .foregroundStyle(KindredTheme.mist)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 4)
+            }
         }
     }
 
