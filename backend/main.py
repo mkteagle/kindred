@@ -1085,11 +1085,8 @@ def send_email_invite(req: EmailInviteRequest, request: FastAPIRequest, admin=De
         fetch=False,
     )
 
-    # Send the email via Resend
-    import urllib.request
-    import urllib.error
-
-    email_body = json.dumps({
+    # Send the email via Resend (using httpx to avoid Cloudflare blocks)
+    email_payload = {
         "from": "Kindred Photos <noreply@kindredphotos.app>",
         "to": [req.email],
         "subject": f"{admin.get('display_name', 'Someone')} invited you to Kindred Photos",
@@ -1098,26 +1095,22 @@ def send_email_invite(req: EmailInviteRequest, request: FastAPIRequest, admin=De
             invite_code=code,
             recipient_name=req.name,
         ),
-    })
-
-    api_req = urllib.request.Request(
-        "https://api.resend.com/emails",
-        data=email_body.encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {resend_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
+    }
 
     email_sent = False
     email_error = None
     try:
-        with urllib.request.urlopen(api_req, timeout=15) as resp:
-            if resp.status < 300:
-                email_sent = True
-    except urllib.error.HTTPError as e:
-        email_error = e.read().decode("utf-8", errors="replace")
+        import httpx
+        resp = httpx.post(
+            "https://api.resend.com/emails",
+            json=email_payload,
+            headers={"Authorization": f"Bearer {resend_key}"},
+            timeout=15,
+        )
+        if resp.status_code < 300:
+            email_sent = True
+        else:
+            email_error = resp.text
     except Exception as e:
         email_error = str(e)
 
