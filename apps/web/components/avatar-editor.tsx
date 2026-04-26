@@ -17,12 +17,22 @@ interface LibraryPhoto {
   photo_title: string;
 }
 
+interface Cluster {
+  id: string;
+  label: string | null;
+  photo_count: number;
+  avatar: string | null;
+  thumb_url: string | null;
+}
+
 export function AvatarEditor({ currentAvatarUrl, displayName, onSaved, onClose }: AvatarEditorProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [tab, setTab] = useState<"library" | "upload">("library");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [photos, setPhotos] = useState<LibraryPhoto[]>([]);
+  const [clusters, setClusters] = useState<Cluster[]>([]);
+  const [selectedCluster, setSelectedCluster] = useState<Cluster | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -33,54 +43,72 @@ export function AvatarEditor({ currentAvatarUrl, displayName, onSaved, onClose }
     dialogRef.current?.showModal();
   }, []);
 
+  // Load people clusters on mount
+  useEffect(() => {
+    fetch(`${BACKEND}/clusters/people/summary?limit=50`)
+      .then((r) => r.json())
+      .then((data) => {
+        const named = (data.clusters || []).filter((c: Cluster) => c.label);
+        setClusters(named);
+        // Auto-select cluster matching user's first name
+        const firstName = displayName.split(" ")[0]?.toLowerCase();
+        if (firstName) {
+          const match = named.find((c: Cluster) =>
+            c.label?.toLowerCase().includes(firstName)
+          );
+          if (match) {
+            setSelectedCluster(match);
+            loadClusterPhotos(match.id);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [displayName]);
+
   // Debounce search query
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 300);
     return () => clearTimeout(t);
   }, [searchQuery]);
 
-  // Load recent photos or search results
+  // Load search results when query changes
   useEffect(() => {
+    if (debouncedQuery.length < 2) return;
+    setSelectedCluster(null);
     setLoading(true);
-    const url = debouncedQuery.length > 1
-      ? `${BACKEND}/search?q=${encodeURIComponent(debouncedQuery)}&limit=24`
-      : `${BACKEND}/timeline?limit=24`;
-
-    fetch(url)
+    fetch(`${BACKEND}/search?q=${encodeURIComponent(debouncedQuery)}&limit=40`)
       .then((r) => r.json())
       .then((data) => {
-        if (debouncedQuery.length > 1) {
-          // Search results
-          setPhotos(
-            (data || []).map((r: Record<string, string>) => ({
-              photo_id: r.photo_id,
-              thumb_url: r.thumb_url || r.photo_url,
-              photo_url: r.photo_url,
-              photo_title: r.photo_title || "",
-            }))
-          );
-        } else {
-          // Timeline — flatten months
-          const months = data?.months || [];
-          const allPhotos: LibraryPhoto[] = [];
-          for (const m of months) {
-            for (const p of m.photos || []) {
-              allPhotos.push({
-                photo_id: p.photo_id,
-                thumb_url: p.thumb_url || "",
-                photo_url: p.thumb_url || "",
-                photo_title: p.photo_title || "",
-              });
-              if (allPhotos.length >= 24) break;
-            }
-            if (allPhotos.length >= 24) break;
-          }
-          setPhotos(allPhotos);
-        }
+        setPhotos(
+          (data || []).map((r: Record<string, string>) => ({
+            photo_id: r.photo_id,
+            thumb_url: r.thumb_url || r.photo_url,
+            photo_url: r.photo_url,
+            photo_title: r.photo_title || "",
+          }))
+        );
       })
       .catch(() => setPhotos([]))
       .finally(() => setLoading(false));
   }, [debouncedQuery]);
+
+  const loadClusterPhotos = (clusterId: string) => {
+    setLoading(true);
+    fetch(`${BACKEND}/clusters/people/${clusterId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setPhotos(
+          (data.items || []).map((d: Record<string, string>) => ({
+            photo_id: d.photo_id,
+            thumb_url: d.thumb_url || d.photo_url,
+            photo_url: d.photo_url,
+            photo_title: d.photo_title || "",
+          }))
+        );
+      })
+      .catch(() => setPhotos([]))
+      .finally(() => setLoading(false));
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -212,6 +240,32 @@ export function AvatarEditor({ currentAvatarUrl, displayName, onSaved, onClose }
                   <button className="avatar-editor-clear" onClick={() => setSearchQuery("")}>&times;</button>
                 )}
               </div>
+              {clusters.length > 0 && !debouncedQuery && (
+                <div className="avatar-editor-clusters">
+                  {selectedCluster && (
+                    <button
+                      className="avatar-editor-cluster-chip active"
+                      onClick={() => { setSelectedCluster(null); setPhotos([]); }}
+                      style={{ background: "var(--ash)", color: "var(--paper)" }}
+                    >
+                      ← All people
+                    </button>
+                  )}
+                  {clusters.map((c) => (
+                    <button
+                      key={c.id}
+                      className={`avatar-editor-cluster-chip ${selectedCluster?.id === c.id ? "active" : ""}`}
+                      onClick={() => { setSelectedCluster(c); loadClusterPhotos(c.id); }}
+                    >
+                      {c.avatar && (
+                        <img src={c.avatar} alt="" style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "cover" }} />
+                      )}
+                      {c.label}
+                      <span style={{ opacity: 0.5, fontSize: 11 }}>{c.photo_count}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="avatar-editor-grid">
                 {loading && <div className="avatar-editor-loading">Loading...</div>}
                 {!loading && photos.length === 0 && (
