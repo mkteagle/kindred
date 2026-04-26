@@ -170,8 +170,7 @@ export default function SettingsPage() {
     try {
       const resp = await fetch(`${BACKEND}/settings/integrations/resend`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key: resendKeyInput.trim() }),
+        headers: { "X-Integration-Secret": resendKeyInput.trim() },
       });
       const data = await resp.json();
       if (resp.ok) {

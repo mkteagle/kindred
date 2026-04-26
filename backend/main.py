@@ -1021,15 +1021,19 @@ def _mask_key(key: str) -> str:
     return key[:6] + "..."
 
 @app.put("/settings/integrations/resend")
-def save_resend_key(req: ResendKeyRequest, admin=Depends(require_admin)):
-    """Save the Resend API key to the database (admin only)."""
-    key = req.api_key.strip()
+def save_resend_key(request: FastAPIRequest, admin=Depends(require_admin)):
+    """Save the Resend API key to the database (admin only).
+    Key is sent via X-Integration-Secret header to avoid payload exposure."""
+    key = request.headers.get("X-Integration-Secret", "").strip()
     if not key:
-        raise HTTPException(400, "API key cannot be empty")
+        raise HTTPException(400, "API key must be sent in X-Integration-Secret header")
+    # Store with a simple obfuscation prefix so it's not raw in DB
+    import base64
+    stored = base64.b64encode(key.encode()).decode()
     db_query(
         """INSERT INTO settings (key, value, updated_at) VALUES ('resend_api_key', %s, now())
            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()""",
-        (key,),
+        (stored,),
         fetch=False,
     )
     return {"configured": True, "key_preview": _mask_key(key)}
@@ -1049,10 +1053,14 @@ def remove_resend_key(admin=Depends(require_admin)):
     return {"configured": False}
 
 def _get_resend_key() -> str | None:
-    """Retrieve the Resend API key from the database."""
+    """Retrieve the Resend API key from the database (base64-decoded)."""
+    import base64
     rows = db_query("SELECT value FROM settings WHERE key = 'resend_api_key'")
     if rows and rows[0]["value"]:
-        return rows[0]["value"]
+        try:
+            return base64.b64decode(rows[0]["value"]).decode()
+        except Exception:
+            return rows[0]["value"]  # Fallback for pre-encoded keys
     return None
 
 @app.post("/invites/send-email")
