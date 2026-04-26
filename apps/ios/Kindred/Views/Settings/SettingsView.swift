@@ -386,9 +386,64 @@ struct BackupDetailView: View {
     @State private var uploader = FlickrUploader.shared
 
     var body: some View {
+        Group {
+            switch uploadVM.photoManager.authorizationStatus {
+            case .notDetermined:
+                // Haven't asked yet
+                VStack(spacing: 20) {
+                    Spacer()
+                    Image(systemName: "photo.on.rectangle")
+                        .font(.system(size: 48, weight: .light))
+                        .foregroundStyle(KindredTheme.pine.opacity(0.5))
+                    Text("Photo access needed")
+                        .font(.kindredH3)
+                        .foregroundStyle(KindredTheme.ash)
+                    Text("Kindred needs access to your photo library to back up your photos.")
+                        .font(.kindredBody)
+                        .foregroundStyle(KindredTheme.mist)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                    KindredButton(title: "Grant access", style: .primary) {
+                        Task { await uploadVM.requestAccess() }
+                    }
+                    Spacer()
+                }
+            case .denied, .restricted:
+                VStack(spacing: 20) {
+                    Spacer()
+                    Image(systemName: "lock.shield")
+                        .font(.system(size: 48, weight: .light))
+                        .foregroundStyle(KindredTheme.rosehip.opacity(0.5))
+                    Text("Access denied")
+                        .font(.kindredH3)
+                        .foregroundStyle(KindredTheme.ash)
+                    Text("Enable photo access in Settings to back up your photos.")
+                        .font(.kindredBody)
+                        .foregroundStyle(KindredTheme.mist)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                    KindredButton(title: "Open Settings", style: .primary) {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    }
+                    Spacer()
+                }
+            default:
+                // Authorized — show backup UI
+                backupContent
+            }
+        }
+        .kindredPaperBackground()
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await uploadVM.requestAccess()
+        }
+    }
+
+    private var backupContent: some View {
         ScrollView {
             VStack(spacing: 0) {
-                // Page header
                 KindredPageHeader(
                     eyebrow: "Backup status",
                     title: backupTitle
@@ -422,11 +477,6 @@ struct BackupDetailView: View {
 
                 Spacer().frame(height: 110)
             }
-        }
-        .kindredPaperBackground()
-        .navigationBarTitleDisplayMode(.inline)
-        .task {
-            await uploadVM.requestAccess()
         }
     }
 

@@ -38,18 +38,28 @@ final class FlickrUploader: NSObject {
     // MARK: - Batch Upload from Photo Library
 
     func uploadAssets(_ assets: [PHAsset]) async {
-        isUploading = true
-        totalCount = assets.count
-        uploadedCount = 0
-        totalProgress = 0
-        lastError = nil
+        await MainActor.run {
+            isUploading = true
+            totalCount = assets.count
+            uploadedCount = 0
+            totalProgress = 0
+            lastError = nil
+        }
+
+        print("[FlickrUploader] Starting upload of \(assets.count) assets")
 
         // Filter out already-uploaded assets
         let toUpload = assets.filter { !PhotoLibraryManager.shared.isUploaded(localIdentifier: $0.localIdentifier) }
-        totalCount = toUpload.count
+
+        await MainActor.run {
+            totalCount = toUpload.count
+        }
+
+        print("[FlickrUploader] After filtering: \(toUpload.count) to upload (\(assets.count - toUpload.count) already uploaded)")
 
         if toUpload.isEmpty {
-            isUploading = false
+            print("[FlickrUploader] Nothing to upload — all assets already backed up")
+            await MainActor.run { isUploading = false }
             return
         }
 
@@ -66,17 +76,22 @@ final class FlickrUploader: NSObject {
             }
 
             do {
+                print("[FlickrUploader] Loading asset data for \(index + 1)/\(toUpload.count)...")
                 let (data, filename, contentType) = try await getOriginalAssetData(asset)
+                print("[FlickrUploader] Got \(data.count) bytes, filename: \(filename), type: \(contentType)")
 
                 let title = asset.creationDate.map { formatDate($0) } ?? "\(mediaLabel) \(index + 1)"
+                print("[FlickrUploader] Uploading to backend...")
                 let photoId = try await uploadData(data, filename: filename, contentType: contentType, title: title)
-
-                // ML processing is now triggered automatically by the backend upload endpoint
+                print("[FlickrUploader] Upload success! photo_id: \(photoId)")
 
                 PhotoLibraryManager.shared.markAsUploaded(localIdentifier: asset.localIdentifier, flickrPhotoId: photoId)
-                uploadedCount += 1
+                await MainActor.run { uploadedCount += 1 }
             } catch {
-                lastError = "Failed to upload \(mediaLabel.lowercased()) \(index + 1): \(error.localizedDescription)"
+                print("[FlickrUploader] ERROR uploading \(index + 1): \(error)")
+                await MainActor.run {
+                    lastError = "Failed to upload \(mediaLabel.lowercased()) \(index + 1): \(error.localizedDescription)"
+                }
             }
 
             totalProgress = Float(index + 1) / Float(toUpload.count)
