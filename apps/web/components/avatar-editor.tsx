@@ -38,6 +38,7 @@ export function AvatarEditor({ currentAvatarUrl, displayName, onSaved, onClose }
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showAllClusters, setShowAllClusters] = useState(false);
 
   useEffect(() => {
     dialogRef.current?.showModal();
@@ -240,28 +241,35 @@ export function AvatarEditor({ currentAvatarUrl, displayName, onSaved, onClose }
                   <button className="avatar-editor-clear" onClick={() => setSearchQuery("")}>&times;</button>
                 )}
               </div>
-              {clusters.length > 0 && !debouncedQuery && (
+              {selectedCluster && !debouncedQuery && (
+                <div className="avatar-editor-cluster-header">
+                  <div className="avatar-editor-cluster-info">
+                    {selectedCluster.avatar && (
+                      <img src={selectedCluster.avatar} alt="" style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover" }} />
+                    )}
+                    <span style={{ fontWeight: 700, fontSize: 13 }}>{selectedCluster.label}</span>
+                    <span style={{ color: "var(--mist)", fontSize: 11 }}>{selectedCluster.photo_count} photos</span>
+                  </div>
+                  <button
+                    className="avatar-editor-browse-link"
+                    onClick={() => { setSelectedCluster(null); setPhotos([]); setShowAllClusters(true); }}
+                  >
+                    Browse other people
+                  </button>
+                </div>
+              )}
+              {showAllClusters && !selectedCluster && !debouncedQuery && clusters.length > 0 && (
                 <div className="avatar-editor-clusters">
-                  {selectedCluster && (
-                    <button
-                      className="avatar-editor-cluster-chip active"
-                      onClick={() => { setSelectedCluster(null); setPhotos([]); }}
-                      style={{ background: "var(--ash)", color: "var(--paper)" }}
-                    >
-                      ← All people
-                    </button>
-                  )}
-                  {clusters.map((c) => (
+                  {clusters.slice(0, 10).map((c) => (
                     <button
                       key={c.id}
-                      className={`avatar-editor-cluster-chip ${selectedCluster?.id === c.id ? "active" : ""}`}
-                      onClick={() => { setSelectedCluster(c); loadClusterPhotos(c.id); }}
+                      className="avatar-editor-cluster-chip"
+                      onClick={() => { setSelectedCluster(c); loadClusterPhotos(c.id); setShowAllClusters(false); }}
                     >
                       {c.avatar && (
                         <img src={c.avatar} alt="" style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "cover" }} />
                       )}
                       {c.label}
-                      <span style={{ opacity: 0.5, fontSize: 11 }}>{c.photo_count}</span>
                     </button>
                   ))}
                 </div>

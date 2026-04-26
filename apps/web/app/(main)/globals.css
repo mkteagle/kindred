@@ -6091,6 +6091,32 @@ dialog::backdrop { background: rgba(18, 18, 24, .6); backdrop-filter: blur(6px);
   line-height: 1;
 }
 
+.avatar-editor-cluster-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0 10px;
+}
+.avatar-editor-cluster-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--display);
+  color: var(--ash);
+}
+.avatar-editor-browse-link {
+  background: none;
+  border: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .06em;
+  color: var(--ember);
+  cursor: pointer;
+  text-decoration: none;
+}
+.avatar-editor-browse-link:hover {
+  text-decoration: underline;
+}
 .avatar-editor-clusters {
   display: flex;
   gap: 6px;
