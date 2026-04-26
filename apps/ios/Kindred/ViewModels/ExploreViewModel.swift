@@ -27,6 +27,12 @@ final class ExploreViewModel {
     func loadTimeline() async {
         isLoadingTimeline = true
         error = nil
+        if DemoDataProvider.shared.isActive {
+            let response = DemoDataProvider.shared.getTimeline()
+            timeline = response.months
+            isLoadingTimeline = false
+            return
+        }
         do {
             let response = try await APIClient.shared.getTimeline()
             timeline = response.months

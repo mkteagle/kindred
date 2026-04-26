@@ -687,6 +687,11 @@ final class InboxViewModel {
 
     func loadSyncHistory() async {
         guard !isLoading else { return }
+        if DemoDataProvider.shared.isActive {
+            syncLogs = []
+            hasLoaded = true
+            return
+        }
         isLoading = true
         defer { isLoading = false; hasLoaded = true }
 

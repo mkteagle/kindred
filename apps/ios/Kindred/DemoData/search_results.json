@@ -1,0 +1,24 @@
+{
+  "beach": [
+    {"photo_id": "demo_s01", "distance": 0.12, "photo_url": "demo://photo_01", "thumb_url": "demo://thumb_01", "flickr_url": null, "photo_title": "Beach sunset", "owner": null, "match_type": "scene", "match_name": "beach", "match_cluster_id": null, "match_category": null},
+    {"photo_id": "demo_s02", "distance": 0.18, "photo_url": "demo://photo_05", "thumb_url": "demo://thumb_05", "flickr_url": null, "photo_title": "Sandcastle", "owner": null, "match_type": "scene", "match_name": "beach", "match_cluster_id": null, "match_category": null},
+    {"photo_id": "demo_s03", "distance": 0.22, "photo_url": "demo://photo_09", "thumb_url": "demo://thumb_09", "flickr_url": null, "photo_title": "Beach volleyball", "owner": null, "match_type": "scene", "match_name": "beach", "match_cluster_id": null, "match_category": null}
+  ],
+  "birthday": [
+    {"photo_id": "demo_s04", "distance": 0.08, "photo_url": "demo://photo_02", "thumb_url": "demo://thumb_02", "flickr_url": null, "photo_title": "Sam's birthday cake", "owner": null, "match_type": "scene", "match_name": "birthday", "match_cluster_id": null, "match_category": null},
+    {"photo_id": "demo_s05", "distance": 0.15, "photo_url": "demo://photo_06", "thumb_url": "demo://thumb_06", "flickr_url": null, "photo_title": "Blowing out candles", "owner": null, "match_type": "scene", "match_name": "birthday", "match_cluster_id": null, "match_category": null}
+  ],
+  "maya": [
+    {"photo_id": "demo_s06", "distance": 0.05, "photo_url": "demo://photo_01", "thumb_url": "demo://thumb_01", "flickr_url": null, "photo_title": "Maya at the park", "owner": null, "match_type": "person", "match_name": "Maya", "match_cluster_id": "demo_p1", "match_category": "people"},
+    {"photo_id": "demo_s07", "distance": 0.09, "photo_url": "demo://photo_03", "thumb_url": "demo://thumb_03", "flickr_url": null, "photo_title": "Maya's recital", "owner": null, "match_type": "person", "match_name": "Maya", "match_cluster_id": "demo_p1", "match_category": "people"},
+    {"photo_id": "demo_s08", "distance": 0.14, "photo_url": "demo://photo_07", "thumb_url": "demo://thumb_07", "flickr_url": null, "photo_title": "Maya and Luna", "owner": null, "match_type": "person", "match_name": "Maya", "match_cluster_id": "demo_p1", "match_category": "people"}
+  ],
+  "dog": [
+    {"photo_id": "demo_s09", "distance": 0.06, "photo_url": "demo://photo_09", "thumb_url": "demo://thumb_09", "flickr_url": null, "photo_title": "Luna in the yard", "owner": null, "match_type": "pet", "match_name": "Luna", "match_cluster_id": "demo_pet1", "match_category": "pets"},
+    {"photo_id": "demo_s10", "distance": 0.11, "photo_url": "demo://photo_11", "thumb_url": "demo://thumb_11", "flickr_url": null, "photo_title": "Buddy fetching", "owner": null, "match_type": "pet", "match_name": "Buddy", "match_cluster_id": "demo_pet3", "match_category": "pets"}
+  ],
+  "park": [
+    {"photo_id": "demo_s11", "distance": 0.10, "photo_url": "demo://photo_04", "thumb_url": "demo://thumb_04", "flickr_url": null, "photo_title": "Sunday at the park", "owner": null, "match_type": "scene", "match_name": "park", "match_cluster_id": null, "match_category": null},
+    {"photo_id": "demo_s12", "distance": 0.19, "photo_url": "demo://photo_08", "thumb_url": "demo://thumb_08", "flickr_url": null, "photo_title": "Playground afternoon", "owner": null, "match_type": "scene", "match_name": "park", "match_cluster_id": null, "match_category": null}
+  ]
+}

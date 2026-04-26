@@ -18,6 +18,14 @@ final class SearchViewModel {
             return
         }
 
+        // Demo mode: return canned results instantly, no network
+        if DemoDataProvider.shared.isActive {
+            isSearching = false
+            hasSearched = true
+            results = DemoDataProvider.shared.search(query: trimmed)
+            return
+        }
+
         searchTask?.cancel()
         searchTask = Task {
             isSearching = true

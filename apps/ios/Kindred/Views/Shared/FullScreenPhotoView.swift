@@ -152,28 +152,35 @@ struct FullScreenPhotoView: View {
     }
 
     private func photoContent(for photo: PhotoGridItem, size: CGSize) -> some View {
-        AsyncImage(url: URL(string: photo.photoURL)) { phase in
-            switch phase {
-            case .success(let image):
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
+        Group {
+            if DemoDataProvider.isDemoURL(photo.photoURL) {
+                DemoThumbnailView(urlString: photo.photoURL, cornerRadius: 0)
                     .frame(width: size.width, height: size.height)
-                    .clipped()
-            case .failure:
-                VStack(spacing: 12) {
-                    Image(systemName: "photo.badge.exclamationmark")
-                        .font(.system(size: 40, weight: .light))
-                        .foregroundStyle(.white.opacity(0.4))
-                    Text("Failed to load")
-                        .font(.kindredBody)
-                        .foregroundStyle(.white.opacity(0.6))
+            } else {
+                AsyncImage(url: URL(string: photo.photoURL)) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: size.width, height: size.height)
+                            .clipped()
+                    case .failure:
+                        VStack(spacing: 12) {
+                            Image(systemName: "photo.badge.exclamationmark")
+                                .font(.system(size: 40, weight: .light))
+                                .foregroundStyle(.white.opacity(0.4))
+                            Text("Failed to load")
+                                .font(.kindredBody)
+                                .foregroundStyle(.white.opacity(0.6))
+                        }
+                        .frame(width: size.width, height: size.height)
+                    default:
+                        ProgressView()
+                            .tint(.white)
+                            .frame(width: size.width, height: size.height)
+                    }
                 }
-                .frame(width: size.width, height: size.height)
-            default:
-                ProgressView()
-                    .tint(.white)
-                    .frame(width: size.width, height: size.height)
             }
         }
     }
@@ -731,6 +738,11 @@ struct FullScreenPhotoView: View {
     // MARK: - Image Loading
 
     private func loadImage() async {
+        // Demo mode: no network loading needed — thumbnails are SwiftUI views
+        if DemoDataProvider.shared.isActive {
+            await MainActor.run { isLoading = false }
+            return
+        }
         guard let proxyURL else {
             await loadDirect()
             return
@@ -843,11 +855,18 @@ struct ShareSheetView: View {
 
             // Photo summary chip
             HStack(spacing: 12) {
-                AsyncImage(url: URL(string: item.thumbURL ?? item.photoURL)) { phase in
-                    if case .success(let image) = phase {
-                        image.resizable().scaledToFill()
+                Group {
+                    let thumbOrPhoto = item.thumbURL ?? item.photoURL
+                    if DemoDataProvider.isDemoURL(thumbOrPhoto) {
+                        DemoThumbnailView(urlString: thumbOrPhoto, cornerRadius: 6)
                     } else {
-                        KindredTheme.canvas
+                        AsyncImage(url: URL(string: thumbOrPhoto)) { phase in
+                            if case .success(let image) = phase {
+                                image.resizable().scaledToFill()
+                            } else {
+                                KindredTheme.canvas
+                            }
+                        }
                     }
                 }
                 .frame(width: 48, height: 48)
@@ -1206,16 +1225,23 @@ struct MemoryView: View {
         GeometryReader { geo in
             ZStack {
                 ForEach(Array(photos.enumerated()), id: \.element.id) { index, photo in
-                    AsyncImage(url: URL(string: photo.photoURL)) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
+                    Group {
+                        if DemoDataProvider.isDemoURL(photo.photoURL) {
+                            DemoThumbnailView(urlString: photo.photoURL, cornerRadius: 0)
                                 .frame(width: geo.size.width, height: geo.size.height)
-                                .clipped()
-                        default:
-                            Color.black
+                        } else {
+                            AsyncImage(url: URL(string: photo.photoURL)) { phase in
+                                switch phase {
+                                case .success(let image):
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: geo.size.width, height: geo.size.height)
+                                        .clipped()
+                                default:
+                                    Color.black
+                                }
+                            }
                         }
                     }
                     .opacity(index == currentSegment ? 1 : 0)

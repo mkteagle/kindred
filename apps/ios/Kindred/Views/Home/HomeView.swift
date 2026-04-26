@@ -178,12 +178,18 @@ struct HomeView: View {
     }
 
     private func scatterItem(url: String, x: CGFloat, y: CGFloat, size: CGFloat, rotation: Double, z: Int) -> some View {
-        AsyncImage(url: URL(string: url)) { phase in
-            switch phase {
-            case .success(let image):
-                image.resizable().scaledToFill()
-            default:
-                KindredTheme.canvas
+        Group {
+            if DemoDataProvider.isDemoURL(url) {
+                DemoThumbnailView(urlString: url, cornerRadius: 4)
+            } else {
+                AsyncImage(url: URL(string: url)) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    default:
+                        KindredTheme.canvas
+                    }
+                }
             }
         }
         .frame(width: size, height: size * 1.25)
@@ -316,12 +322,18 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Cover image
             let coverURL = cluster.photo_url ?? cluster.thumb_url ?? cluster.avatar
-            AsyncImage(url: URL(string: coverURL ?? "")) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().scaledToFill()
-                default:
-                    KindredTheme.canvas
+            Group {
+                if let coverURL, DemoDataProvider.isDemoURL(coverURL) {
+                    DemoThumbnailView(urlString: coverURL, cornerRadius: 0)
+                } else {
+                    AsyncImage(url: URL(string: coverURL ?? "")) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().scaledToFill()
+                        default:
+                            KindredTheme.canvas
+                        }
+                    }
                 }
             }
             .frame(width: 200, height: 130)
@@ -419,12 +431,19 @@ struct HomeView: View {
             HStack(spacing: 6) {
                 // Thumbnail row — only show what fits
                 ForEach(onThisDayPhotos.prefix(3), id: \.id) { photo in
-                    AsyncImage(url: URL(string: photo.thumbURL ?? photo.photoURL)) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image.resizable().scaledToFill()
-                        default:
-                            KindredTheme.canvas
+                    let thumbOrPhoto = photo.thumbURL ?? photo.photoURL
+                    Group {
+                        if DemoDataProvider.isDemoURL(thumbOrPhoto) {
+                            DemoThumbnailView(urlString: thumbOrPhoto, cornerRadius: 6)
+                        } else {
+                            AsyncImage(url: URL(string: thumbOrPhoto)) { phase in
+                                switch phase {
+                                case .success(let image):
+                                    image.resizable().scaledToFill()
+                                default:
+                                    KindredTheme.canvas
+                                }
+                            }
                         }
                     }
                     .frame(width: 52, height: 52)

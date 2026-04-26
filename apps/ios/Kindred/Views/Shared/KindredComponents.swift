@@ -115,7 +115,9 @@ struct KindredAvatar: View {
 
     var body: some View {
         Group {
-            if let urlStr = url, let url = URL(string: urlStr) {
+            if let urlStr = url, DemoDataProvider.isDemoURL(urlStr) {
+                DemoThumbnailView(urlString: urlStr, cornerRadius: 0)
+            } else if let urlStr = url, let url = URL(string: urlStr) {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image):

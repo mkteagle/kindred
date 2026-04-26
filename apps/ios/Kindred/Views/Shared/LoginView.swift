@@ -12,10 +12,7 @@ struct LoginView: View {
     @State private var isDemoLoading = false
     @State private var demoError: String?
 
-    // Demo configuration
-    private let demoBaseURL = "https://api.kindredphotos.app"
-    private let demoUsername = "demo"
-    private let demoPassword = "demo2026"
+    // Demo mode (offline — no network)
 
     var body: some View {
         ZStack {
@@ -236,21 +233,11 @@ struct LoginView: View {
     }
 
     private func tryDemo() {
-        isDemoLoading = true
-        demoError = nil
-        Task {
-            do {
-                // Point to the demo backend
-                await APIClient.shared.setBaseURL(demoBaseURL)
-                // Log in with demo credentials
-                try await session.login(username: demoUsername, password: demoPassword)
-            } catch {
-                demoError = "Demo unavailable right now. Try again later."
-                // Reset to default URL if demo fails
-                await APIClient.shared.setBaseURL("https://api.kindredphotos.app")
-            }
-            isDemoLoading = false
-        }
+        // Activate offline demo mode — no network calls at all
+        let demo = DemoDataProvider.shared
+        demo.isActive = true
+        let fakeUser = demo.getMe()
+        session.restoreSession(token: "demo", user: fakeUser)
     }
 
     private func flickrLogin() {

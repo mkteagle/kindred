@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var selectedTab = 0
+    @State private var demo = DemoDataProvider.shared
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -27,8 +28,17 @@ struct ContentView: View {
                 .opacity(selectedTab == 3 ? 1 : 0)
                 .allowsHitTesting(selectedTab == 3)
 
-            // Glassmorphic tab bar
-            KindredTabBar(selectedTab: $selectedTab)
+            // Demo mode banner (above tab bar)
+            VStack(spacing: 0) {
+                Spacer()
+                if demo.isActive {
+                    DemoModeBanner {
+                        DemoDataProvider.shared.deactivate()
+                        SessionManager.shared.logout()
+                    }
+                }
+                KindredTabBar(selectedTab: $selectedTab)
+            }
         }
         .ignoresSafeArea(.keyboard)
     }

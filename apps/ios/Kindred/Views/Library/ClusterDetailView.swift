@@ -145,12 +145,19 @@ struct ClusterDetailView: View {
                 LazyVGrid(columns: photoColumns, spacing: 4) {
                     ForEach(detail.items) { detection in
                         let item = PhotoGridItem(from: detection)
-                        AsyncImage(url: URL(string: item.thumbURL ?? item.photoURL)) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image.resizable().scaledToFill()
-                            default:
-                                KindredTheme.canvas
+                        let thumbOrPhoto = item.thumbURL ?? item.photoURL
+                        Group {
+                            if DemoDataProvider.isDemoURL(thumbOrPhoto) {
+                                DemoThumbnailView(urlString: thumbOrPhoto, cornerRadius: KindredTheme.radiusXS)
+                            } else {
+                                AsyncImage(url: URL(string: thumbOrPhoto)) { phase in
+                                    switch phase {
+                                    case .success(let image):
+                                        image.resizable().scaledToFill()
+                                    default:
+                                        KindredTheme.canvas
+                                    }
+                                }
                             }
                         }
                         .frame(minHeight: 0)

@@ -251,7 +251,11 @@ struct MasonryClusterCard: View {
             // Cover photo
             let coverURL = cluster.photo_url ?? cluster.thumb_url ?? cluster.avatar
             ZStack(alignment: .bottomLeading) {
-                if let urlStr = coverURL, let url = URL(string: urlStr) {
+                if let urlStr = coverURL, DemoDataProvider.isDemoURL(urlStr) {
+                    DemoThumbnailView(urlString: urlStr, cornerRadius: 0)
+                        .frame(height: height)
+                        .clipped()
+                } else if let urlStr = coverURL, let url = URL(string: urlStr) {
                     AsyncImage(url: url) { phase in
                         switch phase {
                         case .success(let image):

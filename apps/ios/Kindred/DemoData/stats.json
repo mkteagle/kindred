@@ -1,0 +1,5 @@
+{
+  "people": {"detections": 1766, "photos": 805, "groups": 8},
+  "pets": {"detections": 314, "photos": 145, "groups": 3},
+  "vehicles": {"detections": 59, "photos": 36, "groups": 2}
+}

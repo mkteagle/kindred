@@ -16,6 +16,10 @@ final class SettingsViewModel {
     }
 
     func loadSyncs() async {
+        if DemoDataProvider.shared.isActive {
+            syncs = []
+            return
+        }
         isLoadingSyncs = true
         do {
             syncs = try await APIClient.shared.getSyncs()
@@ -26,6 +30,10 @@ final class SettingsViewModel {
     }
 
     func checkHealth() async {
+        if DemoDataProvider.shared.isActive {
+            isHealthy = true
+            return
+        }
         do {
             let health = try await APIClient.shared.healthCheck()
             isHealthy = health.status == "ok"
@@ -35,6 +43,10 @@ final class SettingsViewModel {
     }
 
     func checkActiveJob() async {
+        if DemoDataProvider.shared.isActive {
+            activeJob = nil
+            return
+        }
         do {
             activeJob = try await APIClient.shared.getActiveJob()
         } catch {
@@ -43,6 +55,7 @@ final class SettingsViewModel {
     }
 
     func logout() {
+        DemoDataProvider.shared.deactivate()
         session.logout()
     }
 }

@@ -44,3 +44,16 @@ targets:
           - processing
         BGTaskSchedulerPermittedIdentifiers:
           - com.kindlingsignal.kindred.sync
+
+  KindredScreenshots:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - KindredScreenshots
+    dependencies:
+      - target: Kindred
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kindlingsignal.kindred.screenshots
+        TEST_TARGET_NAME: Kindred
+        GENERATE_INFOPLIST_FILE: true

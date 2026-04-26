@@ -15,25 +15,31 @@ struct PhotoGridView: View {
         LazyVGrid(columns: gridColumns, spacing: spacing) {
             ForEach(photoURLs) { item in
                 GeometryReader { geo in
-                    AsyncImage(url: URL(string: item.thumbURL ?? item.photoURL)) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: geo.size.width, height: geo.size.height)
-                                .clipped()
-                        case .failure:
-                            KindredTheme.canvas
-                                .overlay {
-                                    Image(systemName: "photo")
-                                        .foregroundStyle(KindredTheme.mist)
-                                }
-                        case .empty:
-                            KindredTheme.canvas
-                                .overlay { ProgressView().tint(KindredTheme.ember) }
-                        @unknown default:
-                            KindredTheme.canvas
+                    let thumbOrPhoto = item.thumbURL ?? item.photoURL
+                    if DemoDataProvider.isDemoURL(thumbOrPhoto) {
+                        DemoThumbnailView(urlString: thumbOrPhoto, cornerRadius: 0)
+                            .frame(width: geo.size.width, height: geo.size.height)
+                    } else {
+                        AsyncImage(url: URL(string: thumbOrPhoto)) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: geo.size.width, height: geo.size.height)
+                                    .clipped()
+                            case .failure:
+                                KindredTheme.canvas
+                                    .overlay {
+                                        Image(systemName: "photo")
+                                            .foregroundStyle(KindredTheme.mist)
+                                    }
+                            case .empty:
+                                KindredTheme.canvas
+                                    .overlay { ProgressView().tint(KindredTheme.ember) }
+                            @unknown default:
+                                KindredTheme.canvas
+                            }
                         }
                     }
                 }

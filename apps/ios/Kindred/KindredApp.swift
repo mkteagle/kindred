@@ -69,6 +69,13 @@ struct RootView: View {
         if session.isAuthenticated {
             ContentView()
                 .task {
+                    // If a stale demo token survived an app restart, clear it
+                    if session.sessionToken == "demo" && !DemoDataProvider.shared.isActive {
+                        session.logout()
+                        return
+                    }
+                    // Skip network refresh in demo mode
+                    guard !DemoDataProvider.shared.isActive else { return }
                     await session.refreshUser()
                 }
         } else if !hasSeenOnboarding {

@@ -16,6 +16,10 @@ final class LibraryViewModel {
     var stats: Stats?
 
     func loadStats() async {
+        if DemoDataProvider.shared.isActive {
+            stats = DemoDataProvider.shared.getStats()
+            return
+        }
         do {
             stats = try await APIClient.shared.getStats()
         } catch {
@@ -26,6 +30,13 @@ final class LibraryViewModel {
     func loadClusters() async {
         isLoading = true
         error = nil
+        if DemoDataProvider.shared.isActive {
+            let response = DemoDataProvider.shared.getClusterSummary(category: selectedCategory.rawValue)
+            clusters = response.clusters
+            noiseCount = response.noise_count ?? 0
+            isLoading = false
+            return
+        }
         do {
             let response = try await APIClient.shared.getClusterSummary(category: selectedCategory.rawValue)
             clusters = response.clusters
@@ -39,6 +50,14 @@ final class LibraryViewModel {
 
     func loadClusterDetail(cluster: ClusterSummary) async {
         isLoadingDetail = true
+        if DemoDataProvider.shared.isActive {
+            clusterDetail = DemoDataProvider.shared.getClusterDetail(
+                category: selectedCategory.rawValue,
+                clusterId: cluster.id
+            )
+            isLoadingDetail = false
+            return
+        }
         do {
             clusterDetail = try await APIClient.shared.getClusterDetail(
                 category: selectedCategory.rawValue,
