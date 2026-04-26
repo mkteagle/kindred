@@ -1128,28 +1128,33 @@ struct MemoryView: View {
             }
             .opacity(chromeOpacity)
 
-            // Tap zones (invisible)
-            HStack(spacing: 0) {
-                // Left 33% - previous
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        goToPrevious()
-                    }
-                    .frame(maxWidth: .infinity)
+            // Tap zones (invisible) — start below toolbar area so buttons work
+            VStack(spacing: 0) {
+                Color.clear.frame(height: 100) // Reserve space for toolbar — not tappable
+                    .allowsHitTesting(false)
 
-                // Center 34% - no action (just absorb)
-                Color.clear
-                    .contentShape(Rectangle())
-                    .frame(maxWidth: .infinity)
+                HStack(spacing: 0) {
+                    // Left 33% - previous
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            goToPrevious()
+                        }
+                        .frame(maxWidth: .infinity)
 
-                // Right 33% - next
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        goToNext()
-                    }
-                    .frame(maxWidth: .infinity)
+                    // Center 34% - no action (just absorb)
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .frame(maxWidth: .infinity)
+
+                    // Right 33% - next
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            goToNext()
+                        }
+                        .frame(maxWidth: .infinity)
+                }
             }
             .simultaneousGesture(
                 LongPressGesture(minimumDuration: 0.3)
