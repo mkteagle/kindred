@@ -753,9 +753,8 @@ function PhotoLightboxOverlay({
             <section className="lb-info-section">
               <h4 className="lb-info-label">Tags</h4>
               <div className="lb-info-chips">
-                {metadata.tags
-                  .split(",")
-                  .map((t) => t.trim())
+                {(Array.isArray(metadata.tags) ? metadata.tags : String(metadata.tags || "").split(","))
+                  .map((t: string) => t.trim())
                   .filter(Boolean)
                   .map((tag) => (
                     <span key={tag} className="lb-tag-chip">
