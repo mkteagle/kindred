@@ -5,27 +5,29 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Content area — fills entire screen
-            Group {
-                switch selectedTab {
-                case 0: HomeView(onNavigateToTab: { tab in
-                    withAnimation(.easeOut(duration: 0.16)) {
-                        selectedTab = tab
-                    }
-                })
-                case 1: LibraryView()
-                case 2: SearchView()
-                case 3: SettingsView()
-                default: HomeView(onNavigateToTab: { tab in
-                    withAnimation(.easeOut(duration: 0.16)) {
-                        selectedTab = tab
-                    }
-                })
+            // Keep all tabs alive — just hide inactive ones
+            // This prevents rebuilding views and re-fetching data on every tab switch
+            HomeView(onNavigateToTab: { tab in
+                withAnimation(.easeOut(duration: 0.16)) {
+                    selectedTab = tab
                 }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            })
+            .opacity(selectedTab == 0 ? 1 : 0)
+            .allowsHitTesting(selectedTab == 0)
 
-            // Glassmorphic tab bar overlays the bottom, extends into safe area
+            LibraryView()
+                .opacity(selectedTab == 1 ? 1 : 0)
+                .allowsHitTesting(selectedTab == 1)
+
+            SearchView()
+                .opacity(selectedTab == 2 ? 1 : 0)
+                .allowsHitTesting(selectedTab == 2)
+
+            SettingsView()
+                .opacity(selectedTab == 3 ? 1 : 0)
+                .allowsHitTesting(selectedTab == 3)
+
+            // Glassmorphic tab bar
             KindredTabBar(selectedTab: $selectedTab)
         }
         .ignoresSafeArea(.keyboard)
