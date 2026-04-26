@@ -174,7 +174,7 @@ export default function ClusterDetailPage() {
 
   const items = detail?.items || [];
   const uniquePhotos = getUniquePhotos(items);
-  const name = detail?.label || cluster?.label || "Unnamed";
+  const name = detail?.label || cluster?.label || (isLoading ? "" : "Unnamed");
 
   // Determine current avatar detection — custom or highest det_score
   const avatarDetectionId = detail?.avatar_detection_id || null;
@@ -272,8 +272,10 @@ export default function ClusterDetailPage() {
         </div>
 
         {isLoading ? (
-          <div className="empty-state">
-            <Spinner />
+          <div className="cluster-grid" style={{ padding: "0 16px" }}>
+            {Array.from({ length: 9 }).map((_, i) => (
+              <div key={i} className="skeleton-card" style={{ aspectRatio: "1", borderRadius: 6 }} />
+            ))}
           </div>
         ) : (
           <>

@@ -140,7 +140,15 @@ export function Topbar() {
   const uiRole = viewingAsMember ? "member" : effectiveRole;
 
   if (authLoading) {
-    return <header className="nb"><div className="nb-inner"><Spinner /></div></header>;
+    return (
+      <header className="nb">
+        <div className="nb-inner">
+          <Link href="/" className="nb-brand" aria-label="Home">
+            <img src="/kindred-icon.svg" alt="" className="nb-logo" />
+          </Link>
+        </div>
+      </header>
+    );
   }
 
   return (

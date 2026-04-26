@@ -74,6 +74,16 @@ img {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+@keyframes shimmer {
+  0% { opacity: .6; }
+  50% { opacity: .3; }
+  100% { opacity: .6; }
+}
+.skeleton-card {
+  background: var(--canvas);
+  border-radius: 8px;
+  animation: shimmer 1.4s ease infinite;
+}
 
 @keyframes rise {
   from { opacity: 0; transform: translateY(14px); }

@@ -888,8 +888,10 @@ export default function CategoryPage() {
         </div>
 
         {summaryLoading && (
-          <div className="empty-state">
-            <Spinner />
+          <div className="cluster-grid">
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div key={i} className="skeleton-card" style={{ aspectRatio: "3/4", borderRadius: 8, background: "var(--canvas)", animation: "shimmer 1.4s ease infinite" }} />
+            ))}
           </div>
         )}
 
