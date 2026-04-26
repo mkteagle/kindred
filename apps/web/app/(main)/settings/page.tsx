@@ -267,7 +267,7 @@ export default function SettingsPage() {
   };
 
   if (loading) {
-    return <div className="settings-page"><Spinner /></div>;
+    return <div className="settings-page"><div style={{display:"flex",flexDirection:"column",gap:16,padding:24}}>{Array.from({length:4}).map((_,i)=>(<div key={i} className="skeleton-card" style={{height:80,borderRadius:12}}/>))}</div></div>;
   }
 
   return (

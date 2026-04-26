@@ -141,7 +141,7 @@ export default function LandmarksPage() {
 
         {isLoading && (
           <div className="empty-state">
-            <Spinner />
+            <div className="cluster-grid">{Array.from({length:12}).map((_,i)=>(<div key={i} className="skeleton-card" style={{aspectRatio:"3/4",borderRadius:8}}/>))}</div>
           </div>
         )}
 

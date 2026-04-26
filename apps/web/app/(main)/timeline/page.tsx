@@ -219,7 +219,7 @@ export default function TimelinePage() {
         )}
 
         {isLoading && (
-          <div className="empty-state"><Spinner /></div>
+          <div className="cluster-grid">{Array.from({length:12}).map((_,i)=>(<div key={i} className="skeleton-card" style={{aspectRatio:"1",borderRadius:6}}/>))}</div>
         )}
 
         {!isLoading && filtered.length === 0 && (

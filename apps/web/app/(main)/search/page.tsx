@@ -61,8 +61,10 @@ function SearchContent() {
       </label>
 
       {debouncedQ.length > 2 && isLoading && (
-        <div className="empty-state" style={{ minHeight: 200 }}>
-          <Spinner />
+        <div className="cluster-grid" style={{ padding: "20px 0" }}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="skeleton-card" style={{ aspectRatio: "1", borderRadius: 6 }} />
+          ))}
         </div>
       )}
 
