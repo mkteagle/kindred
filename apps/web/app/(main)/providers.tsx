@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, useEffect, useRef, Suspense } from "react";
 import { initPostHog } from "@/lib/posthog";
 import { LightboxProvider } from "@/components/photo-lightbox";
+import { ToastProvider } from "@/components/notifications";
 
 /**
  * Global 401 interceptor — when the backend returns 401 on any /api/* route
@@ -66,7 +67,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <Suspense fallback={null}>
-        <LightboxProvider>{children}</LightboxProvider>
+        <LightboxProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </LightboxProvider>
       </Suspense>
     </QueryClientProvider>
   );

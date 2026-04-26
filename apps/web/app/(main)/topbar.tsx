@@ -6,7 +6,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import { Spinner } from "@/components/ui";
-import type { User, SyncLog, Stats, SearchResult } from "@/types";
+import { NotifBell } from "@/components/notifications";
+import type { User, Stats, SearchResult } from "@/types";
 import { BACKEND, CATEGORIES, fmt, toBackendCategory } from "@/lib/constants";
 import { useLightbox } from "@/components/photo-lightbox";
 import type { LightboxPhoto } from "@/components/photo-lightbox";
@@ -46,9 +47,7 @@ export function Topbar() {
   const qc = useQueryClient();
   const [searchOpen, setSearchOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [notifOpen, setNotifOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const notifRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -64,7 +63,6 @@ export function Topbar() {
   useEffect(() => {
     const close = (e: MouseEvent) => {
       if (userRef.current && !userRef.current.contains(e.target as Node)) setUserMenuOpen(false);
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
       if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false);
     };
     document.addEventListener("mousedown", close);
@@ -83,37 +81,12 @@ export function Topbar() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
-  const { data: syncs } = useQuery<SyncLog[]>({
-    queryKey: ["syncs"],
-    queryFn: () => fetch(`${BACKEND}/syncs`).then((r) => r.json()),
-    refetchInterval: 60000,
-  });
   const { data: stats } = useQuery<Stats>({
     queryKey: ["stats"],
     queryFn: () => fetch(`${BACKEND}/stats`).then((r) => r.json()),
   });
 
-  interface ActiveJobData { job_id: string | null; status: string; progress?: number; total?: number; message?: string; counts?: { people: number; pets: number; vehicles: number } }
-  const { data: activeJob } = useQuery<ActiveJobData>({
-    queryKey: ["active-job"],
-    queryFn: () => fetch(`${BACKEND}/jobs/active`).then((r) => r.json()),
-    refetchInterval: (query) => query.state.data?.status === "running" ? 5000 : 60000,
-  });
 
-  const lastSync = syncs?.[0];
-
-  interface NotifItem { id: number; type: string; title: string; message: string; metadata: Record<string, unknown>; read: boolean; created_at: string }
-  interface NotifData { notifications: NotifItem[]; unread_count: number }
-  const { data: notifData } = useQuery<NotifData>({
-    queryKey: ["notifications"],
-    queryFn: () => fetch(`${BACKEND}/notifications?limit=10`).then((r) => r.json()),
-    refetchInterval: 60000,
-  });
-
-  const markAllRead = async () => {
-    await fetch(`${BACKEND}/notifications/read`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(null) });
-    qc.invalidateQueries({ queryKey: ["notifications"] });
-  };
   const [signOutOpen, setSignOutOpen] = useState(false);
   const signOutRef = useRef<HTMLDialogElement>(null);
 
@@ -270,84 +243,6 @@ export function Topbar() {
             {/* Divider between admin tray and everyone actions */}
             {user && uiRole === "admin" && <span className="nb-divider" />}
 
-            {/* Notifications — only when connected */}
-            {user && <div className="nb-dropdown" ref={notifRef}>
-              <button className="nb-icon-btn" aria-label="Notifications"
-                onClick={() => { setNotifOpen(!notifOpen); setUserMenuOpen(false); setMoreOpen(false); }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
-                </svg>
-                {(notifData?.unread_count ?? 0) > 0 && (
-                  <span className="nb-notif-badge">{(notifData?.unread_count ?? 0) > 9 ? "9+" : notifData?.unread_count}</span>
-                )}
-                {activeJob?.status === "running" && !(notifData?.unread_count) && <span className="nb-notif-dot" />}
-              </button>
-              {notifOpen && (
-                <div className="nb-popover nb-popover-right nb-notif-panel">
-                  <div className="nb-notif-header">
-                    <strong>Notifications</strong>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      {(notifData?.unread_count ?? 0) > 0 && (
-                        <button className="nb-notif-markread" onClick={markAllRead}>Mark all read</button>
-                      )}
-                      <Link href="/sync" onClick={() => setNotifOpen(false)} className="nb-notif-viewall">
-                        Sync history
-                      </Link>
-                    </div>
-                  </div>
-                  <div className="nb-popover-divider" />
-
-                  {/* Active scan */}
-                  {activeJob?.status === "running" && activeJob.total && (
-                    <div className="nb-notif-item nb-notif-active">
-                      <div className="nb-notif-icon nb-notif-icon-running">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
-                        </svg>
-                      </div>
-                      <div className="nb-notif-body">
-                        <span className="nb-notif-title">Scanning photos...</span>
-                        <span className="nb-notif-desc">
-                          {fmt.format(activeJob.progress || 0)}/{fmt.format(activeJob.total)} &mdash;
-                          {activeJob.counts && ` ${fmt.format(activeJob.counts.people)} faces`}
-                        </span>
-                        <div className="nb-notif-bar">
-                          <div style={{ width: `${Math.round(((activeJob.progress || 0) / activeJob.total) * 100)}%` }} />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Real notifications */}
-                  {(notifData?.notifications || []).map((n: NotifItem) => (
-                    <div key={n.id} className={`nb-notif-item ${!n.read ? "nb-notif-unread" : ""}`}>
-                      <div className={`nb-notif-icon ${
-                        n.type === "scan_complete" ? "nb-notif-icon-done" :
-                        n.type === "photos_deleted" ? "nb-notif-icon-error" :
-                        "nb-notif-icon-done"
-                      }`}>
-                        {n.type === "scan_complete" ? "✓" :
-                         n.type === "photos_deleted" ? "✕" :
-                         n.type === "photo_processed" ? "+" : "•"}
-                      </div>
-                      <div className="nb-notif-body">
-                        <span className="nb-notif-title">{n.title}</span>
-                        <span className="nb-notif-desc">
-                          {n.message}
-                          {n.created_at && ` · ${new Date(n.created_at).toLocaleDateString()}`}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-
-                  {(!notifData?.notifications?.length) && activeJob?.status !== "running" && (
-                    <div className="nb-notif-empty">No notifications yet</div>
-                  )}
-                </div>
-              )}
-            </div>}
-
             {/* Search trigger — only when connected */}
             {user && (
               <button className="nb-icon-btn" onClick={() => setSearchOpen(true)}
@@ -359,21 +254,41 @@ export function Topbar() {
               </button>
             )}
 
+            {/* Notifications bell — between search and avatar per spec */}
+            {user && <NotifBell isAdmin={uiRole === "admin"} />}
+
             {/* User avatar */}
             {user ? (
               <div className="nb-dropdown" ref={userRef}>
-                <button
-                  className="nb-avatar"
-                  style={{ background: uiRole === "admin" ? "linear-gradient(135deg,#c9551c,#e9b85d)" : "linear-gradient(135deg,#2f4a36,#4a6b4f)" }}
-                  onClick={() => { setUserMenuOpen(!userMenuOpen); setMoreOpen(false); }}>
-                  {(user.display_name || user.fullname || user.username || "?").charAt(0).toUpperCase()}
-                </button>
+                {user.avatar_url ? (
+                  <img
+                    src={`${BACKEND}${user.avatar_url}`}
+                    alt={user.display_name || user.username || ""}
+                    className="nb-avatar-img"
+                    onClick={() => { setUserMenuOpen(!userMenuOpen); setMoreOpen(false); }}
+                  />
+                ) : (
+                  <button
+                    className="nb-avatar"
+                    style={{ background: uiRole === "admin" ? "linear-gradient(135deg,#c9551c,#e9b85d)" : "linear-gradient(135deg,#2f4a36,#4a6b4f)" }}
+                    onClick={() => { setUserMenuOpen(!userMenuOpen); setMoreOpen(false); }}>
+                    {(user.display_name || user.fullname || user.username || "?").charAt(0).toUpperCase()}
+                  </button>
+                )}
                 {userMenuOpen && (
                   <div className="nb-popover nb-popover-right" style={{ minWidth: 220 }}>
                     <div className="nb-user-header">
-                      <div className="nb-avatar nb-avatar-lg" style={{ background: uiRole === "admin" ? "linear-gradient(135deg,#c9551c,#e9b85d)" : "linear-gradient(135deg,#2f4a36,#4a6b4f)" }}>
-                        {(user.display_name || user.fullname || user.username || "?").charAt(0).toUpperCase()}
-                      </div>
+                      {user.avatar_url ? (
+                        <img
+                          src={`${BACKEND}${user.avatar_url}`}
+                          alt={user.display_name || user.username || ""}
+                          className="nb-avatar-img nb-avatar-img-lg"
+                        />
+                      ) : (
+                        <div className="nb-avatar nb-avatar-lg" style={{ background: uiRole === "admin" ? "linear-gradient(135deg,#c9551c,#e9b85d)" : "linear-gradient(135deg,#2f4a36,#4a6b4f)" }}>
+                          {(user.display_name || user.fullname || user.username || "?").charAt(0).toUpperCase()}
+                        </div>
+                      )}
                       <div>
                         <strong>{user.display_name || user.fullname || user.username}</strong>
                         <span>@{user.username}</span>
@@ -447,9 +362,13 @@ export function Topbar() {
           onClick={(e) => { if (e.target === e.currentTarget) closeSignOut(); }}
         >
           <div className="signout-body">
-            <div className="signout-avatar">
-              {user?.display_name?.[0]?.toUpperCase() || user?.username?.[0]?.toUpperCase() || "?"}
-            </div>
+            {user?.avatar_url ? (
+              <img src={`${BACKEND}${user.avatar_url}`} alt="" className="signout-avatar" style={{ objectFit: "cover" }} />
+            ) : (
+              <div className="signout-avatar">
+                {user?.display_name?.[0]?.toUpperCase() || user?.username?.[0]?.toUpperCase() || "?"}
+              </div>
+            )}
             <h3>Sign out, <strong>{user?.display_name?.split(" ")[0] || user?.username || "there"}</strong>?</h3>
             <p>You&apos;ll need your password to sign back in. Pending uploads will be saved on this device.</p>
           </div>
