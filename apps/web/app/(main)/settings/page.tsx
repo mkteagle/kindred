@@ -115,6 +115,22 @@ export default function SettingsPage() {
     setUsers((prev) => prev.filter((u) => u.id !== id));
   };
 
+  const toggleRole = async (id: string, currentRole: string) => {
+    const newRole = currentRole === "admin" ? "member" : "admin";
+    const msg = newRole === "admin"
+      ? "Promote this member to admin? They'll be able to manage the household, run scans, and configure integrations."
+      : "Demote this admin to member? They'll lose access to admin tools.";
+    if (!window.confirm(msg)) return;
+    const resp = await fetch(`${BACKEND}/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role: newRole }),
+    });
+    if (resp.ok) {
+      setUsers((prev) => prev.map((u) => u.id === id ? { ...u, role: newRole } : u));
+    }
+  };
+
   const copyInviteLink = (code: string) => {
     const link = `${window.location.origin}/join/${code}`;
     navigator.clipboard.writeText(link);
@@ -337,9 +353,18 @@ export default function SettingsPage() {
                 <span>@{u.username} &middot; {u.role}</span>
               </div>
               {u.id !== currentUser?.userId && (
-                <button className="settings-remove" onClick={() => removeUser(u.id)}>
-                  Remove
-                </button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    className="settings-copy"
+                    onClick={() => toggleRole(u.id, u.role)}
+                    title={u.role === "admin" ? "Demote to member" : "Promote to admin"}
+                  >
+                    {u.role === "admin" ? "Demote" : "Make admin"}
+                  </button>
+                  <button className="settings-remove" onClick={() => removeUser(u.id)}>
+                    Remove
+                  </button>
+                </div>
               )}
             </div>
           ))}
