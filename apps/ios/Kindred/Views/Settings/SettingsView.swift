@@ -387,57 +387,43 @@ struct BackupDetailView: View {
 
     var body: some View {
         Group {
-            switch uploadVM.photoManager.authorizationStatus {
-            case .notDetermined:
-                // Haven't asked yet
-                VStack(spacing: 20) {
-                    Spacer()
-                    Image(systemName: "photo.on.rectangle")
-                        .font(.system(size: 48, weight: .light))
-                        .foregroundStyle(KindredTheme.pine.opacity(0.5))
-                    Text("Photo access needed")
-                        .font(.kindredH3)
-                        .foregroundStyle(KindredTheme.ash)
-                    Text("Kindred needs access to your photo library to back up your photos.")
-                        .font(.kindredBody)
-                        .foregroundStyle(KindredTheme.mist)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 40)
-                    KindredButton(title: "Grant access", style: .primary) {
-                        Task { await uploadVM.requestAccess() }
-                    }
-                    Spacer()
-                }
-            case .denied, .restricted:
+            if uploadVM.photoManager.authorizationStatus == .denied || uploadVM.photoManager.authorizationStatus == .restricted {
+                // Denied — take them directly to system Settings
                 VStack(spacing: 20) {
                     Spacer()
                     Image(systemName: "lock.shield")
                         .font(.system(size: 48, weight: .light))
                         .foregroundStyle(KindredTheme.rosehip.opacity(0.5))
-                    Text("Access denied")
+                    Text("Photo access is off")
                         .font(.kindredH3)
                         .foregroundStyle(KindredTheme.ash)
-                    Text("Enable photo access in Settings to back up your photos.")
+                    Text("Tap below to open Settings and enable photo access for Kindred Photos.")
                         .font(.kindredBody)
                         .foregroundStyle(KindredTheme.mist)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 40)
-                    KindredButton(title: "Open Settings", style: .primary) {
+                    KindredButton(title: "Open Settings", icon: "gear", style: .primary) {
                         if let url = URL(string: UIApplication.openSettingsURLString) {
                             UIApplication.shared.open(url)
                         }
                     }
+                    .padding(.horizontal, 40)
                     Spacer()
                 }
-            default:
-                // Authorized — show backup UI
+            } else {
+                // Authorized or will auto-prompt — show backup UI
                 backupContent
             }
         }
         .kindredPaperBackground()
         .navigationBarTitleDisplayMode(.inline)
         .task {
+            // Auto-trigger permission prompt if not determined — don't make them find a button
             await uploadVM.requestAccess()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            // Re-check auth when coming back from Settings
+            Task { await uploadVM.requestAccess() }
         }
     }
 
