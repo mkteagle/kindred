@@ -90,8 +90,9 @@ struct LibraryView: View {
                 .presentationDragIndicator(.visible)
             }
             .task {
-                await viewModel.loadStats()
-                await viewModel.loadClusters()
+                async let stats: () = viewModel.loadStats()
+                async let clusters: () = viewModel.loadClusters()
+                _ = await (stats, clusters)
             }
             .onChange(of: viewModel.selectedCategory) {
                 Task {

@@ -2462,6 +2462,11 @@ async def _upload_to_flickr(file_data: bytes, filename: str, title: str, descrip
         try:
             from PIL import Image
             import io
+            try:
+                from pillow_heif import register_heif_opener
+                register_heif_opener()
+            except ImportError:
+                pass
             img = Image.open(io.BytesIO(file_data))
             buf = io.BytesIO()
             img.convert("RGB").save(buf, format="JPEG", quality=92)

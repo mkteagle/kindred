@@ -73,16 +73,18 @@ struct HomeView: View {
                 )
             }
             .task {
-                await libraryVM.loadStats()
-                await libraryVM.loadClusters()
-                await exploreVM.loadTimeline()
-                await inboxVM.loadSyncHistory()
+                async let stats: () = libraryVM.loadStats()
+                async let clusters: () = libraryVM.loadClusters()
+                async let timeline: () = exploreVM.loadTimeline()
+                async let inbox: () = inboxVM.loadSyncHistory()
+                _ = await (stats, clusters, timeline, inbox)
                 lastLoadedAt = Date()
             }
             .refreshable {
-                await libraryVM.loadClusters()
-                await exploreVM.loadTimeline()
-                await inboxVM.loadSyncHistory()
+                async let clusters: () = libraryVM.loadClusters()
+                async let timeline: () = exploreVM.loadTimeline()
+                async let inbox: () = inboxVM.loadSyncHistory()
+                _ = await (clusters, timeline, inbox)
                 lastLoadedAt = Date()
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
