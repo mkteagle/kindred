@@ -310,7 +310,8 @@ struct HomeView: View {
                             NavigationLink(value: cluster) {
                                 memoryCard(cluster: cluster)
                             }
-                            .buttonStyle(.plain)
+                            .contentShape(Rectangle())
+            .buttonStyle(.plain)
                         }
                         Spacer().frame(width: 8)
                     }
@@ -408,7 +409,8 @@ struct HomeView: View {
                                 }
                                 .frame(width: 60)
                             }
-                            .buttonStyle(.plain)
+                            .contentShape(Rectangle())
+            .buttonStyle(.plain)
                         }
                         Spacer().frame(width: 8)
                     }

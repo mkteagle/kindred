@@ -336,7 +336,8 @@ struct NotificationsSettingsView: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
                 }
-                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+            .buttonStyle(.plain)
 
                 if index < types.count - 1 {
                     Divider().overlay(KindredTheme.line).padding(.leading, 14)
@@ -574,7 +575,8 @@ struct NotificationTypeDetailView: View {
                             )
                     )
                 }
-                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+            .buttonStyle(.plain)
             }
         }
     }
@@ -977,7 +979,8 @@ struct NotificationInboxView: View {
                                         .stroke(isActive ? KindredTheme.ash : KindredTheme.lineDark, lineWidth: isActive ? 0 : 1)
                                 )
                             }
-                            .buttonStyle(.plain)
+                            .contentShape(Rectangle())
+            .buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -1019,7 +1022,8 @@ struct NotificationInboxView: View {
                                         } label: {
                                             inboxRow(item: item)
                                         }
-                                        .buttonStyle(.plain)
+                                        .contentShape(Rectangle())
+            .buttonStyle(.plain)
 
                                         if index < group.items.count - 1 {
                                             Divider().overlay(KindredTheme.line).padding(.leading, 14)

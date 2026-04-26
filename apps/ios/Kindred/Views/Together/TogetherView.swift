@@ -759,7 +759,8 @@ struct TogetherResultsView: View {
                             .stroke(KindredTheme.line, lineWidth: 1)
                     )
                 }
-                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+            .buttonStyle(.plain)
                 .padding(.horizontal, 20)
                 .padding(.top, 10)
             }

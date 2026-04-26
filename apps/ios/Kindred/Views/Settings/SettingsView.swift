@@ -116,7 +116,8 @@ struct SettingsView: View {
                                 .opacity(0.001) // Invisible but tappable hint; shows on press
                         }
                     }
-                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+            .buttonStyle(.plain)
                     .sheet(isPresented: $showAvatarPicker) {
                         AvatarPickerView(
                             currentAvatarURL: user.avatar_url,
@@ -238,7 +239,8 @@ struct SettingsView: View {
                             .foregroundStyle(KindredTheme.mist)
                     }
                 }
-                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+            .buttonStyle(.plain)
 
                 Divider().padding(.leading, 14)
 
@@ -260,7 +262,8 @@ struct SettingsView: View {
                             .foregroundStyle(KindredTheme.mist)
                     }
                 }
-                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+            .buttonStyle(.plain)
 
                 Divider().padding(.leading, 14)
 
@@ -273,7 +276,8 @@ struct SettingsView: View {
                             .foregroundStyle(KindredTheme.mist)
                     }
                 }
-                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+            .buttonStyle(.plain)
 
                 // Admin-only: Scan & maintenance
                 if viewModel.session.currentUser?.role == "admin" {
@@ -288,7 +292,8 @@ struct SettingsView: View {
                                 .foregroundStyle(KindredTheme.mist)
                         }
                     }
-                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+            .buttonStyle(.plain)
                 }
             }
             .kindredGroupedCard()
@@ -321,7 +326,8 @@ struct SettingsView: View {
                         }
                     }
                 }
-                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+            .buttonStyle(.plain)
 
                 Divider().padding(.leading, 14)
 
@@ -342,7 +348,8 @@ struct SettingsView: View {
                         }
                     }
                 }
-                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+            .buttonStyle(.plain)
             }
             .kindredGroupedCard()
             .padding(.horizontal, 16)
@@ -386,6 +393,7 @@ struct SettingsView: View {
             trailing()
         }
         .padding(.horizontal, 14)
+        .contentShape(Rectangle())
         .padding(.vertical, 14)
     }
 }
@@ -694,6 +702,7 @@ struct BackupDetailView: View {
                 }
                 .padding(14)
             }
+            .contentShape(Rectangle())
             .buttonStyle(.plain)
             .disabled(uploadVM.photoManager.uploadedCount == 0)
         }

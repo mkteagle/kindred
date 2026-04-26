@@ -460,6 +460,7 @@ struct KindredSettingsRow<Trailing: View>: View {
             trailing()
         }
         .padding(14)
+        .contentShape(Rectangle())
     }
 }
 

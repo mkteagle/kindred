@@ -436,6 +436,7 @@ struct IntelligenceView: View {
                     isLast: false
                 )
             }
+            .contentShape(Rectangle())
             .buttonStyle(.plain)
 
             Divider()
@@ -455,6 +456,7 @@ struct IntelligenceView: View {
                     isLast: true
                 )
             }
+            .contentShape(Rectangle())
             .buttonStyle(.plain)
         }
         .kindredGroupedCard()

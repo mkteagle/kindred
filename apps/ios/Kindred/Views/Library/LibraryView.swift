@@ -166,7 +166,8 @@ struct LibraryView: View {
                             }
                         )
                     }
-                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+            .buttonStyle(.plain)
                 }
             }
 
@@ -183,7 +184,8 @@ struct LibraryView: View {
                             }
                         )
                     }
-                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+            .buttonStyle(.plain)
                 }
             }
         }
@@ -372,7 +374,8 @@ struct SortBySheet: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 13)
                     }
-                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+            .buttonStyle(.plain)
 
                     if order != LibrarySortOrder.allCases.last {
                         Divider()
