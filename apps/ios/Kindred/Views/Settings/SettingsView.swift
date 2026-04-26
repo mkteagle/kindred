@@ -197,11 +197,29 @@ struct SettingsView: View {
 
                 Divider().padding(.leading, 14)
 
-                settingsRow(title: "On-device intelligence", detail: "On") {
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(KindredTheme.mist)
+                NavigationLink {
+                    IntelligenceView()
+                } label: {
+                    settingsRow(title: "On-device intelligence", detail: IntelligenceState.shared.enabled ? "On" : "Off") {
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(KindredTheme.mist)
+                    }
                 }
+                .buttonStyle(.plain)
+
+                Divider().padding(.leading, 14)
+
+                NavigationLink {
+                    NotificationsSettingsView()
+                } label: {
+                    settingsRow(title: "Notifications", detail: nil) {
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(KindredTheme.mist)
+                    }
+                }
+                .buttonStyle(.plain)
             }
             .kindredGroupedCard()
             .padding(.horizontal, 16)

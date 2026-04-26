@@ -6,13 +6,16 @@ struct HomeView: View {
     @State private var selectedPhoto: PhotoGridItem?
     @State private var showTogether = false
     @State private var showMemory = false
+    @State private var showInbox = false
 
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     // App bar
-                    KindredAppBar()
+                    KindredAppBar {
+                        showInbox = true
+                    }
 
                     // Greeting
                     greetingBlock
@@ -56,6 +59,9 @@ struct HomeView: View {
                     title: onThisDayTitle,
                     subtitle: "\(onThisDayPhotos.count) photos from \(onThisDayYear)"
                 )
+            }
+            .sheet(isPresented: $showInbox) {
+                NotificationInboxView()
             }
             .task {
                 await libraryVM.loadStats()

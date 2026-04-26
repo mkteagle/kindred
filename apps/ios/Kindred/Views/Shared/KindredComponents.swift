@@ -266,6 +266,8 @@ struct KindredTabBar: View {
 // MARK: - App Bar (top bar for Home)
 
 struct KindredAppBar: View {
+    var onBellTap: (() -> Void)? = nil
+
     var body: some View {
         HStack {
             HStack(spacing: 8) {
@@ -279,17 +281,21 @@ struct KindredAppBar: View {
                     .foregroundStyle(KindredTheme.ash)
             }
             Spacer()
-            Circle()
-                .fill(KindredTheme.card)
-                .frame(width: 34, height: 34)
-                .overlay(
-                    Circle().stroke(KindredTheme.line, lineWidth: 1)
-                )
-                .overlay {
-                    Image(systemName: "bell")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(KindredTheme.pine)
-                }
+            Button {
+                onBellTap?()
+            } label: {
+                Circle()
+                    .fill(KindredTheme.card)
+                    .frame(width: 34, height: 34)
+                    .overlay(
+                        Circle().stroke(KindredTheme.line, lineWidth: 1)
+                    )
+                    .overlay {
+                        Image(systemName: "bell")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(KindredTheme.pine)
+                    }
+            }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 4)
