@@ -46,40 +46,32 @@ struct ContentView: View {
     // MARK: - iPad Layout (sidebar + content)
 
     private var iPadLayout: some View {
-        ZStack(alignment: .topLeading) {
-            NavigationSplitView(columnVisibility: $sidebarVisibility) {
-                iPadSidebar
-                    .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 300)
-            } detail: {
+        NavigationSplitView(columnVisibility: $sidebarVisibility) {
+            iPadSidebar
+                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 300)
+        } detail: {
+            NavigationStack {
                 iPadDetailContent
-            }
-            .navigationSplitViewStyle(.balanced)
-            .tint(KindredTheme.ember)
-
-            // Floating expand button when sidebar is collapsed
-            if sidebarVisibility != .doubleColumn {
-                Button {
-                    withAnimation(.easeOut(duration: 0.25)) {
-                        sidebarVisibility = .doubleColumn
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            if sidebarVisibility != .doubleColumn {
+                                Button {
+                                    withAnimation(.easeOut(duration: 0.25)) {
+                                        sidebarVisibility = .doubleColumn
+                                    }
+                                } label: {
+                                    Image(systemName: "sidebar.leading")
+                                        .font(.system(size: 16, weight: .medium))
+                                        .foregroundStyle(KindredTheme.pine)
+                                }
+                            }
+                        }
                     }
-                } label: {
-                    Image(systemName: "sidebar.leading")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(KindredTheme.pine)
-                        .frame(width: 40, height: 40)
-                        .background(KindredTheme.card)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .shadow(color: KindredTheme.cardShadow, radius: 8, x: 0, y: 4)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(KindredTheme.line, lineWidth: 1)
-                        )
-                }
-                .padding(.top, 58)
-                .padding(.leading, 12)
-                .transition(.move(edge: .leading).combined(with: .opacity))
+                    .navigationBarTitleDisplayMode(.inline)
             }
         }
+        .navigationSplitViewStyle(.balanced)
+        .tint(KindredTheme.ember)
     }
 
     private var iPadSidebar: some View {
