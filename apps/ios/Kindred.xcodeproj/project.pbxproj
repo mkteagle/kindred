@@ -7,49 +7,34 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		6E76377EC2FC22A166E689FE /* family-group-2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 0EE7E94CB0BB4214F11B8BFB /* family-group-2.jpg */; };
-		0B10B78D1D9F77D49CFC0FF2 /* family-group-1.jpg in Resources */ = {isa = PBXBuildFile; fileRef = E0E338BBE15A803E1EAA7FCE /* family-group-1.jpg */; };
-		04E9688757D435178D8671F7 /* uncle-2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 549C4D11791776572822ACFA /* uncle-2.jpg */; };
-		8B6BCA7A18FCF384E0E07056 /* uncle-1.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A03D1EFEC4D3CAB12B38D65C /* uncle-1.jpg */; };
-		15D7DBD599527252A51824E5 /* theo-2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 5CA16463661B72D31096F4F5 /* theo-2.jpg */; };
-		C1123EFB94B37D2AB312E3E8 /* theo-1.jpg in Resources */ = {isa = PBXBuildFile; fileRef = B847D04DEC8F7C0B05606F18 /* theo-1.jpg */; };
-		73E2363924FC52108D9EF356 /* sam-2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 58D9543EAAACF819F195B9E0 /* sam-2.jpg */; };
-		F614B7141F0A2F16E779DAC5 /* sam-1.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 18FC585AAD0EAA1B9A819CA7 /* sam-1.jpg */; };
-		4F3A88FD69A20CCA8F6265C9 /* mom-3.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 160B1D6A1069645F71BA29B0 /* mom-3.jpg */; };
-		DE3A490E0900AE4F552F380D /* mom-2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 18F9ADF0FAC215B7AB4DF21C /* mom-2.jpg */; };
-		08096D9BCBCA0B51A2B3DE7D /* mochi-2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 8E820779A1BC2CF9E7D6A63F /* mochi-2.jpg */; };
-		E87006672D039DB22A72BCD0 /* maya-3.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 1D64437CFF58D95D58DA4C55 /* maya-3.jpg */; };
-		DAAC4CFBEEC3BD2B68060E0B /* maya-2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 3A9228534E06EDC72B4E46AC /* maya-2.jpg */; };
-		9102C0886BE3D0B86F4503FE /* maya-1.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 751F6E5A84583572339D27AE /* maya-1.jpg */; };
-		9E55AB8DC666B2FE8965895E /* luna-3.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 795160301D850F384B0F57D7 /* luna-3.jpg */; };
-		D0680E306B7BD2FAB9616EDC /* luna-2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = F6110A1E3C56B92224E08E53 /* luna-2.jpg */; };
-		F4306BB53BD354D7FE8057CD /* grandma-3.jpg in Resources */ = {isa = PBXBuildFile; fileRef = FFF0B3F42DCF42A1BCF7CE2F /* grandma-3.jpg */; };
-		DA59F8392F35C293793F87F6 /* grandma-2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 8858109F321A38426B5E61AF /* grandma-2.jpg */; };
-		09EDA5E82CE719A7301DDD15 /* grandma-1.jpg in Resources */ = {isa = PBXBuildFile; fileRef = B59929D14873137A522F2E8B /* grandma-1.jpg */; };
-		17A3E72A35580E7909356E6B /* dad-3.jpg in Resources */ = {isa = PBXBuildFile; fileRef = BAFBB69A10C4B13E89D0539A /* dad-3.jpg */; };
-		6EAC36CF837E7ED530C44B1D /* dad-2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 82101981758F32BA822F658D /* dad-2.jpg */; };
-		402504911080C79A6487B9DA /* baby-3.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 310D2FA132B0F6D86D3BDD4F /* baby-3.jpg */; };
-		9823607A5D4D4A9D88012A99 /* baby-2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = C0045CEEFABF74F4B79ABFB5 /* baby-2.jpg */; };
-		365DB6FB241C3B358788328A /* young-woman.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 5A87F8BEE6E6756B73DBC840 /* young-woman.jpg */; };
-		6772C588671A404FB21E67E1 /* woman-smiling.jpg in Resources */ = {isa = PBXBuildFile; fileRef = D73CDF0AF4277BC3D7EC758D /* woman-smiling.jpg */; };
-		8CD8F19AA63462C9B60EC925 /* woman-outdoor.jpg in Resources */ = {isa = PBXBuildFile; fileRef = D800D4321127E78F2A412B80 /* woman-outdoor.jpg */; };
-		3921EB1B2F0E3727FE91F629 /* sunset-portrait.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 62497F9E74FA796D4B608FAE /* sunset-portrait.jpg */; };
-		C5B4B5E1A81BEE54E57AC18C /* road-trip.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 5DC88B1A707F9A116D3C4449 /* road-trip.jpg */; };
-		CFEDB1DDEFEB432030B485F8 /* mountain-lake.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 21C6D547D97254DFDBF14EFE /* mountain-lake.jpg */; };
-		8EF0B403148B931A4816BCE0 /* mom-portrait.jpg in Resources */ = {isa = PBXBuildFile; fileRef = F5FBC110CCAFD0FC78AD82AD /* mom-portrait.jpg */; };
-		B8DEB2C0647126FCDCA05022 /* man-portrait.jpg in Resources */ = {isa = PBXBuildFile; fileRef = FE7D8250E96E4C353A0E27C9 /* man-portrait.jpg */; };
-		C15FF3785A8141CC66872AD0 /* kids-birthday.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 76D9CFEE45ED081D980BE78B /* kids-birthday.jpg */; };
-		BF15F3DE73BA3D12924ACC63 /* friends-laughing.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 50DFADDEA68311FD0FC07C83 /* friends-laughing.jpg */; };
-		A059A40D4F4D7A1ABF41F24E /* family-dinner.jpg in Resources */ = {isa = PBXBuildFile; fileRef = F377D124554F44171EB5951E /* family-dinner.jpg */; };
-		8180CA42B27A394457E0347B /* family-beach.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 82D1AD5FD1CD6579D727B607 /* family-beach.jpg */; };
-		577CDB93784359850E8BB5C8 /* dog-park.jpg in Resources */ = {isa = PBXBuildFile; fileRef = B313621FB5496A8DA926BCCA /* dog-park.jpg */; };
-		65FA0BA710E5274C5AC3FC6D /* dog-golden.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 8273746640452B731AFD252E /* dog-golden.jpg */; };
-		A463CA7F71ADA41D537A4015 /* dad-portrait.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 875BFEFC70937D6BD297BD6B /* dad-portrait.jpg */; };
-		87FA1F6C39F29A5B38D67894 /* cat-sitting.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 647182766E696BD4194873BF /* cat-sitting.jpg */; };
-		4CF318588AD92E4284292A08 /* birthday-cake.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 1AC05BADB19B1850290CC7FD /* birthday-cake.jpg */; };
-		AD270CCBCFC04D7C2917CF2D /* beach-waves.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 082C9B957CE28309168FBA0F /* beach-waves.jpg */; };
-		1239AD721639E984451FE98F /* baby-playing.jpg in Resources */ = {isa = PBXBuildFile; fileRef = EA4697C1BA8C3A1A9B2AD2A0 /* baby-playing.jpg */; };
-		DCBBB1BB0EFD28F816F8A4F4 /* autumn-walk.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 824EEAF1AB6C9A7134E6B126 /* autumn-walk.jpg */; };
+		EE8CD12AA8E2FA34CDDFB8D9 /* shadow-puppets.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 21E53F60F76BC85C70D1D791 /* shadow-puppets.jpg */; };
+		5B97BB9BA5AF90853033299A /* parent-child.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 0AF8B828B156AFFE49FFEAAA /* parent-child.jpg */; };
+		E915BED8C79E6424DD198380 /* parent-child-bw.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 413555A0D104CDE360310F53 /* parent-child-bw.jpg */; };
+		C7C28714DA6960F1F1D13573 /* mom-child-joy.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 72630C47805F93FE547FBEDC /* mom-child-joy.jpg */; };
+		F0685E6C5BC65E06E6E83BBF /* marshmallows.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 2D51112E5915925CBAA7478A /* marshmallows.jpg */; };
+		2210A1C4E3779931D01491CE /* kid-festive.jpg in Resources */ = {isa = PBXBuildFile; fileRef = B85944ABCBA8A2B93C671F20 /* kid-festive.jpg */; };
+		C1968F68B80EF9255A32972F /* kid-campfire.jpg in Resources */ = {isa = PBXBuildFile; fileRef = F7EF86D6C3519D8CC378DEA2 /* kid-campfire.jpg */; };
+		A44E84F219816D9798E493B4 /* friends-van.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 1C986F92567D53CC9D8F9E2A /* friends-van.jpg */; };
+		F8F0AFEB74CE51E00A2CF05A /* family-van-2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = F020E83F3A68658461CE6E7E /* family-van-2.jpg */; };
+		7DC7448A5B530156ADAA9413 /* family-van-1.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A031975B4CE78BD0CA40D18F /* family-van-1.jpg */; };
+		9C79317DC3AEFB6227207D4F /* family-three-sunset.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 3484DE63FAA4CD7852CC4EC9 /* family-three-sunset.jpg */; };
+		A59653AF648026815F2568C2 /* family-roadtrip.jpg in Resources */ = {isa = PBXBuildFile; fileRef = DFD8D892ACF16E2121D81229 /* family-roadtrip.jpg */; };
+		67DCC5DB0E4ADA0EBEA2C6E3 /* family-music.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 7B3C91F84806AFABCC2C31CA /* family-music.jpg */; };
+		321804A7082F6D474D32E9D0 /* family-inside-van.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 3478735BF463D8697A09592D /* family-inside-van.jpg */; };
+		6BC0F084FD69F00B18FB2095 /* family-holiday-2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 9D9E4472CF483F56377640E1 /* family-holiday-2.jpg */; };
+		37F28B2782F7415A0E662E76 /* family-holiday-1.jpg in Resources */ = {isa = PBXBuildFile; fileRef = B7E80ACB87A961A5A1F2DF39 /* family-holiday-1.jpg */; };
+		74EB74E956D42BE01AD5D76F /* family-evening.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 7695A6706E9F2638EA39562E /* family-evening.jpg */; };
+		5E2CEC45E33590672F72398E /* family-campfire-4.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 0200201CAA02E02BDDA0C207 /* family-campfire-4.jpg */; };
+		3AF82131D010F058040A739A /* family-campfire-3.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 7F4FB2DBC8CC3B8DA808C408 /* family-campfire-3.jpg */; };
+		C907DE56EC5ADFEBD75F2646 /* family-campfire-2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = F63625D6F56EA2D69D4A37EA /* family-campfire-2.jpg */; };
+		7CD1FC8B35FB3DB1499590C7 /* family-campfire-1.jpg in Resources */ = {isa = PBXBuildFile; fileRef = AA35EF8D42D7E4E252753DE5 /* family-campfire-1.jpg */; };
+		A5FDDC9D6042885862EA927D /* family-campervan.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 9394F5A63DE813EEB6442044 /* family-campervan.jpg */; };
+		C87CA10D71D4660E1EEABD54 /* family-camper-lights.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 9BDF39EBF4AEA80D9AE1BD52 /* family-camper-lights.jpg */; };
+		1298D0389EA5EF4C894A4673 /* couple-van.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 8C99A094D2111E6422613DC3 /* couple-van.jpg */; };
+		B8A1DA1DA917A52EEDB70103 /* couple-sunset.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 8A8577CB557564ED26763AF3 /* couple-sunset.jpg */; };
+		E15EE8B411D23F52130BED77 /* couple-hug-van.jpg in Resources */ = {isa = PBXBuildFile; fileRef = EF527B877182B24AE3DCF54F /* couple-hug-van.jpg */; };
+		67444ADAA9FF61F8F63F2DA4 /* couple-festive.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 58922652FC4B15C91E33BFD1 /* couple-festive.jpg */; };
+		B0B2BC872EC4895A6C7AC255 /* couple-evening.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 9F3D17AAF417DD0BE7187414 /* couple-evening.jpg */; };
 		DE00000000000000000001 /* DemoDataProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE00000000000000000011 /* DemoDataProvider.swift */; };
 		DE00000000000000000002 /* clusters_people.json in Resources */ = {isa = PBXBuildFile; fileRef = DE00000000000000000012 /* clusters_people.json */; };
 		DE00000000000000000003 /* clusters_pets.json in Resources */ = {isa = PBXBuildFile; fileRef = DE00000000000000000013 /* clusters_pets.json */; };
@@ -125,49 +110,34 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		0EE7E94CB0BB4214F11B8BFB /* family-group-2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = family-group-2.jpg; sourceTree = "<group>"; };
-		E0E338BBE15A803E1EAA7FCE /* family-group-1.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = family-group-1.jpg; sourceTree = "<group>"; };
-		549C4D11791776572822ACFA /* uncle-2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = uncle-2.jpg; sourceTree = "<group>"; };
-		A03D1EFEC4D3CAB12B38D65C /* uncle-1.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = uncle-1.jpg; sourceTree = "<group>"; };
-		5CA16463661B72D31096F4F5 /* theo-2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = theo-2.jpg; sourceTree = "<group>"; };
-		B847D04DEC8F7C0B05606F18 /* theo-1.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = theo-1.jpg; sourceTree = "<group>"; };
-		58D9543EAAACF819F195B9E0 /* sam-2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = sam-2.jpg; sourceTree = "<group>"; };
-		18FC585AAD0EAA1B9A819CA7 /* sam-1.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = sam-1.jpg; sourceTree = "<group>"; };
-		160B1D6A1069645F71BA29B0 /* mom-3.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = mom-3.jpg; sourceTree = "<group>"; };
-		18F9ADF0FAC215B7AB4DF21C /* mom-2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = mom-2.jpg; sourceTree = "<group>"; };
-		8E820779A1BC2CF9E7D6A63F /* mochi-2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = mochi-2.jpg; sourceTree = "<group>"; };
-		1D64437CFF58D95D58DA4C55 /* maya-3.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = maya-3.jpg; sourceTree = "<group>"; };
-		3A9228534E06EDC72B4E46AC /* maya-2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = maya-2.jpg; sourceTree = "<group>"; };
-		751F6E5A84583572339D27AE /* maya-1.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = maya-1.jpg; sourceTree = "<group>"; };
-		795160301D850F384B0F57D7 /* luna-3.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = luna-3.jpg; sourceTree = "<group>"; };
-		F6110A1E3C56B92224E08E53 /* luna-2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = luna-2.jpg; sourceTree = "<group>"; };
-		FFF0B3F42DCF42A1BCF7CE2F /* grandma-3.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = grandma-3.jpg; sourceTree = "<group>"; };
-		8858109F321A38426B5E61AF /* grandma-2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = grandma-2.jpg; sourceTree = "<group>"; };
-		B59929D14873137A522F2E8B /* grandma-1.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = grandma-1.jpg; sourceTree = "<group>"; };
-		BAFBB69A10C4B13E89D0539A /* dad-3.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = dad-3.jpg; sourceTree = "<group>"; };
-		82101981758F32BA822F658D /* dad-2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = dad-2.jpg; sourceTree = "<group>"; };
-		310D2FA132B0F6D86D3BDD4F /* baby-3.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = baby-3.jpg; sourceTree = "<group>"; };
-		C0045CEEFABF74F4B79ABFB5 /* baby-2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = baby-2.jpg; sourceTree = "<group>"; };
-		5A87F8BEE6E6756B73DBC840 /* young-woman.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = young-woman.jpg; sourceTree = "<group>"; };
-		D73CDF0AF4277BC3D7EC758D /* woman-smiling.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = woman-smiling.jpg; sourceTree = "<group>"; };
-		D800D4321127E78F2A412B80 /* woman-outdoor.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = woman-outdoor.jpg; sourceTree = "<group>"; };
-		62497F9E74FA796D4B608FAE /* sunset-portrait.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = sunset-portrait.jpg; sourceTree = "<group>"; };
-		5DC88B1A707F9A116D3C4449 /* road-trip.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = road-trip.jpg; sourceTree = "<group>"; };
-		21C6D547D97254DFDBF14EFE /* mountain-lake.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = mountain-lake.jpg; sourceTree = "<group>"; };
-		F5FBC110CCAFD0FC78AD82AD /* mom-portrait.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = mom-portrait.jpg; sourceTree = "<group>"; };
-		FE7D8250E96E4C353A0E27C9 /* man-portrait.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = man-portrait.jpg; sourceTree = "<group>"; };
-		76D9CFEE45ED081D980BE78B /* kids-birthday.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = kids-birthday.jpg; sourceTree = "<group>"; };
-		50DFADDEA68311FD0FC07C83 /* friends-laughing.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = friends-laughing.jpg; sourceTree = "<group>"; };
-		F377D124554F44171EB5951E /* family-dinner.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = family-dinner.jpg; sourceTree = "<group>"; };
-		82D1AD5FD1CD6579D727B607 /* family-beach.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = family-beach.jpg; sourceTree = "<group>"; };
-		B313621FB5496A8DA926BCCA /* dog-park.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = dog-park.jpg; sourceTree = "<group>"; };
-		8273746640452B731AFD252E /* dog-golden.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = dog-golden.jpg; sourceTree = "<group>"; };
-		875BFEFC70937D6BD297BD6B /* dad-portrait.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = dad-portrait.jpg; sourceTree = "<group>"; };
-		647182766E696BD4194873BF /* cat-sitting.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = cat-sitting.jpg; sourceTree = "<group>"; };
-		1AC05BADB19B1850290CC7FD /* birthday-cake.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = birthday-cake.jpg; sourceTree = "<group>"; };
-		082C9B957CE28309168FBA0F /* beach-waves.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = beach-waves.jpg; sourceTree = "<group>"; };
-		EA4697C1BA8C3A1A9B2AD2A0 /* baby-playing.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = baby-playing.jpg; sourceTree = "<group>"; };
-		824EEAF1AB6C9A7134E6B126 /* autumn-walk.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = autumn-walk.jpg; sourceTree = "<group>"; };
+		21E53F60F76BC85C70D1D791 /* shadow-puppets.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/shadow-puppets.jpg"; sourceTree = SOURCE_ROOT; };
+		0AF8B828B156AFFE49FFEAAA /* parent-child.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/parent-child.jpg"; sourceTree = SOURCE_ROOT; };
+		413555A0D104CDE360310F53 /* parent-child-bw.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/parent-child-bw.jpg"; sourceTree = SOURCE_ROOT; };
+		72630C47805F93FE547FBEDC /* mom-child-joy.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/mom-child-joy.jpg"; sourceTree = SOURCE_ROOT; };
+		2D51112E5915925CBAA7478A /* marshmallows.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/marshmallows.jpg"; sourceTree = SOURCE_ROOT; };
+		B85944ABCBA8A2B93C671F20 /* kid-festive.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/kid-festive.jpg"; sourceTree = SOURCE_ROOT; };
+		F7EF86D6C3519D8CC378DEA2 /* kid-campfire.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/kid-campfire.jpg"; sourceTree = SOURCE_ROOT; };
+		1C986F92567D53CC9D8F9E2A /* friends-van.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/friends-van.jpg"; sourceTree = SOURCE_ROOT; };
+		F020E83F3A68658461CE6E7E /* family-van-2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/family-van-2.jpg"; sourceTree = SOURCE_ROOT; };
+		A031975B4CE78BD0CA40D18F /* family-van-1.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/family-van-1.jpg"; sourceTree = SOURCE_ROOT; };
+		3484DE63FAA4CD7852CC4EC9 /* family-three-sunset.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/family-three-sunset.jpg"; sourceTree = SOURCE_ROOT; };
+		DFD8D892ACF16E2121D81229 /* family-roadtrip.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/family-roadtrip.jpg"; sourceTree = SOURCE_ROOT; };
+		7B3C91F84806AFABCC2C31CA /* family-music.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/family-music.jpg"; sourceTree = SOURCE_ROOT; };
+		3478735BF463D8697A09592D /* family-inside-van.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/family-inside-van.jpg"; sourceTree = SOURCE_ROOT; };
+		9D9E4472CF483F56377640E1 /* family-holiday-2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/family-holiday-2.jpg"; sourceTree = SOURCE_ROOT; };
+		B7E80ACB87A961A5A1F2DF39 /* family-holiday-1.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/family-holiday-1.jpg"; sourceTree = SOURCE_ROOT; };
+		7695A6706E9F2638EA39562E /* family-evening.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/family-evening.jpg"; sourceTree = SOURCE_ROOT; };
+		0200201CAA02E02BDDA0C207 /* family-campfire-4.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/family-campfire-4.jpg"; sourceTree = SOURCE_ROOT; };
+		7F4FB2DBC8CC3B8DA808C408 /* family-campfire-3.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/family-campfire-3.jpg"; sourceTree = SOURCE_ROOT; };
+		F63625D6F56EA2D69D4A37EA /* family-campfire-2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/family-campfire-2.jpg"; sourceTree = SOURCE_ROOT; };
+		AA35EF8D42D7E4E252753DE5 /* family-campfire-1.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/family-campfire-1.jpg"; sourceTree = SOURCE_ROOT; };
+		9394F5A63DE813EEB6442044 /* family-campervan.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/family-campervan.jpg"; sourceTree = SOURCE_ROOT; };
+		9BDF39EBF4AEA80D9AE1BD52 /* family-camper-lights.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/family-camper-lights.jpg"; sourceTree = SOURCE_ROOT; };
+		8C99A094D2111E6422613DC3 /* couple-van.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/couple-van.jpg"; sourceTree = SOURCE_ROOT; };
+		8A8577CB557564ED26763AF3 /* couple-sunset.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/couple-sunset.jpg"; sourceTree = SOURCE_ROOT; };
+		EF527B877182B24AE3DCF54F /* couple-hug-van.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/couple-hug-van.jpg"; sourceTree = SOURCE_ROOT; };
+		58922652FC4B15C91E33BFD1 /* couple-festive.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/couple-festive.jpg"; sourceTree = SOURCE_ROOT; };
+		9F3D17AAF417DD0BE7187414 /* couple-evening.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/couple-evening.jpg"; sourceTree = SOURCE_ROOT; };
 		DE00000000000000000011 /* DemoDataProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoDataProvider.swift; sourceTree = "<group>"; };
 		DE00000000000000000012 /* clusters_people.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = clusters_people.json; sourceTree = "<group>"; };
 		DE00000000000000000013 /* clusters_pets.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = clusters_pets.json; sourceTree = "<group>"; };
@@ -239,49 +209,6 @@
 		B1A00767A5E649F0273865A6 /* Photos */ = {
 			isa = PBXGroup;
 			children = (
-				824EEAF1AB6C9A7134E6B126 /* autumn-walk.jpg */,
-				0EE7E94CB0BB4214F11B8BFB /* family-group-2.jpg */,
-				E0E338BBE15A803E1EAA7FCE /* family-group-1.jpg */,
-				549C4D11791776572822ACFA /* uncle-2.jpg */,
-				A03D1EFEC4D3CAB12B38D65C /* uncle-1.jpg */,
-				5CA16463661B72D31096F4F5 /* theo-2.jpg */,
-				B847D04DEC8F7C0B05606F18 /* theo-1.jpg */,
-				58D9543EAAACF819F195B9E0 /* sam-2.jpg */,
-				18FC585AAD0EAA1B9A819CA7 /* sam-1.jpg */,
-				160B1D6A1069645F71BA29B0 /* mom-3.jpg */,
-				18F9ADF0FAC215B7AB4DF21C /* mom-2.jpg */,
-				8E820779A1BC2CF9E7D6A63F /* mochi-2.jpg */,
-				1D64437CFF58D95D58DA4C55 /* maya-3.jpg */,
-				3A9228534E06EDC72B4E46AC /* maya-2.jpg */,
-				751F6E5A84583572339D27AE /* maya-1.jpg */,
-				795160301D850F384B0F57D7 /* luna-3.jpg */,
-				F6110A1E3C56B92224E08E53 /* luna-2.jpg */,
-				FFF0B3F42DCF42A1BCF7CE2F /* grandma-3.jpg */,
-				8858109F321A38426B5E61AF /* grandma-2.jpg */,
-				B59929D14873137A522F2E8B /* grandma-1.jpg */,
-				BAFBB69A10C4B13E89D0539A /* dad-3.jpg */,
-				82101981758F32BA822F658D /* dad-2.jpg */,
-				310D2FA132B0F6D86D3BDD4F /* baby-3.jpg */,
-				C0045CEEFABF74F4B79ABFB5 /* baby-2.jpg */,
-				EA4697C1BA8C3A1A9B2AD2A0 /* baby-playing.jpg */,
-				082C9B957CE28309168FBA0F /* beach-waves.jpg */,
-				1AC05BADB19B1850290CC7FD /* birthday-cake.jpg */,
-				647182766E696BD4194873BF /* cat-sitting.jpg */,
-				875BFEFC70937D6BD297BD6B /* dad-portrait.jpg */,
-				8273746640452B731AFD252E /* dog-golden.jpg */,
-				B313621FB5496A8DA926BCCA /* dog-park.jpg */,
-				82D1AD5FD1CD6579D727B607 /* family-beach.jpg */,
-				F377D124554F44171EB5951E /* family-dinner.jpg */,
-				50DFADDEA68311FD0FC07C83 /* friends-laughing.jpg */,
-				76D9CFEE45ED081D980BE78B /* kids-birthday.jpg */,
-				FE7D8250E96E4C353A0E27C9 /* man-portrait.jpg */,
-				F5FBC110CCAFD0FC78AD82AD /* mom-portrait.jpg */,
-				21C6D547D97254DFDBF14EFE /* mountain-lake.jpg */,
-				5DC88B1A707F9A116D3C4449 /* road-trip.jpg */,
-				62497F9E74FA796D4B608FAE /* sunset-portrait.jpg */,
-				D800D4321127E78F2A412B80 /* woman-outdoor.jpg */,
-				D73CDF0AF4277BC3D7EC758D /* woman-smiling.jpg */,
-				5A87F8BEE6E6756B73DBC840 /* young-woman.jpg */
 			);
 			path = Photos;
 			sourceTree = "<group>";
@@ -577,49 +504,34 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6E76377EC2FC22A166E689FE /* family-group-2.jpg in Resources */,
-				0B10B78D1D9F77D49CFC0FF2 /* family-group-1.jpg in Resources */,
-				04E9688757D435178D8671F7 /* uncle-2.jpg in Resources */,
-				8B6BCA7A18FCF384E0E07056 /* uncle-1.jpg in Resources */,
-				15D7DBD599527252A51824E5 /* theo-2.jpg in Resources */,
-				C1123EFB94B37D2AB312E3E8 /* theo-1.jpg in Resources */,
-				73E2363924FC52108D9EF356 /* sam-2.jpg in Resources */,
-				F614B7141F0A2F16E779DAC5 /* sam-1.jpg in Resources */,
-				4F3A88FD69A20CCA8F6265C9 /* mom-3.jpg in Resources */,
-				DE3A490E0900AE4F552F380D /* mom-2.jpg in Resources */,
-				08096D9BCBCA0B51A2B3DE7D /* mochi-2.jpg in Resources */,
-				E87006672D039DB22A72BCD0 /* maya-3.jpg in Resources */,
-				DAAC4CFBEEC3BD2B68060E0B /* maya-2.jpg in Resources */,
-				9102C0886BE3D0B86F4503FE /* maya-1.jpg in Resources */,
-				9E55AB8DC666B2FE8965895E /* luna-3.jpg in Resources */,
-				D0680E306B7BD2FAB9616EDC /* luna-2.jpg in Resources */,
-				F4306BB53BD354D7FE8057CD /* grandma-3.jpg in Resources */,
-				DA59F8392F35C293793F87F6 /* grandma-2.jpg in Resources */,
-				09EDA5E82CE719A7301DDD15 /* grandma-1.jpg in Resources */,
-				17A3E72A35580E7909356E6B /* dad-3.jpg in Resources */,
-				6EAC36CF837E7ED530C44B1D /* dad-2.jpg in Resources */,
-				402504911080C79A6487B9DA /* baby-3.jpg in Resources */,
-				9823607A5D4D4A9D88012A99 /* baby-2.jpg in Resources */,
-				365DB6FB241C3B358788328A /* young-woman.jpg in Resources */,
-				6772C588671A404FB21E67E1 /* woman-smiling.jpg in Resources */,
-				8CD8F19AA63462C9B60EC925 /* woman-outdoor.jpg in Resources */,
-				3921EB1B2F0E3727FE91F629 /* sunset-portrait.jpg in Resources */,
-				C5B4B5E1A81BEE54E57AC18C /* road-trip.jpg in Resources */,
-				CFEDB1DDEFEB432030B485F8 /* mountain-lake.jpg in Resources */,
-				8EF0B403148B931A4816BCE0 /* mom-portrait.jpg in Resources */,
-				B8DEB2C0647126FCDCA05022 /* man-portrait.jpg in Resources */,
-				C15FF3785A8141CC66872AD0 /* kids-birthday.jpg in Resources */,
-				BF15F3DE73BA3D12924ACC63 /* friends-laughing.jpg in Resources */,
-				A059A40D4F4D7A1ABF41F24E /* family-dinner.jpg in Resources */,
-				8180CA42B27A394457E0347B /* family-beach.jpg in Resources */,
-				577CDB93784359850E8BB5C8 /* dog-park.jpg in Resources */,
-				65FA0BA710E5274C5AC3FC6D /* dog-golden.jpg in Resources */,
-				A463CA7F71ADA41D537A4015 /* dad-portrait.jpg in Resources */,
-				87FA1F6C39F29A5B38D67894 /* cat-sitting.jpg in Resources */,
-				4CF318588AD92E4284292A08 /* birthday-cake.jpg in Resources */,
-				AD270CCBCFC04D7C2917CF2D /* beach-waves.jpg in Resources */,
-				1239AD721639E984451FE98F /* baby-playing.jpg in Resources */,
-				DCBBB1BB0EFD28F816F8A4F4 /* autumn-walk.jpg in Resources */,
+				EE8CD12AA8E2FA34CDDFB8D9 /* shadow-puppets.jpg in Resources */,
+				5B97BB9BA5AF90853033299A /* parent-child.jpg in Resources */,
+				E915BED8C79E6424DD198380 /* parent-child-bw.jpg in Resources */,
+				C7C28714DA6960F1F1D13573 /* mom-child-joy.jpg in Resources */,
+				F0685E6C5BC65E06E6E83BBF /* marshmallows.jpg in Resources */,
+				2210A1C4E3779931D01491CE /* kid-festive.jpg in Resources */,
+				C1968F68B80EF9255A32972F /* kid-campfire.jpg in Resources */,
+				A44E84F219816D9798E493B4 /* friends-van.jpg in Resources */,
+				F8F0AFEB74CE51E00A2CF05A /* family-van-2.jpg in Resources */,
+				7DC7448A5B530156ADAA9413 /* family-van-1.jpg in Resources */,
+				9C79317DC3AEFB6227207D4F /* family-three-sunset.jpg in Resources */,
+				A59653AF648026815F2568C2 /* family-roadtrip.jpg in Resources */,
+				67DCC5DB0E4ADA0EBEA2C6E3 /* family-music.jpg in Resources */,
+				321804A7082F6D474D32E9D0 /* family-inside-van.jpg in Resources */,
+				6BC0F084FD69F00B18FB2095 /* family-holiday-2.jpg in Resources */,
+				37F28B2782F7415A0E662E76 /* family-holiday-1.jpg in Resources */,
+				74EB74E956D42BE01AD5D76F /* family-evening.jpg in Resources */,
+				5E2CEC45E33590672F72398E /* family-campfire-4.jpg in Resources */,
+				3AF82131D010F058040A739A /* family-campfire-3.jpg in Resources */,
+				C907DE56EC5ADFEBD75F2646 /* family-campfire-2.jpg in Resources */,
+				7CD1FC8B35FB3DB1499590C7 /* family-campfire-1.jpg in Resources */,
+				A5FDDC9D6042885862EA927D /* family-campervan.jpg in Resources */,
+				C87CA10D71D4660E1EEABD54 /* family-camper-lights.jpg in Resources */,
+				1298D0389EA5EF4C894A4673 /* couple-van.jpg in Resources */,
+				B8A1DA1DA917A52EEDB70103 /* couple-sunset.jpg in Resources */,
+				E15EE8B411D23F52130BED77 /* couple-hug-van.jpg in Resources */,
+				67444ADAA9FF61F8F63F2DA4 /* couple-festive.jpg in Resources */,
+				B0B2BC872EC4895A6C7AC255 /* couple-evening.jpg in Resources */,
 				96AD372DACCE1DB3987737D2 /* IBMPlexMono-Medium.ttf in Resources */,
 				C7F5B73ADEBCE6597FC9DA93 /* IBMPlexMono-Regular.ttf in Resources */,
 				850CD36D8B454A832B37D18A /* IBMPlexMono-SemiBold.ttf in Resources */,

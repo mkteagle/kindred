@@ -113,37 +113,63 @@ final class DemoDataProvider {
         )
     }
 
-    /// Per-cluster photo collections — each person gets their own photos
-    // Per-person collections — shared family photos appear in multiple people's clusters (realistic)
-    private static let clusterPhotos: [String: [String]] = [
-        "demo_p1": ["young-woman", "maya-1", "maya-2", "maya-3", "family-beach", "family-group-1", "kids-birthday", "family-dinner"],  // Maya
-        "demo_p2": ["dad-portrait", "dad-2", "dad-3", "family-group-1", "family-group-2", "family-dinner", "road-trip", "family-beach"],  // Dad
-        "demo_p3": ["mom-portrait", "mom-2", "mom-3", "family-group-1", "family-group-2", "family-beach", "family-dinner", "kids-birthday"],  // Mom
-        "demo_p4": ["sam-1", "sam-2", "friends-laughing", "family-group-1", "beach-waves", "road-trip", "birthday-cake"],  // Sam
-        "demo_p5": ["theo-1", "theo-2", "man-portrait", "family-group-2", "mountain-lake", "autumn-walk"],  // Theo
-        "demo_p6": ["grandma-1", "grandma-2", "grandma-3", "family-group-1", "family-dinner", "kids-birthday"],  // Grandma
-        "demo_p7": ["uncle-1", "uncle-2", "family-group-2", "sunset-portrait", "road-trip"],  // Uncle Jim
-        "demo_p8": ["baby-playing", "baby-2", "baby-3", "family-beach", "family-group-1", "mom-2"],  // Baby Lily
-        "demo_pet1": ["dog-golden", "luna-2", "luna-3", "dog-park", "family-beach"],  // Luna
-        "demo_pet2": ["cat-sitting", "mochi-2"],  // Mochi
-        "demo_pet3": ["dog-park", "dog-golden", "luna-3"],  // Buddy
+    // Map cluster IDs to detail JSON filenames (from real AI scan)
+    private static let detailFiles: [String: String] = [
+        "demo_p1": "detail_Mom",
+        "demo_p2": "detail_Dad",
+        "demo_p3": "detail_Maya",
+        "demo_p4": "detail_Uncle_Jim",
+        "demo_p5": "detail_Friends",
+    ]
+
+    // All available stock photo filenames for fallback
+    private static let allPhotos = [
+        "family-campfire-1", "family-campfire-2", "family-campfire-3", "family-campfire-4",
+        "family-holiday-1", "family-holiday-2", "family-van-1", "family-van-2",
+        "family-music", "family-evening", "family-campervan", "family-inside-van",
+        "family-roadtrip", "family-three-sunset", "family-camper-lights",
+        "couple-evening", "couple-festive", "couple-hug-van", "couple-sunset", "couple-van",
+        "friends-van", "kid-campfire", "kid-festive", "marshmallows",
+        "mom-child-joy", "parent-child", "parent-child-bw", "shadow-puppets",
     ]
 
     func getClusterDetail(category: String, clusterId: String) -> ClusterDetail {
-        let photos = Self.clusterPhotos[clusterId] ?? ["family-beach", "family-dinner", "road-trip", "mountain-lake"]
+        // Try to load from real AI detail file
+        if let filename = Self.detailFiles[clusterId],
+           let url = Bundle.main.url(forResource: filename, withExtension: "json"),
+           let data = try? Data(contentsOf: url),
+           let detail = try? JSONDecoder().decode(ClusterDetail.self, from: data) {
+            // Swap any remaining Flickr URLs to local demo:// URLs
+            let fixedItems = detail.items.map { item -> Detection in
+                var thumb = item.thumb_url ?? ""
+                var photo = item.photo_url
+                if thumb.contains("staticflickr") || thumb.isEmpty {
+                    let idx = abs(item.id.hashValue) % Self.allPhotos.count
+                    thumb = "demo://file_\(Self.allPhotos[idx])"
+                    photo = thumb
+                }
+                return Detection(
+                    id: item.id, category: item.category, subtype: item.subtype,
+                    photo_id: item.photo_id, photo_url: photo,
+                    thumb_url: thumb, flickr_url: nil,
+                    photo_title: item.photo_title, owner: item.owner,
+                    det_score: item.det_score, chip: item.chip
+                )
+            }
+            return ClusterDetail(cluster_id: clusterId, items: fixedItems)
+        }
+
+        // Fallback: generate from allPhotos
+        let photos = Array(Self.allPhotos.prefix(6))
         let detections = photos.enumerated().map { (i, filename) in
             Detection(
-                id: "\(clusterId)_det_\(i)",
-                category: category,
-                subtype: category == "people" ? "face" : category == "pets" ? "animal" : "vehicle",
+                id: "\(clusterId)_det_\(i)", category: category,
+                subtype: category == "people" ? "face" : "animal",
                 photo_id: "\(clusterId)_photo_\(i)",
                 photo_url: "demo://file_\(filename)",
                 thumb_url: "demo://file_\(filename)",
-                flickr_url: nil,
-                photo_title: "Demo photo \(i + 1)",
-                owner: nil,
-                det_score: 0.95 - Float(i) * 0.05,
-                chip: nil
+                flickr_url: nil, photo_title: "Photo \(i + 1)",
+                owner: nil, det_score: 0.95 - Float(i) * 0.05, chip: nil
             )
         }
         return ClusterDetail(cluster_id: clusterId, items: detections)
@@ -182,30 +208,36 @@ struct DemoThumbnailView: View {
     let urlString: String
     var cornerRadius: CGFloat = KindredTheme.radiusXS
 
-    /// Map demo URL indices to bundled photo filenames
-    // Ordered to match demo clusters: 01=Maya, 02=Dad, 03=Mom, 04=Sam, 05=Theo,
-    // 06=Grandma, 07=Uncle Jim, 08=Baby Lily, 09+=pets/vehicles/timeline
+    /// Map demo URL indices to bundled photo filenames (Pexels Seljan Salimova family series)
     private static let photoFiles = [
-        "young-woman",       // 01 Maya — young woman
-        "dad-portrait",      // 02 Dad — man
-        "mom-portrait",      // 03 Mom — woman
-        "friends-laughing",  // 04 Sam — group/friends
-        "man-portrait",      // 05 Theo — man
-        "woman-outdoor",     // 06 Grandma — older woman outdoors
-        "sunset-portrait",   // 07 Uncle Jim — man silhouette
-        "baby-playing",      // 08 Baby Lily — baby
-        "dog-golden",        // 09 Luna (pet)
-        "cat-sitting",       // 10 Mochi (pet)
-        "dog-park",          // 11 Buddy (pet)
-        "family-beach",      // 12+ timeline/scatter photos
-        "family-dinner",
-        "kids-birthday",
-        "birthday-cake",
-        "road-trip",
-        "mountain-lake",
-        "beach-waves",
-        "autumn-walk",
-        "woman-smiling",
+        "family-campfire-1",    // 01
+        "family-campfire-2",    // 02
+        "family-campfire-3",    // 03
+        "family-campfire-4",    // 04
+        "couple-evening",       // 05
+        "couple-festive",       // 06
+        "couple-hug-van",       // 07
+        "couple-sunset",        // 08
+        "couple-van",           // 09
+        "family-camper-lights", // 10
+        "family-campervan",     // 11
+        "family-evening",       // 12
+        "family-holiday-1",     // 13
+        "family-holiday-2",     // 14
+        "family-inside-van",    // 15
+        "family-music",         // 16
+        "family-roadtrip",      // 17
+        "family-three-sunset",  // 18
+        "family-van-1",         // 19
+        "family-van-2",         // 20
+        "friends-van",          // 21
+        "kid-campfire",         // 22
+        "kid-festive",          // 23
+        "marshmallows",         // 24
+        "mom-child-joy",        // 25
+        "parent-child",         // 26
+        "parent-child-bw",      // 27
+        "shadow-puppets",       // 28
     ]
 
     private var image: UIImage? {
