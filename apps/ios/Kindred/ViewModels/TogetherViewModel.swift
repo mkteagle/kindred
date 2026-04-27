@@ -55,6 +55,7 @@ final class TogetherViewModel {
         error = nil
         if DemoDataProvider.shared.isActive {
             // Return shared family photos for any combo of people
+            print("[Together] Demo mode — generating results")
             let sharedPhotos = ["family-campfire-1", "family-campfire-2", "family-holiday-1", "family-three-sunset", "family-music", "family-campervan", "family-inside-van"]
             results = sharedPhotos.enumerated().map { (i, filename) in
                 TogetherPhoto(
@@ -66,6 +67,7 @@ final class TogetherViewModel {
                 )
             }
             totalCount = results.count
+            print("[Together] Demo results: \(results.count) photos, totalCount=\(totalCount)")
             isSearching = false
             return
         }

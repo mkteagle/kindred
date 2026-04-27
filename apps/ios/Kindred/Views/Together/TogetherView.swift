@@ -603,16 +603,24 @@ struct TogetherResultsView: View {
         LazyVGrid(columns: photoColumns, spacing: 4) {
             ForEach(viewModel.results) { photo in
                 let item = PhotoGridItem(from: photo)
-                AsyncImage(url: URL(string: photo.thumb_url ?? photo.photo_url)) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    default:
-                        KindredTheme.canvas
+                let thumbOrPhoto = photo.thumb_url ?? photo.photo_url
+                Group {
+                    if DemoDataProvider.isDemoURL(thumbOrPhoto) {
+                        DemoThumbnailView(urlString: thumbOrPhoto, cornerRadius: 4)
+                    } else {
+                        AsyncImage(url: URL(string: thumbOrPhoto)) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image.resizable().scaledToFill()
+                            default:
+                                KindredTheme.canvas
+                            }
+                        }
                     }
                 }
-                .frame(minHeight: 0)
                 .aspectRatio(1, contentMode: .fill)
+                .frame(minWidth: 0, maxWidth: .infinity)
+                .clipped()
                 .clipShape(RoundedRectangle(cornerRadius: 4))
                 .contentShape(Rectangle())
                 .onTapGesture {
