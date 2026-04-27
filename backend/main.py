@@ -3302,7 +3302,7 @@ async def delete_flickr_photos(req: FlickrDeleteRequest, admin=Depends(require_a
                     "format": "json",
                     "nojsoncallback": "1",
                 }
-                oauth_params = _flickr_oauth_sign(flickr_url, params)
+                oauth_params = _flickr_oauth_sign(flickr_url, params, method="POST")
                 # Delete requires POST
                 auth_header = "OAuth " + ", ".join(
                     f'{k}="{urllib.parse.quote(str(v), "")}"'
