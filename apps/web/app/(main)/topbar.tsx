@@ -50,15 +50,19 @@ export function Topbar() {
   const [scanning, setScanning] = useState(false);
   const userRef = useRef<HTMLDivElement>(null);
 
+  const [signOutOpen, setSignOutOpen] = useState(false);
+  const signOutRef = useRef<HTMLDialogElement>(null);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+
   useEffect(() => {
     fetch(`${API}/auth/me`)
       .then((r) => r.json())
       .then((d: User) => { if (d.loggedIn) setUser(d); setAuthLoading(false); })
       .catch(() => setAuthLoading(false));
   }, []);
-
-  const pathname = usePathname();
-  if (pathname === "/login" || pathname.startsWith("/join") || pathname.startsWith("/reset")) return null;
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -81,14 +85,24 @@ export function Topbar() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
+  useEffect(() => {
+    if (signOutOpen && signOutRef.current && !signOutRef.current.open) {
+      signOutRef.current.showModal();
+    }
+  }, [signOutOpen]);
+
   const { data: stats } = useQuery<Stats>({
     queryKey: ["stats"],
     queryFn: () => fetch(`${BACKEND}/stats`).then((r) => r.json()),
   });
 
+  const isMoreActive = ALL_MORE_PATHS.some((p) => pathname === p);
+  const effectiveRole = user?.role || "member";
+  const viewingAsMember = typeof window !== "undefined" && effectiveRole === "admin" && (() => { try { return sessionStorage.getItem("viewAsRole") === "member"; } catch { return false; } })();
+  const uiRole = viewingAsMember ? "member" : effectiveRole;
 
-  const [signOutOpen, setSignOutOpen] = useState(false);
-  const signOutRef = useRef<HTMLDialogElement>(null);
+  // Early returns AFTER all hooks
+  if (pathname === "/login" || pathname.startsWith("/join") || pathname.startsWith("/reset")) return null;
 
   const openSignOut = () => {
     setSignOutOpen(true);
@@ -102,12 +116,6 @@ export function Topbar() {
     await fetch(`${API}/auth/logout`, { method: "POST" });
     window.location.href = "/login";
   };
-
-  useEffect(() => {
-    if (signOutOpen && signOutRef.current && !signOutRef.current.open) {
-      signOutRef.current.showModal();
-    }
-  }, [signOutOpen]);
 
   const startScan = async () => {
     setScanning(true);
@@ -123,21 +131,12 @@ export function Topbar() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ photos }),
       });
-      // Immediately trigger sync progress bar to pick up the new job
       qc.invalidateQueries({ queryKey: ["active-job"] });
     } catch (e) {
       console.error("Scan failed:", e);
     }
     setScanning(false);
   };
-  const [qrOpen, setQrOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
-  const moreRef = useRef<HTMLDivElement>(null);
-  const isMoreActive = ALL_MORE_PATHS.some((p) => pathname === p);
-  const effectiveRole = user?.role || "member";
-  // "View as member" support
-  const viewingAsMember = typeof window !== "undefined" && effectiveRole === "admin" && (() => { try { return sessionStorage.getItem("viewAsRole") === "member"; } catch { return false; } })();
-  const uiRole = viewingAsMember ? "member" : effectiveRole;
 
   if (authLoading) {
     return (
