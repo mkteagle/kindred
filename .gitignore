@@ -26,3 +26,5 @@ fastlane/api_key.json
 fastlane/screenshots/
 .DS_Store
 tools/asc-upload/.build/
+package.json
+package-lock.json
