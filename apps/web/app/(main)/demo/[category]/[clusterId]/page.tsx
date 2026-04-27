@@ -191,7 +191,7 @@ function DemoLightbox({
       {/* Image */}
       <div className="lb-image-area" onClick={(e) => e.stopPropagation()}>
         <img
-          src={photos[index].replace("w=400", "w=1200")}
+          src={photos[index]}
           alt=""
           className="lb-main-image is-loaded"
         />

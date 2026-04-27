@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { PEOPLE_CLUSTERS, PEXELS } from "../demo-data";
+import { PEOPLE_CLUSTERS, DEMO_PHOTOS } from "../demo-data";
 
 const fmt = new Intl.NumberFormat();
 
@@ -36,7 +36,7 @@ export default function DemoTogetherPage() {
     );
     /* If no overlap, just return a mock selection */
     if (shared.length === 0) {
-      return PEXELS.slice(0, 6);
+      return DEMO_PHOTOS.slice(0, 6);
     }
     return shared;
   }, [selectedPeople, namedClusters]);
@@ -167,7 +167,7 @@ export default function DemoTogetherPage() {
           )}
           <div className="lb-image-area" onClick={(e) => e.stopPropagation()}>
             <img
-              src={togetherPhotos[lbIndex].replace("w=400", "w=1200")}
+              src={togetherPhotos[lbIndex]}
               alt=""
               className="lb-main-image is-loaded"
             />
