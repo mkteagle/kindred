@@ -939,31 +939,41 @@ struct PrivacyInfoSheet: View {
 struct BackendInfoSheet: View {
     let isHealthy: Bool
     let onDismiss: () -> Void
+    private var isDemo: Bool { DemoDataProvider.shared.isActive }
 
     var body: some View {
         VStack(spacing: 0) {
-            Image(systemName: "server.rack")
+            Image(systemName: isDemo ? "play.circle" : "server.rack")
                 .font(.system(size: 36, weight: .light))
-                .foregroundStyle(KindredTheme.slateBlue)
+                .foregroundStyle(isDemo ? KindredTheme.forest : KindredTheme.slateBlue)
                 .padding(.top, 32)
 
-            Text("Backend")
+            Text(isDemo ? "Demo Mode" : "Backend")
                 .font(.kindredH2)
                 .foregroundStyle(KindredTheme.ash)
                 .padding(.top, 16)
 
             VStack(spacing: 6) {
-                Text("Server: https://api.kindredphotos.app")
-                    .font(.kindredBody)
-                    .foregroundStyle(KindredTheme.pine)
-
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(isHealthy ? KindredTheme.forest : KindredTheme.rosehip)
-                        .frame(width: 8, height: 8)
-                    Text("Status: \(isHealthy ? "Online" : "Offline")")
+                if isDemo {
+                    Text("Exploring with sample data")
                         .font(.kindredBody)
                         .foregroundStyle(KindredTheme.pine)
+                    Text("No server connection needed")
+                        .font(.kindredCaption)
+                        .foregroundStyle(KindredTheme.mist)
+                } else {
+                    Text("Server: Connected")
+                        .font(.kindredBody)
+                        .foregroundStyle(KindredTheme.pine)
+
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(isHealthy ? KindredTheme.forest : KindredTheme.rosehip)
+                            .frame(width: 8, height: 8)
+                        Text("Status: \(isHealthy ? "Online" : "Offline")")
+                            .font(.kindredBody)
+                            .foregroundStyle(KindredTheme.pine)
+                    }
                 }
             }
             .multilineTextAlignment(.center)
