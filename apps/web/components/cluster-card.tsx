@@ -104,27 +104,38 @@ export const ClusterCard = ({
       )}
 
       <Link href={`/${category}/${cluster.id}`} className="card-cover" style={{ display: "block" }}>
-        {cluster.thumb_url || cluster.photo_url ? (
-          <>
-            <img
-              src={cluster.photo_url || cluster.thumb_url}
-              alt=""
-              className="cover-photo"
-              style={cluster.cover_crop ? {
-                objectPosition: `${cluster.cover_crop.x}% ${cluster.cover_crop.y}%`,
-              } : undefined}
-            />
-            {cluster.avatar && (
-              <img src={cluster.avatar} alt="" className="card-face-pip" />
-            )}
-          </>
-        ) : cluster.avatar ? (
-          <div className="cover-avatar-only">
-            <img src={cluster.avatar} alt="" className="cover-avatar-small" />
-          </div>
-        ) : (
-          <div className="avatar-fallback">?</div>
-        )}
+        {(() => {
+          // A real cover photo is a URL, not a base64 data URI
+          const coverUrl = cluster.photo_url || cluster.thumb_url;
+          const hasRealCover = coverUrl && !coverUrl.startsWith("data:");
+          if (hasRealCover) {
+            return (
+              <>
+                <img
+                  src={coverUrl}
+                  alt=""
+                  className="cover-photo"
+                  style={cluster.cover_crop ? {
+                    objectPosition: `${cluster.cover_crop.x}% ${cluster.cover_crop.y}%`,
+                  } : undefined}
+                />
+                {cluster.avatar && (
+                  <img src={cluster.avatar} alt="" className="card-face-pip" />
+                )}
+              </>
+            );
+          }
+          // No real photo — show avatar as small circle, not blown up
+          const avatarSrc = cluster.avatar || coverUrl;
+          if (avatarSrc) {
+            return (
+              <div className="cover-avatar-only">
+                <img src={avatarSrc} alt="" className="cover-avatar-small" />
+              </div>
+            );
+          }
+          return <div className="avatar-fallback">?</div>;
+        })()}
         <div className="cover-badge">
           {fmt.format(cluster.photo_count)} photos
         </div>

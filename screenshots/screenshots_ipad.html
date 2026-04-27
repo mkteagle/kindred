@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1320, initial-scale=1">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&family=IBM+Plex+Mono:wght@500;600&family=Instrument+Sans:wght@400;500&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --paper: #FBF4E7;
+    --ash: #2A201B;
+    --ember: #C9551C;
+    --gold: #E9B85D;
+    --pine: #6D3C24;
+    --forest: #2F4A36;
+    --canvas: #F7EBD4;
+  }
+
+  body {
+    background: #111;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 40px;
+    padding: 40px;
+  }
+
+  .screen {
+    width: 2064px;
+    height: 2752px;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  /* ── Background layers ─────────────────────────────── */
+  .screen .bg-photo {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    filter: blur(50px) saturate(1.2);
+    transform: scale(1.15);
+  }
+
+  .screen .bg-overlay {
+    position: absolute;
+    inset: 0;
+  }
+
+  .screen .bg-vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 30%, transparent 30%, rgba(0,0,0,0.35) 100%);
+  }
+
+  .screen .bg-noise {
+    position: absolute;
+    inset: 0;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 200px;
+  }
+
+  /* ── Text area ─────────────────────────────────────── */
+  .screen .text-area {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 38%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 0 86px 50px;
+    z-index: 10;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 22px;
+    border-radius: 100px;
+    font: 600 22px/1 'IBM Plex Mono', monospace;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 28px;
+    width: fit-content;
+  }
+
+  .hl-muted {
+    font: 700 130px/0.92 'Space Grotesk', sans-serif;
+    letter-spacing: -3px;
+    opacity: 0.5;
+  }
+
+  .hl-bold {
+    font: 700 130px/0.92 'Space Grotesk', sans-serif;
+    letter-spacing: -3px;
+    margin-top: -4px;
+  }
+
+  .accent-line {
+    width: 120px;
+    height: 4px;
+    border-radius: 2px;
+    margin-top: 32px;
+  }
+
+  /* ── Device frame ──────────────────────────────────── */
+  .device-wrap {
+    position: absolute;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%) perspective(1800px) rotateY(-3deg) rotateX(1.5deg);
+    z-index: 5;
+    filter: drop-shadow(0 40px 80px rgba(0,0,0,0.4)) drop-shadow(0 15px 30px rgba(0,0,0,0.3));
+    transition: transform 0.3s ease;
+  }
+
+  .device-wrap img {
+    display: block;
+    height: 1650px;
+    width: auto;
+    border-radius: 4px;
+  }
+
+  /* Alternate tilt direction for variety */
+  #s02 .device-wrap,
+  #s04 .device-wrap,
+  #s07 .device-wrap,
+  #s08 .device-wrap {
+    transform: translateX(-50%) perspective(1800px) rotateY(3deg) rotateX(1.5deg);
+  }
+
+  /* Slight upward shift on dark backgrounds for more drama */
+  #s01 .device-wrap,
+  #s03 .device-wrap,
+  #s06 .device-wrap {
+    bottom: 80px;
+  }
+
+  /* ── Decorative floating photos ────────────────────── */
+  .float-photo {
+    position: absolute;
+    z-index: 3;
+    border-radius: 12px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+    object-fit: cover;
+    opacity: 0.15;
+  }
+
+  /* ── Screen-specific themes ────────────────────────── */
+
+  /* 01 - Home Feed: warm campfire */
+  #s01 .bg-photo { background-image: url('/demo/photos/family-campfire-1.jpg'); }
+  #s01 .bg-overlay { background: linear-gradient(170deg, rgba(35,25,18,0.82) 0%, rgba(60,40,25,0.88) 50%, rgba(25,18,12,0.95) 100%); }
+  #s01 .hl-muted, #s01 .hl-bold { color: var(--paper); }
+  #s01 .badge { background: var(--gold); color: var(--ash); }
+  #s01 .accent-line { background: var(--gold); }
+
+  /* 02 - People: warm light */
+  #s02 .bg-photo { background-image: url('/demo/photos/couple-hug-van.jpg'); }
+  #s02 .bg-overlay { background: linear-gradient(170deg, rgba(251,244,231,0.88) 0%, rgba(240,225,200,0.92) 100%); }
+  #s02 .hl-muted, #s02 .hl-bold { color: var(--ash); }
+  #s02 .badge { background: var(--ember); color: white; }
+  #s02 .accent-line { background: var(--ember); }
+
+  /* 03 - Person Detail: deep dark */
+  #s03 .bg-photo { background-image: url('/demo/photos/mom-child-joy.jpg'); }
+  #s03 .bg-overlay { background: linear-gradient(170deg, rgba(18,12,8,0.85) 0%, rgba(50,30,20,0.90) 100%); }
+  #s03 .hl-muted, #s03 .hl-bold { color: var(--paper); }
+  #s03 .accent-line { background: var(--gold); }
+
+  /* 04 - Pets: forest green */
+  #s04 .bg-photo { background-image: url('/demo/photos/landscape-forest.jpg'); }
+  #s04 .bg-overlay { background: linear-gradient(170deg, rgba(30,55,35,0.85) 0%, rgba(20,40,25,0.92) 100%); }
+  #s04 .hl-muted, #s04 .hl-bold { color: var(--paper); }
+  #s04 .badge { background: var(--gold); color: var(--ash); }
+  #s04 .accent-line { background: var(--gold); }
+
+  /* 05 - Vehicles: warm charcoal */
+  #s05 .bg-photo { background-image: url('/demo/photos/family-roadtrip.jpg'); }
+  #s05 .bg-overlay { background: linear-gradient(170deg, rgba(35,28,22,0.85) 0%, rgba(55,40,30,0.92) 100%); }
+  #s05 .hl-muted, #s05 .hl-bold { color: var(--paper); }
+  #s05 .accent-line { background: var(--ember); }
+
+  /* 06 - Search: bold ember */
+  #s06 .bg-photo { background-image: url('/demo/photos/family-campfire-3.jpg'); }
+  #s06 .bg-overlay { background: linear-gradient(170deg, rgba(180,65,15,0.88) 0%, rgba(140,45,8,0.94) 100%); }
+  #s06 .hl-muted, #s06 .hl-bold { color: white; }
+  #s06 .accent-line { background: var(--gold); }
+
+  /* 07 - Together: warm canvas */
+  #s07 .bg-photo { background-image: url('/demo/photos/family-three-sunset.jpg'); }
+  #s07 .bg-overlay { background: linear-gradient(170deg, rgba(247,235,212,0.90) 0%, rgba(235,218,190,0.94) 100%); }
+  #s07 .hl-muted, #s07 .hl-bold { color: var(--ash); }
+  #s07 .badge { background: var(--ember); color: white; }
+  #s07 .accent-line { background: var(--ember); }
+
+  /* 08 - Settings: soft paper */
+  #s08 .bg-photo { background-image: url('/demo/photos/family-campervan.jpg'); }
+  #s08 .bg-overlay { background: linear-gradient(170deg, rgba(247,240,228,0.92) 0%, rgba(235,225,208,0.95) 100%); }
+  #s08 .hl-muted, #s08 .hl-bold { color: var(--ash); }
+  #s08 .accent-line { background: var(--forest); }
+
+  /* 09 - Login: forest */
+  #s09 .bg-photo { background-image: url('/demo/photos/family-evening.jpg'); }
+  #s09 .bg-overlay { background: linear-gradient(170deg, rgba(30,55,36,0.88) 0%, rgba(20,38,25,0.94) 100%); }
+  #s09 .hl-muted, #s09 .hl-bold { color: var(--paper); }
+  #s09 .accent-line { background: var(--gold); }
+
+  /* 10 - Onboarding: deep forest */
+  #s10 .bg-photo { background-image: url('/demo/photos/family-camper-lights.jpg'); }
+  #s10 .bg-overlay { background: linear-gradient(170deg, rgba(25,45,30,0.86) 0%, rgba(15,30,18,0.94) 100%); }
+  #s10 .hl-muted, #s10 .hl-bold { color: var(--paper); }
+  #s10 .accent-line { background: var(--gold); }
+</style>
+</head>
+<body>
+
+<!-- 01: Home Feed -->
+<div class="screen" id="s01">
+  <div class="bg-photo"></div>
+  <div class="bg-overlay"></div>
+  <div class="bg-vignette"></div>
+  <div class="bg-noise"></div>
+  <div class="text-area">
+    <div class="hl-muted">Your</div>
+    <div class="hl-muted">family.</div>
+    <div class="hl-bold">One calm</div>
+    <div class="hl-bold">place.</div>
+    <div class="accent-line"></div>
+  </div>
+  <div class="device-wrap">
+    <img src="/tmp/framed_ipad/01_home_feed_framed.png" />
+  </div>
+</div>
+
+<!-- 02: Library People -->
+<div class="screen" id="s02">
+  <div class="bg-photo"></div>
+  <div class="bg-overlay"></div>
+  <div class="bg-vignette"></div>
+  <div class="bg-noise"></div>
+  <div class="text-area">
+    <div class="badge">8 people found</div>
+    <div class="hl-muted">AI finds</div>
+    <div class="hl-bold">everyone.</div>
+    <div class="accent-line"></div>
+  </div>
+  <div class="device-wrap">
+    <img src="/tmp/framed_ipad/02_library_people_framed.png" />
+  </div>
+</div>
+
+<!-- 03: Person Detail -->
+<div class="screen" id="s03">
+  <div class="bg-photo"></div>
+  <div class="bg-overlay"></div>
+  <div class="bg-vignette"></div>
+  <div class="bg-noise"></div>
+  <div class="text-area">
+    <div class="hl-muted">Every photo</div>
+    <div class="hl-bold">of Mom.</div>
+    <div class="accent-line"></div>
+  </div>
+  <div class="device-wrap">
+    <img src="/tmp/framed_ipad/03_person_detail_framed.png" />
+  </div>
+</div>
+
+<!-- 04: Pets -->
+<div class="screen" id="s04">
+  <div class="bg-photo"></div>
+  <div class="bg-overlay"></div>
+  <div class="bg-vignette"></div>
+  <div class="bg-noise"></div>
+  <div class="text-area">
+    <div class="badge">3 pets found</div>
+    <div class="hl-muted">Pets are</div>
+    <div class="hl-bold">family too.</div>
+    <div class="accent-line"></div>
+  </div>
+  <div class="device-wrap">
+    <img src="/tmp/framed_ipad/04_library_pets_framed.png" />
+  </div>
+</div>
+
+<!-- 05: Vehicles -->
+<div class="screen" id="s05">
+  <div class="bg-photo"></div>
+  <div class="bg-overlay"></div>
+  <div class="bg-vignette"></div>
+  <div class="bg-noise"></div>
+  <div class="text-area">
+    <div class="hl-muted">Cars.</div>
+    <div class="hl-muted">Trucks.</div>
+    <div class="hl-bold">Tracked.</div>
+    <div class="accent-line"></div>
+  </div>
+  <div class="device-wrap">
+    <img src="/tmp/framed_ipad/05_library_vehicles_framed.png" />
+  </div>
+</div>
+
+<!-- 06: Search -->
+<div class="screen" id="s06">
+  <div class="bg-photo"></div>
+  <div class="bg-overlay"></div>
+  <div class="bg-vignette"></div>
+  <div class="bg-noise"></div>
+  <div class="text-area">
+    <div class="hl-muted">Search</div>
+    <div class="hl-bold">like you</div>
+    <div class="hl-bold">remember.</div>
+    <div class="accent-line"></div>
+  </div>
+  <div class="device-wrap">
+    <img src="/tmp/framed_ipad/06_search_results_framed.png" />
+  </div>
+</div>
+
+<!-- 07: Together -->
+<div class="screen" id="s07">
+  <div class="bg-photo"></div>
+  <div class="bg-overlay"></div>
+  <div class="bg-vignette"></div>
+  <div class="bg-noise"></div>
+  <div class="text-area">
+    <div class="badge">new feature</div>
+    <div class="hl-muted">Find them</div>
+    <div class="hl-bold">together.</div>
+    <div class="accent-line"></div>
+  </div>
+  <div class="device-wrap">
+    <img src="/tmp/framed_ipad/07_together_picker_framed.png" />
+  </div>
+</div>
+
+<!-- 08: Settings -->
+<div class="screen" id="s08">
+  <div class="bg-photo"></div>
+  <div class="bg-overlay"></div>
+  <div class="bg-vignette"></div>
+  <div class="bg-noise"></div>
+  <div class="text-area">
+    <div class="hl-muted">Your house.</div>
+    <div class="hl-bold">Your rules.</div>
+    <div class="accent-line"></div>
+  </div>
+  <div class="device-wrap">
+    <img src="/tmp/framed_ipad/08_settings_framed.png" />
+  </div>
+</div>
+
+<!-- 09: Login -->
+<div class="screen" id="s09">
+  <div class="bg-photo"></div>
+  <div class="bg-overlay"></div>
+  <div class="bg-vignette"></div>
+  <div class="bg-noise"></div>
+  <div class="text-area">
+    <div class="hl-muted">Flickr in.</div>
+    <div class="hl-bold">That's it.</div>
+    <div class="accent-line"></div>
+  </div>
+  <div class="device-wrap">
+    <img src="/tmp/framed_ipad/09_login_framed.png" />
+  </div>
+</div>
+
+<!-- 10: Onboarding -->
+<div class="screen" id="s10">
+  <div class="bg-photo"></div>
+  <div class="bg-overlay"></div>
+  <div class="bg-vignette"></div>
+  <div class="bg-noise"></div>
+  <div class="text-area">
+    <div class="hl-bold">Private.</div>
+    <div class="hl-bold">Warm.</div>
+    <div class="hl-bold">Yours.</div>
+    <div class="accent-line"></div>
+  </div>
+  <div class="device-wrap">
+    <img src="/tmp/framed_ipad/10_onboarding_framed.png" />
+  </div>
+</div>
+
+</body>
+</html>
