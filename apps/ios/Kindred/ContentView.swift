@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @State private var selectedTab = 0
     @State private var demo = DemoDataProvider.shared
+    @State private var sidebarVisibility: NavigationSplitViewVisibility = .doubleColumn
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
@@ -45,11 +46,26 @@ struct ContentView: View {
     // MARK: - iPad Layout (sidebar + content)
 
     private var iPadLayout: some View {
-        NavigationSplitView(columnVisibility: .constant(.doubleColumn)) {
+        NavigationSplitView(columnVisibility: $sidebarVisibility) {
             iPadSidebar
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 300)
         } detail: {
             iPadDetailContent
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        if sidebarVisibility != .doubleColumn {
+                            Button {
+                                withAnimation {
+                                    sidebarVisibility = .doubleColumn
+                                }
+                            } label: {
+                                Image(systemName: "sidebar.leading")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundStyle(KindredTheme.pine)
+                            }
+                        }
+                    }
+                }
         }
         .navigationSplitViewStyle(.balanced)
         .tint(KindredTheme.ember)
