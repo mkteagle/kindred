@@ -64,8 +64,8 @@ const SCREENS = SCREENS_ARG
   : ALL_SCREENS;
 
 // App Store dimensions
-const IPHONE_WIDTH = 1320;
-const IPHONE_HEIGHT = 2868;
+const IPHONE_WIDTH = 1284;
+const IPHONE_HEIGHT = 2778;
 const IPAD_WIDTH = 2064;
 const IPAD_HEIGHT = 2752;
 

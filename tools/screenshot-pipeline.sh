@@ -482,14 +482,16 @@ if [ "$DO_UPLOAD" = true ]; then
     # Run fastlane deliver (screenshots only, no binary)
     info "Uploading screenshots to App Store Connect..."
     cd "$PROJECT_ROOT"
+    FASTLANE_DONT_STORE_PASSWORD=1 \
     fastlane deliver \
         --skip_binary_upload \
         --skip_metadata \
         --screenshots_path "fastlane/screenshots" \
         --api_key_path "$API_KEY_FILE" \
+        --app_identifier "com.kindlingsignal.kindred" \
         --overwrite_screenshots \
         --force \
-        2>&1 | tail -20
+        2>&1 | tail -30
 
     success "Screenshots uploaded to App Store Connect!"
     echo ""
