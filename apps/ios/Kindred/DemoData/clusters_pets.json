@@ -1,8 +1,8 @@
 {
   "clusters": [
-    {"id": "demo_pet1", "label": "Luna", "det_count": 145, "photo_count": 68, "avatar": "demo://file_dog-golden", "thumb_url": "demo://file_dog-golden", "photo_url": "demo://file_luna-2"},
-    {"id": "demo_pet2", "label": "Mochi", "det_count": 97, "photo_count": 44, "avatar": "demo://file_cat-sitting", "thumb_url": "demo://file_cat-sitting", "photo_url": "demo://file_mochi-2"},
-    {"id": "demo_pet3", "label": "Buddy", "det_count": 72, "photo_count": 33, "avatar": "demo://file_dog-park", "thumb_url": "demo://file_dog-park", "photo_url": "demo://file_luna-3"}
+    {"id": "demo_pet1", "label": "Luna", "det_count": 145, "photo_count": 68, "avatar": null, "thumb_url": "demo://file_family-van-2", "photo_url": "demo://file_family-van-2"},
+    {"id": "demo_pet2", "label": "Mochi", "det_count": 97, "photo_count": 44, "avatar": null, "thumb_url": "demo://file_shadow-puppets", "photo_url": "demo://file_shadow-puppets"},
+    {"id": "demo_pet3", "label": "Buddy", "det_count": 72, "photo_count": 33, "avatar": null, "thumb_url": "demo://file_kid-campfire", "photo_url": "demo://file_kid-campfire"}
   ],
   "noise_count": 3
 }

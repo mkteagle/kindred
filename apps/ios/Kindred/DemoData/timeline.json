@@ -4,38 +4,38 @@
       "month": "2026-04",
       "count": 87,
       "photos": [
-        {"photo_id": "demo_tp01", "thumb_url": "demo://file_family-beach", "flickr_url": null, "photo_title": "Easter morning", "date_taken": "2026-04-05"},
-        {"photo_id": "demo_tp02", "thumb_url": "demo://file_kids-birthday", "flickr_url": null, "photo_title": "Spring garden", "date_taken": "2026-04-12"},
-        {"photo_id": "demo_tp03", "thumb_url": "demo://file_family-dinner", "flickr_url": null, "photo_title": "Family dinner", "date_taken": "2026-04-18"},
-        {"photo_id": "demo_tp04", "thumb_url": "demo://file_dog-park", "flickr_url": null, "photo_title": "Park walk", "date_taken": "2026-04-22"}
+        {"photo_id": "demo_tp01", "thumb_url": "demo://file_family-campfire-1", "flickr_url": null, "photo_title": "Easter morning", "date_taken": "2026-04-05"},
+        {"photo_id": "demo_tp02", "thumb_url": "demo://file_family-holiday-1", "flickr_url": null, "photo_title": "Spring garden", "date_taken": "2026-04-12"},
+        {"photo_id": "demo_tp03", "thumb_url": "demo://file_family-music", "flickr_url": null, "photo_title": "Family dinner", "date_taken": "2026-04-18"},
+        {"photo_id": "demo_tp04", "thumb_url": "demo://file_couple-van", "flickr_url": null, "photo_title": "Park walk", "date_taken": "2026-04-22"}
       ]
     },
     {
       "month": "2026-03",
       "count": 112,
       "photos": [
-        {"photo_id": "demo_tp05", "thumb_url": "demo://file_grandma-1", "flickr_url": null, "photo_title": "Grandma's visit", "date_taken": "2026-03-03"},
-        {"photo_id": "demo_tp06", "thumb_url": "demo://file_birthday-cake", "flickr_url": null, "photo_title": "Sam's birthday", "date_taken": "2026-03-14"},
-        {"photo_id": "demo_tp07", "thumb_url": "demo://file_mountain-lake", "flickr_url": null, "photo_title": "Hiking trip", "date_taken": "2026-03-21"},
-        {"photo_id": "demo_tp08", "thumb_url": "demo://file_friends-laughing", "flickr_url": null, "photo_title": "Backyard BBQ", "date_taken": "2026-03-28"}
+        {"photo_id": "demo_tp05", "thumb_url": "demo://file_parent-child", "flickr_url": null, "photo_title": "Grandma's visit", "date_taken": "2026-03-03"},
+        {"photo_id": "demo_tp06", "thumb_url": "demo://file_kid-festive", "flickr_url": null, "photo_title": "Sam's birthday", "date_taken": "2026-03-14"},
+        {"photo_id": "demo_tp07", "thumb_url": "demo://file_family-van-1", "flickr_url": null, "photo_title": "Hiking trip", "date_taken": "2026-03-21"},
+        {"photo_id": "demo_tp08", "thumb_url": "demo://file_marshmallows", "flickr_url": null, "photo_title": "Backyard BBQ", "date_taken": "2026-03-28"}
       ]
     },
     {
       "month": "2026-02",
       "count": 74,
       "photos": [
-        {"photo_id": "demo_tp09", "thumb_url": "demo://file_mom-2", "flickr_url": null, "photo_title": "Valentine's brunch", "date_taken": "2026-02-14"},
-        {"photo_id": "demo_tp10", "thumb_url": "demo://file_autumn-walk", "flickr_url": null, "photo_title": "Snow day", "date_taken": "2026-02-08"},
-        {"photo_id": "demo_tp11", "thumb_url": "demo://file_road-trip", "flickr_url": null, "photo_title": "Movie night", "date_taken": "2026-02-20"}
+        {"photo_id": "demo_tp09", "thumb_url": "demo://file_couple-sunset", "flickr_url": null, "photo_title": "Valentine's brunch", "date_taken": "2026-02-14"},
+        {"photo_id": "demo_tp10", "thumb_url": "demo://file_family-evening", "flickr_url": null, "photo_title": "Snow day", "date_taken": "2026-02-08"},
+        {"photo_id": "demo_tp11", "thumb_url": "demo://file_family-roadtrip", "flickr_url": null, "photo_title": "Movie night", "date_taken": "2026-02-20"}
       ]
     },
     {
       "month": "2026-01",
       "count": 95,
       "photos": [
-        {"photo_id": "demo_tp12", "thumb_url": "demo://file_beach-waves", "flickr_url": null, "photo_title": "New Year's Day", "date_taken": "2026-01-01"},
-        {"photo_id": "demo_tp13", "thumb_url": "demo://file_baby-2", "flickr_url": null, "photo_title": "Baby Lily's first steps", "date_taken": "2026-01-15"},
-        {"photo_id": "demo_tp14", "thumb_url": "demo://file_sunset-portrait", "flickr_url": null, "photo_title": "Weekend at the lake", "date_taken": "2026-01-22"}
+        {"photo_id": "demo_tp12", "thumb_url": "demo://file_family-camper-lights", "flickr_url": null, "photo_title": "New Year's Day", "date_taken": "2026-01-01"},
+        {"photo_id": "demo_tp13", "thumb_url": "demo://file_mom-child-joy", "flickr_url": null, "photo_title": "Baby Lily's first steps", "date_taken": "2026-01-15"},
+        {"photo_id": "demo_tp14", "thumb_url": "demo://file_couple-evening", "flickr_url": null, "photo_title": "Weekend at the lake", "date_taken": "2026-01-22"}
       ]
     }
   ]
