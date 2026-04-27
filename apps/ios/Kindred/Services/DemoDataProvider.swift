@@ -269,9 +269,8 @@ struct DemoThumbnailView: View {
                     .resizable()
                     .scaledToFill()
             } else {
-                // Fallback gradient if photo not found
-                let colors = DemoDataProvider.palette[DemoDataProvider.paletteIndex(for: urlString)]
-                LinearGradient(colors: [colors.0, colors.1], startPoint: .topLeading, endPoint: .bottomTrailing)
+                // No photo — just show the canvas color, no gradient
+                KindredTheme.canvas
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
