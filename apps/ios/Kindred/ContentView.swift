@@ -46,40 +46,23 @@ struct ContentView: View {
     // MARK: - iPad Layout (sidebar + content)
 
     private var iPadLayout: some View {
-        ZStack(alignment: .topLeading) {
-            NavigationSplitView(columnVisibility: $sidebarVisibility) {
-                iPadSidebar
-                    .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 300)
-            } detail: {
+        NavigationSplitView(columnVisibility: $sidebarVisibility) {
+            iPadSidebar
+                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 300)
+                .toolbar(.hidden, for: .navigationBar)
+        } detail: {
+            NavigationStack {
                 iPadDetailContent
-            }
-            .navigationSplitViewStyle(.balanced)
-            .tint(KindredTheme.ember)
-
-            // Show expand button only when sidebar is collapsed
-            if sidebarVisibility != .doubleColumn {
-                Button {
-                    withAnimation(.easeOut(duration: 0.25)) {
-                        sidebarVisibility = .doubleColumn
-                    }
-                } label: {
-                    Image(systemName: "sidebar.leading")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(KindredTheme.pine)
-                        .frame(width: 36, height: 36)
-                        .background(.ultraThinMaterial)
-                        .clipShape(Circle())
-                }
-                .padding(.top, 14)
-                .padding(.leading, 14)
-                .transition(.opacity)
+                    .toolbar(.hidden, for: .navigationBar)
             }
         }
+        .navigationSplitViewStyle(.prominentDetail)
+        .tint(KindredTheme.ember)
     }
 
     private var iPadSidebar: some View {
         VStack(spacing: 0) {
-            // Sidebar header — brand logo + collapse
+            // Sidebar header — brand logo
             HStack(spacing: 8) {
                 Image("KindredLogo")
                     .resizable()
@@ -89,18 +72,8 @@ struct ContentView: View {
                 Text("Kindred")
                     .font(.kindredTitle)
                     .foregroundStyle(KindredTheme.ash)
-                Spacer()
-                Button {
-                    withAnimation(.easeOut(duration: 0.25)) {
-                        sidebarVisibility = .detailOnly
-                    }
-                } label: {
-                    Image(systemName: "sidebar.leading")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(KindredTheme.mist)
-                }
-                .buttonStyle(.plain)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 20)
             .padding(.top, 16)
             .padding(.bottom, 20)
