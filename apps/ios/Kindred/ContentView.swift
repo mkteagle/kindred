@@ -51,18 +51,16 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 300)
                 .toolbar(.hidden, for: .navigationBar)
         } detail: {
-            NavigationStack {
-                iPadDetailContent
-                    .toolbar(.hidden, for: .navigationBar)
-            }
+            iPadDetailContent
         }
-        .navigationSplitViewStyle(.prominentDetail)
+        .navigationSplitViewStyle(.balanced)
         .tint(KindredTheme.ember)
     }
 
     private var iPadSidebar: some View {
         VStack(spacing: 0) {
-            // Sidebar header — brand logo
+            // Sidebar header — brand logo (below safe area)
+            Spacer().frame(height: 0) // absorbs safe area inset
             HStack(spacing: 8) {
                 Image("KindredLogo")
                     .resizable()
@@ -75,7 +73,7 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 20)
-            .padding(.top, 16)
+            .padding(.top, 8)
             .padding(.bottom, 20)
 
             // Nav items
