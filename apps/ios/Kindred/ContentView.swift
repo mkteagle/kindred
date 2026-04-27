@@ -90,9 +90,10 @@ struct ContentView: View {
             // Footer
             VStack(spacing: 4) {
                 HStack(spacing: 6) {
-                    Image(systemName: "flame")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(KindredTheme.ember)
+                    Image("KindlingLogo")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 16, height: 16)
                     Text("Kindling Signal")
                         .font(.kindredMicro)
                         .foregroundStyle(KindredTheme.muted)

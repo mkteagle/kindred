@@ -46,9 +46,10 @@ struct SettingsView: View {
                     // Footer
                     VStack(spacing: 6) {
                         HStack(spacing: 6) {
-                            Image(systemName: "flame")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(KindredTheme.ember)
+                            Image("KindlingLogo")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 18, height: 18)
                             Text("Kindling Signal")
                                 .font(.kindredMeta)
                                 .foregroundStyle(KindredTheme.mist)
