@@ -154,8 +154,7 @@ struct FullScreenPhotoView: View {
     private func photoContent(for photo: PhotoGridItem, size: CGSize) -> some View {
         Group {
             if DemoDataProvider.isDemoURL(photo.photoURL) {
-                DemoThumbnailView(urlString: photo.photoURL, cornerRadius: 0)
-                    .aspectRatio(contentMode: .fit)
+                DemoThumbnailView(urlString: photo.photoURL, cornerRadius: 0, contentMode: .fit)
                     .frame(width: size.width, height: size.height)
             } else {
                 AsyncImage(url: URL(string: photo.photoURL)) { phase in

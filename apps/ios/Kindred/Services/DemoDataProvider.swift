@@ -207,6 +207,7 @@ final class DemoDataProvider {
 struct DemoThumbnailView: View {
     let urlString: String
     var cornerRadius: CGFloat = KindredTheme.radiusXS
+    var contentMode: ContentMode = .fill
 
     /// Map demo URL indices to bundled photo filenames (Pexels Seljan Salimova family series)
     private static let photoFiles = [
@@ -268,6 +269,7 @@ struct DemoThumbnailView: View {
                 Image(uiImage: uiImage)
                     .renderingMode(.original)
                     .resizable()
+                    .aspectRatio(contentMode: contentMode)
             } else {
                 // No photo — just show the canvas color, no gradient
                 KindredTheme.canvas
