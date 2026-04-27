@@ -1,0 +1,85 @@
+{
+  "cluster_id": "3d19bc27-515c-4eb8-85b9-3552f213a60b",
+  "label": null,
+  "avatar_detection_id": null,
+  "cover_photo_id": null,
+  "cover_crop": null,
+  "items": [
+    {
+      "id": "e5c05d6e-def1-49a3-8be7-a12a01cc7821",
+      "category": "people",
+      "subtype": "face",
+      "photo_id": "55232684898",
+      "photo_url": "demo://file_couple-sunset",
+      "thumb_url": "demo://file_couple-sunset",
+      "flickr_url": "https://www.flickr.com/photos/204352286@N04/55232684898",
+      "photo_title": "family-roadtrip",
+      "owner": "204352286@N04",
+      "bbox": [
+        190.6,
+        108.1,
+        225.9,
+        155.2
+      ],
+      "det_score": 0.728,
+      "chip": "data:image/jpeg;base64,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"
+    },
+    {
+      "id": "0e9aa20b-6e2f-453d-8c10-2cbd275fc3ff",
+      "category": "people",
+      "subtype": "face",
+      "photo_id": "55232686338",
+      "photo_url": "https://live.staticflickr.com/65535/55232686338_27f22ac54f_z.jpg",
+      "thumb_url": "https://live.staticflickr.com/65535/55232686338_27f22ac54f_q.jpg",
+      "flickr_url": "https://www.flickr.com/photos/204352286@N04/55232686338",
+      "photo_title": "friends-van",
+      "owner": "204352286@N04",
+      "bbox": [
+        205.3,
+        271.6,
+        245.2,
+        320.5
+      ],
+      "det_score": 0.818,
+      "chip": "data:image/jpeg;base64,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"
+    },
+    {
+      "id": "a17b6b6b-fa42-4282-906c-058e70dbc96a",
+      "category": "people",
+      "subtype": "face",
+      "photo_id": "55232793499",
+      "photo_url": "demo://file_family-roadtrip",
+      "thumb_url": "demo://file_family-roadtrip",
+      "flickr_url": "https://www.flickr.com/photos/204352286@N04/55232793499",
+      "photo_title": "family-roadtrip",
+      "owner": "204352286@N04",
+      "bbox": [
+        190.6,
+        108.1,
+        225.9,
+        155.2
+      ],
+      "det_score": 0.728,
+      "chip": "data:image/jpeg;base64,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"
+    },
+    {
+      "id": "d8289422-55b4-4fd5-9066-b803477e8946",
+      "category": "people",
+      "subtype": "face",
+      "photo_id": "55232549366",
+      "photo_url": "demo://file_friends-van",
+      "thumb_url": "demo://file_friends-van",
+      "flickr_url": "https://www.flickr.com/photos/204352286@N04/55232549366",
+      "photo_title": "friends-van",
+      "owner": "204352286@N04",
+      "bbox": [
+        205.3,
+        271.6,
+        245.2,
+        320.5
+      ],
+      "det_score": 0.818,
+      "chip": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCABDADYDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDO+IeqaA1xZXWkWwS3ijYs0ce3LfwqB3ry3Xdal1SaMyKFjgDBFHRc9cfXk/jXc/GO80ZH03TdDmZzbRZuZNxO6RhgDJ9MV5fChuJUjQfNIeg7V5WGpWjzyPWrVXfliXLW+MDRrCuVDAnPeugj1+aJ2lAAuSMKdoIUflRaaBHDEDLycdKS9sI5LcBPlYHAqakqVSVrG8IVacb3LR164vo1S5K7cYK4AU+/FTaXrNxpVwHt7gr5gwTvOGHuRz7VyDvJaStFMDgnpUpufMQp0I9KHhYW02EsS9nudJrF55zq0XTrs/u0VhWcwMZZxuHTGaKShGC5Wrkt875hdX0zVdQ1y7Jt5ZJJZ5CHCbUI3HBz0xjpWrpXh6DT7hJr28AuV52IvyD8T1/CvRIPEthcgQzkxtjA9BWP4mk09bR5mS1ukKlQQSJEPqDXEsXWm1TceVHoRwdGned7sxry6iSQb2IQjhh0qmZVJ+8pBNcxFcXW1okJMbE8NzgVqrC/9nCRGw4ORjsa7VR5Fucrr87djQutHt7yEG8uRbDPysR8x/CpLfwppNyFFlq9xG4HJuIQyk/8BxiuVuLi5eXdcGWVhn+L24r0LwQbWG1RobaFbgAGe4uTkLn0HSorurShdSCiqVadnEw5fA3iK3/eWdrHewuf9ZbyAj8j0or0+C7ZfnA+0EjG+dhGn/AV/rRXD9frdkzr+oU+7PB55nN8Xd3wnTb/AFqWS8knZQ5yoGNo71nz3TKG2qN59atmTKQyxAZKgHHrXuSgrXaPHjUd3ZmiZkUL5iBCPugf1rRjuLUWYxKu4nnBrm0uDko8bMx6n/69SmIoodrc7OoG6ocL7mkazWqL0twPMYpEH4xkDnFUvt8qSsYBIDjJXHp60x7wMw8qNkYVseGbSe/e88h4opBHsUzZwWPp/nvSmlBXkghKU5WiytPr97cBTJIHbA5Y57e9FZ88gZ2aVURwdrAcAEdRRVKEF0RDnNvdkF9KjoAxDSE5DY6VVtpijBQflBpJkEbsjZBB9aZHw4GOtdCStY5XJ3ubUeLlRsHNT/ZpgozEQvPXp9ayEaSJ8xEj+las1rr40Uak9pcJp7fdmxxWE9Op0wknui3rmlx6ZYW9xDcpOJQFYBSNrkZArRs4JdO0dI9pe4cFyg5LM3Qe2OOlW0t49S0myFw2ERkkIzw2Knl837aZTwdpUYHT3rjnUbXKz0KdJKXNEzLOyg01N1xGl7fScyKcFUzyQPxor0fxFZ+Arfw3pslxexxXTbd5SU+YTtOdy9hkUURjOa5pGcqsIPlitDitJ0DTLv4fa9qdzaq99Dny5SzDbg46Zx+lebW4HmgY4oorqw796RwV0rI0yo8knHO1j+QyP519E64d37P7kheNPjwMDA4ooqa26NIbM8n0UBtGgU9BGpH5Cprx2Jh565Joorkluz1IbI5jX4I59fkjlXcixjAJ6Y//AFmiiiumD91HE0rs/9k="
+    }
+  ]
+}
