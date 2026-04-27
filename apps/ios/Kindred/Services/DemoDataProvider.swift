@@ -266,6 +266,7 @@ struct DemoThumbnailView: View {
         Group {
             if let uiImage = image {
                 Image(uiImage: uiImage)
+                    .renderingMode(.original)
                     .resizable()
                     .scaledToFill()
             } else {
