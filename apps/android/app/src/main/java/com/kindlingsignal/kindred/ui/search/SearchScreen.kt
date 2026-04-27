@@ -22,7 +22,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import com.kindlingsignal.kindred.data.demo.DemoDataProvider
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kindlingsignal.kindred.data.model.SearchResult
 import com.kindlingsignal.kindred.ui.components.DemoAwareImage
 import com.kindlingsignal.kindred.ui.components.KindredEyebrow
@@ -38,16 +39,11 @@ import com.kindlingsignal.kindred.ui.theme.KindredType
 fun SearchScreen(
     onPhotoClick: (index: Int, urls: List<String>, titles: List<String>) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier,
+    viewModel: SearchViewModel = hiltViewModel(),
 ) {
-    var query by remember { mutableStateOf(TextFieldValue("")) }
-
-    val results = remember(query.text) {
-        if (query.text.isNotEmpty() && DemoDataProvider.isActive) {
-            DemoDataProvider.searchDemoPhotos(query.text)
-        } else {
-            emptyList()
-        }
-    }
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var query by remember { mutableStateOf(TextFieldValue(uiState.query)) }
+    val results = uiState.results
 
     Column(
         modifier = modifier
@@ -73,9 +69,13 @@ fun SearchScreen(
         // Search input
         SearchInput(
             query = query,
-            onQueryChange = { query = it },
+            onQueryChange = {
+                query = it
+                viewModel.updateQuery(it.text)
+            },
             onClear = {
                 query = TextFieldValue("")
+                viewModel.clearSearch()
             },
         )
 

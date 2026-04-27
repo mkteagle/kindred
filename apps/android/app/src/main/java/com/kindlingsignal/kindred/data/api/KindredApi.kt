@@ -1,18 +1,40 @@
 package com.kindlingsignal.kindred.data.api
 
 import com.kindlingsignal.kindred.data.model.*
-import retrofit2.http.GET
-import retrofit2.http.Path
-import retrofit2.http.Query
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
+import retrofit2.Response
+import retrofit2.http.*
 
 /**
  * Retrofit interface for the Kindred backend API.
- * Base URL: https://api.kindredphotos.app
+ * Base URL is configured dynamically via SessionManager.
  */
 interface KindredApi {
 
+    // MARK: - Health
+
     @GET("health")
     suspend fun healthCheck(): HealthResponse
+
+    // MARK: - Auth
+
+    @POST("auth/login")
+    suspend fun login(@Body request: LoginRequest): LoginResponse
+
+    @POST("auth/register")
+    suspend fun register(@Body request: RegisterRequest): RegisterResponse
+
+    @POST("auth/flickr-login")
+    suspend fun flickrLogin(@Body request: FlickrLoginRequest): LoginResponse
+
+    @POST("auth/logout")
+    suspend fun logout(): Response<Unit>
+
+    @GET("auth/me")
+    suspend fun getMe(): MeResponse
+
+    // MARK: - Data
 
     @GET("stats")
     suspend fun getStats(): Stats
@@ -43,7 +65,13 @@ interface KindredApi {
         @Query("limit") limit: Int = 100,
     ): TogetherResponse
 
-    companion object {
-        const val BASE_URL = "https://api.kindredphotos.app/"
-    }
+    // MARK: - Upload
+
+    @Multipart
+    @POST("photos/upload")
+    suspend fun uploadPhoto(
+        @Part photo: MultipartBody.Part,
+        @Part("title") title: RequestBody? = null,
+        @Part("description") description: RequestBody? = null,
+    ): UploadResponse
 }

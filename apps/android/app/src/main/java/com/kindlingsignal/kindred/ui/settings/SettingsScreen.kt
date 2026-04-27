@@ -22,7 +22,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.kindlingsignal.kindred.data.demo.DemoDataProvider
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kindlingsignal.kindred.ui.components.KindredAvatar
 import com.kindlingsignal.kindred.ui.components.KindredEyebrow
 import com.kindlingsignal.kindred.ui.theme.KindredColors
@@ -38,8 +39,13 @@ import java.util.Calendar
 @Composable
 fun SettingsScreen(
     onEnterDemo: () -> Unit = {},
+    onSignOut: () -> Unit = {},
+    onUploadClick: () -> Unit = {},
     modifier: Modifier = Modifier,
+    viewModel: SettingsViewModel = hiltViewModel(),
 ) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val backendOnline by viewModel.backendOnline.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
     var autoBackupEnabled by remember { mutableStateOf(true) }
 
@@ -66,27 +72,45 @@ fun SettingsScreen(
         }
 
         // Profile / Household card
-        HouseholdCard()
+        HouseholdCard(
+            displayName = uiState.displayName,
+            username = uiState.username,
+            role = uiState.role,
+            avatarUrl = uiState.avatarUrl,
+            isDemoMode = uiState.isDemoMode,
+        )
 
         // Members section
-        MembersSection()
+        MembersSection(
+            displayName = uiState.displayName,
+            role = uiState.role,
+        )
 
         // Library section
         LibrarySection(
             autoBackupEnabled = autoBackupEnabled,
             onAutoBackupChange = { autoBackupEnabled = it },
+            onUploadClick = onUploadClick,
         )
 
         // Privacy section
-        PrivacySection()
+        PrivacySection(
+            isDemoMode = uiState.isDemoMode,
+            backendOnline = backendOnline,
+        )
 
         // Developer section (demo mode)
-        if (!DemoDataProvider.isActive) {
-            DemoSection(onEnterDemo = onEnterDemo)
+        if (!uiState.isDemoMode) {
+            DemoSection(onEnterDemo = {
+                viewModel.enterDemoMode()
+                onEnterDemo()
+            })
         }
 
         // Sign Out button
-        SignOutButton()
+        SignOutButton(onSignOut = {
+            viewModel.signOut { onSignOut() }
+        })
 
         // Footer
         SettingsFooter()
@@ -97,7 +121,13 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun HouseholdCard() {
+private fun HouseholdCard(
+    displayName: String,
+    username: String,
+    role: String,
+    avatarUrl: String?,
+    isDemoMode: Boolean,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -120,19 +150,19 @@ private fun HouseholdCard() {
         ) {
             // Avatar
             KindredAvatar(
-                url = if (DemoDataProvider.isActive) "demo://file_family-campfire-1" else null,
+                url = if (isDemoMode) "demo://file_family-campfire-1" else avatarUrl,
                 size = 44.dp,
                 borderWidth = 2.dp,
             )
 
             Column {
                 Text(
-                    text = "Demo User",
+                    text = displayName,
                     style = KindredType.display(17),
                     color = KindredColors.Ash,
                 )
                 Text(
-                    text = "@demo \u00b7 member",
+                    text = "@$username \u00b7 $role",
                     style = KindredType.Meta,
                     color = KindredColors.Mist,
                 )
@@ -162,7 +192,10 @@ private fun HouseholdCard() {
 }
 
 @Composable
-private fun MembersSection() {
+private fun MembersSection(
+    displayName: String,
+    role: String,
+) {
     Column(
         modifier = Modifier.padding(top = 20.dp),
     ) {
@@ -197,14 +230,14 @@ private fun MembersSection() {
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "D",
+                        text = displayName.firstOrNull()?.uppercase() ?: "?",
                         style = KindredType.display(14),
                         color = KindredColors.Pine,
                     )
                 }
 
                 Text(
-                    text = "Demo User",
+                    text = displayName,
                     style = KindredType.Label,
                     color = KindredColors.Ash,
                 )
@@ -212,7 +245,7 @@ private fun MembersSection() {
                 Spacer(modifier = Modifier.weight(1f))
 
                 Text(
-                    text = "MEMBER",
+                    text = role.uppercase(),
                     style = KindredType.Micro,
                     color = KindredColors.Mist,
                 )
@@ -225,6 +258,7 @@ private fun MembersSection() {
 private fun LibrarySection(
     autoBackupEnabled: Boolean,
     onAutoBackupChange: (Boolean) -> Unit,
+    onUploadClick: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier.padding(top = 20.dp),
@@ -244,9 +278,10 @@ private fun LibrarySection(
                 .background(KindredColors.Card)
                 .border(1.dp, KindredColors.Line, KindredShape.RadiusMD),
         ) {
-            // Backup & storage
+            // Backup & storage (navigates to upload screen)
             SettingsRow(
                 title = "Backup & storage",
+                modifier = Modifier.clickable { onUploadClick() },
                 trailing = {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -331,7 +366,10 @@ private fun LibrarySection(
 }
 
 @Composable
-private fun PrivacySection() {
+private fun PrivacySection(
+    isDemoMode: Boolean,
+    backendOnline: Boolean?,
+) {
     Column(
         modifier = Modifier.padding(top = 20.dp),
     ) {
@@ -383,17 +421,26 @@ private fun PrivacySection() {
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        val statusColor = when {
+                            isDemoMode -> KindredColors.Gold
+                            backendOnline == true -> KindredColors.Forest
+                            backendOnline == false -> KindredColors.Rosehip
+                            else -> KindredColors.Mist
+                        }
+                        val statusText = when {
+                            isDemoMode -> "Demo Mode"
+                            backendOnline == true -> "Online"
+                            backendOnline == false -> "Offline"
+                            else -> "Checking..."
+                        }
                         Box(
                             modifier = Modifier
                                 .size(8.dp)
                                 .clip(CircleShape)
-                                .background(
-                                    if (DemoDataProvider.isActive) KindredColors.Gold
-                                    else KindredColors.Rosehip
-                                ),
+                                .background(statusColor),
                         )
                         Text(
-                            text = if (DemoDataProvider.isActive) "Demo Mode" else "Offline",
+                            text = statusText,
                             style = KindredType.Micro,
                             color = KindredColors.Mist,
                         )
@@ -463,7 +510,7 @@ private fun DemoSection(onEnterDemo: () -> Unit) {
 }
 
 @Composable
-private fun SignOutButton() {
+private fun SignOutButton(onSignOut: () -> Unit = {}) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -471,7 +518,7 @@ private fun SignOutButton() {
             .padding(top = 20.dp)
             .clip(KindredShape.RadiusMD)
             .background(KindredColors.Ember)
-            .clickable { /* TODO: sign out */ }
+            .clickable { onSignOut() }
             .padding(vertical = 14.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -521,10 +568,11 @@ private fun SettingsFooter() {
 @Composable
 private fun SettingsRow(
     title: String,
+    modifier: Modifier = Modifier,
     trailing: @Composable () -> Unit = {},
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,

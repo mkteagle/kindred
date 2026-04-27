@@ -28,7 +28,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import com.kindlingsignal.kindred.data.demo.DemoDataProvider
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kindlingsignal.kindred.data.model.ClusterSummary
 import com.kindlingsignal.kindred.ui.components.DemoAwareImage
 import com.kindlingsignal.kindred.ui.components.KindredAvatar
@@ -47,13 +48,9 @@ import androidx.compose.ui.text.font.FontWeight
 fun TogetherScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    viewModel: TogetherViewModel = hiltViewModel(),
 ) {
-    val peopleClusters = remember {
-        if (DemoDataProvider.isActive) {
-            DemoDataProvider.getClusterSummary("people").clusters
-                .sortedByDescending { it.photoCount }
-        } else emptyList()
-    }
+    val peopleClusters by viewModel.peopleClusters.collectAsStateWithLifecycle()
 
     var selectedIds by remember { mutableStateOf(setOf<String>()) }
     var searchQuery by remember { mutableStateOf(TextFieldValue("")) }

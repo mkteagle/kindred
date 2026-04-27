@@ -24,7 +24,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.kindlingsignal.kindred.data.demo.DemoDataProvider
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kindlingsignal.kindred.data.model.ClusterSummary
 import com.kindlingsignal.kindred.data.model.TimelineMonth
 import com.kindlingsignal.kindred.ui.components.*
@@ -43,24 +44,11 @@ import com.kindlingsignal.kindred.util.greetingTimeOfDay
 fun HomeScreen(
     onTogetherClick: () -> Unit = {},
     modifier: Modifier = Modifier,
+    viewModel: HomeViewModel = hiltViewModel(),
 ) {
-    // Load data — in demo mode use DemoDataProvider, else empty for now
-    val clusters = remember {
-        if (DemoDataProvider.isActive) {
-            DemoDataProvider.getClusterSummary("people").clusters
-                .sortedByDescending { it.photoCount }
-        } else {
-            emptyList()
-        }
-    }
-
-    val timeline = remember {
-        if (DemoDataProvider.isActive) {
-            DemoDataProvider.getTimeline().months
-        } else {
-            emptyList()
-        }
-    }
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val clusters = uiState.clusters
+    val timeline = uiState.timeline
 
     val scrollState = rememberScrollState()
 

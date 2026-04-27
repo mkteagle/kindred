@@ -25,7 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import com.kindlingsignal.kindred.data.demo.DemoDataProvider
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kindlingsignal.kindred.data.model.ClusterCategory
 import com.kindlingsignal.kindred.data.model.ClusterSummary
 import com.kindlingsignal.kindred.ui.components.MasonryClusterCard
@@ -42,18 +43,13 @@ import com.kindlingsignal.kindred.ui.theme.KindredType
 fun LibraryScreen(
     onClusterClick: (category: String, clusterId: String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
+    viewModel: LibraryViewModel = hiltViewModel(),
 ) {
-    var selectedCategory by rememberSaveable { mutableStateOf(ClusterCategory.PEOPLE) }
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val selectedCategory = uiState.selectedCategory
     var searchQuery by remember { mutableStateOf(TextFieldValue("")) }
 
-    val allClusters = remember(selectedCategory) {
-        if (DemoDataProvider.isActive) {
-            DemoDataProvider.getClusterSummary(selectedCategory.apiName).clusters
-                .sortedByDescending { it.photoCount }
-        } else {
-            emptyList()
-        }
-    }
+    val allClusters = uiState.clusters
 
     val clusters = remember(allClusters, searchQuery.text) {
         if (searchQuery.text.isEmpty()) allClusters
@@ -62,9 +58,7 @@ fun LibraryScreen(
         }
     }
 
-    val stats = remember {
-        if (DemoDataProvider.isActive) DemoDataProvider.getStats() else null
-    }
+    val stats = uiState.stats
 
     Column(
         modifier = modifier
@@ -185,7 +179,7 @@ fun LibraryScreen(
                     label = category.displayName,
                     count = groupCount,
                     isActive = isActive,
-                    onClick = { selectedCategory = category },
+                    onClick = { viewModel.selectCategory(category) },
                 )
             }
         }

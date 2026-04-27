@@ -117,6 +117,59 @@ data class HealthResponse(
     val status: String,
 )
 
+// MARK: - Auth
+
+data class AuthUser(
+    val id: String,
+    val username: String,
+    @SerializedName("display_name") val displayName: String?,
+    val role: String,
+    @SerializedName("avatar_url") val avatarUrl: String? = null,
+)
+
+data class LoginResponse(
+    val user: AuthUser,
+    val session: String,
+)
+
+data class RegisterResponse(
+    val user: AuthUser,
+    val session: String,
+)
+
+data class MeResponse(
+    val loggedIn: Boolean,
+    val userId: String? = null,
+    val username: String? = null,
+    @SerializedName("display_name") val displayName: String? = null,
+    val role: String? = null,
+    @SerializedName("auth_method") val authMethod: String? = null,
+    @SerializedName("avatar_url") val avatarUrl: String? = null,
+)
+
+data class LoginRequest(
+    val username: String,
+    val password: String,
+)
+
+data class RegisterRequest(
+    @SerializedName("invite_code") val inviteCode: String,
+    val username: String,
+    @SerializedName("display_name") val displayName: String,
+    val password: String,
+)
+
+data class FlickrLoginRequest(
+    @SerializedName("flickr_user_id") val flickrUserId: String,
+    @SerializedName("flickr_oauth_token") val flickrOauthToken: String? = null,
+    @SerializedName("flickr_oauth_secret") val flickrOauthSecret: String? = null,
+)
+
+data class UploadResponse(
+    @SerializedName("photo_id") val photoId: String,
+    val status: String,
+)
+
 // MARK: - Category Enum
 
 enum class ClusterCategory(

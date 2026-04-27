@@ -21,7 +21,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import com.kindlingsignal.kindred.data.demo.DemoDataProvider
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kindlingsignal.kindred.data.model.ClusterSummary
 import com.kindlingsignal.kindred.data.model.Detection
 import com.kindlingsignal.kindred.ui.components.DemoAwareImage
@@ -43,19 +44,16 @@ fun ClusterDetailScreen(
     onBack: () -> Unit,
     onPhotoClick: (index: Int, photos: List<Detection>) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
+    viewModel: ClusterDetailViewModel = hiltViewModel(),
 ) {
-    val cluster = remember(category, clusterId) {
-        if (DemoDataProvider.isActive) {
-            DemoDataProvider.getClusterSummary(category).clusters
-                .firstOrNull { it.id == clusterId }
-        } else null
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(category, clusterId) {
+        viewModel.load(category, clusterId)
     }
 
-    val detections = remember(category, clusterId) {
-        if (DemoDataProvider.isActive) {
-            DemoDataProvider.getClusterDetail(category, clusterId)
-        } else emptyList()
-    }
+    val cluster = uiState.cluster
+    val detections = uiState.detections
 
     if (cluster == null) {
         Box(
