@@ -195,6 +195,11 @@ struct TogetherPickerView: View {
         }
     }
 
+    private var peopleGridColumnCount: Int {
+        // Cannot use @Environment here, so check via UIDevice
+        UIDevice.current.userInterfaceIdiom == .pad ? 6 : 4
+    }
+
     private var peopleGrid: some View {
         VStack(alignment: .leading, spacing: 0) {
             KindredEyebrow(text: "Household \u{00b7} \(viewModel.peopleClusters.count) named", color: KindredTheme.pine)
@@ -202,7 +207,7 @@ struct TogetherPickerView: View {
                 .padding(.top, 14)
 
             LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4),
+                columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: peopleGridColumnCount),
                 spacing: 12
             ) {
                 ForEach(filteredPeople, id: \.id) { person in
@@ -363,10 +368,10 @@ struct TogetherPickerView: View {
 
     private var loadingGrid: some View {
         LazyVGrid(
-            columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4),
+            columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: peopleGridColumnCount),
             spacing: 12
         ) {
-            ForEach(0..<8, id: \.self) { _ in
+            ForEach(0..<(peopleGridColumnCount * 2), id: \.self) { _ in
                 VStack(spacing: 6) {
                     Circle()
                         .fill(KindredTheme.canvas)
@@ -441,12 +446,12 @@ struct TogetherResultsView: View {
     @Bindable var viewModel: TogetherViewModel
     @Binding var selectedPhoto: PhotoGridItem?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    private let photoColumns = [
-        GridItem(.flexible(), spacing: 4),
-        GridItem(.flexible(), spacing: 4),
-        GridItem(.flexible(), spacing: 4),
-    ]
+    private var photoColumns: [GridItem] {
+        let count = horizontalSizeClass == .regular ? 5 : 3
+        return Array(repeating: GridItem(.flexible(), spacing: 4), count: count)
+    }
 
     var body: some View {
         ZStack {

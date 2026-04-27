@@ -1,4 +1,11 @@
 {
+  "campfire": [
+    {"photo_id": "demo_s13", "distance": 0.05, "photo_url": "demo://file_family-campfire-1", "thumb_url": "demo://file_family-campfire-1", "flickr_url": null, "photo_title": "Evening campfire", "owner": null, "match_type": "scene", "match_name": "campfire", "match_cluster_id": null, "match_category": null},
+    {"photo_id": "demo_s14", "distance": 0.08, "photo_url": "demo://file_family-campfire-2", "thumb_url": "demo://file_family-campfire-2", "flickr_url": null, "photo_title": "Roasting marshmallows", "owner": null, "match_type": "scene", "match_name": "campfire", "match_cluster_id": null, "match_category": null},
+    {"photo_id": "demo_s15", "distance": 0.11, "photo_url": "demo://file_family-campfire-3", "thumb_url": "demo://file_family-campfire-3", "flickr_url": null, "photo_title": "Campfire stories", "owner": null, "match_type": "scene", "match_name": "campfire", "match_cluster_id": null, "match_category": null},
+    {"photo_id": "demo_s16", "distance": 0.15, "photo_url": "demo://file_kid-campfire", "thumb_url": "demo://file_kid-campfire", "flickr_url": null, "photo_title": "Kids at the campfire", "owner": null, "match_type": "scene", "match_name": "campfire", "match_cluster_id": null, "match_category": null},
+    {"photo_id": "demo_s17", "distance": 0.19, "photo_url": "demo://file_marshmallows", "thumb_url": "demo://file_marshmallows", "flickr_url": null, "photo_title": "Marshmallow time", "owner": null, "match_type": "scene", "match_name": "campfire", "match_cluster_id": null, "match_category": null}
+  ],
   "beach": [
     {"photo_id": "demo_s01", "distance": 0.12, "photo_url": "demo://photo_01", "thumb_url": "demo://thumb_01", "flickr_url": null, "photo_title": "Beach sunset", "owner": null, "match_type": "scene", "match_name": "beach", "match_cluster_id": null, "match_category": null},
     {"photo_id": "demo_s02", "distance": 0.18, "photo_url": "demo://photo_05", "thumb_url": "demo://thumb_05", "flickr_url": null, "photo_title": "Sandcastle", "owner": null, "match_type": "scene", "match_name": "beach", "match_cluster_id": null, "match_category": null},

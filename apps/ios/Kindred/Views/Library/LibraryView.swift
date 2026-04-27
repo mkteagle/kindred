@@ -12,6 +12,9 @@ struct LibraryView: View {
     @State private var viewModel = LibraryViewModel()
     @State private var sortOrder: LibrarySortOrder = .mostPhotos
     @State private var showSortFilter = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var isIPad: Bool { horizontalSizeClass == .regular }
 
     var body: some View {
         NavigationStack {
@@ -66,7 +69,7 @@ struct LibraryView: View {
                     ScrollView {
                         masonryGrid
                             .padding(.horizontal, 14)
-                            .padding(.bottom, 110)
+                            .padding(.bottom, isIPad ? 32 : 110)
                     }
                     .refreshable {
                         await viewModel.loadClusters()
@@ -149,43 +152,35 @@ struct LibraryView: View {
 
     private var masonryGrid: some View {
         let clusters = sortedClusters
-        let leftColumn = clusters.enumerated().filter { $0.offset % 2 == 0 }.map(\.element)
-        let rightColumn = clusters.enumerated().filter { $0.offset % 2 == 1 }.map(\.element)
+        let columnCount = isIPad ? 3 : 2
+
+        // Distribute clusters across columns
+        let columns: [[ClusterSummary]] = {
+            var cols = Array(repeating: [ClusterSummary](), count: columnCount)
+            for (index, cluster) in clusters.enumerated() {
+                cols[index % columnCount].append(cluster)
+            }
+            return cols
+        }()
 
         return HStack(alignment: .top, spacing: 10) {
-            // Left column
-            LazyVStack(spacing: 10) {
-                ForEach(Array(leftColumn.enumerated()), id: \.element.id) { index, cluster in
-                    NavigationLink(value: cluster) {
-                        MasonryClusterCard(
-                            cluster: cluster,
-                            category: viewModel.selectedCategory,
-                            height: masonryHeight(for: index * 2),
-                            onRename: { newName in
-                                Task { await viewModel.renameCluster(clusterId: cluster.id, newName: newName) }
-                            }
-                        )
+            ForEach(0..<columnCount, id: \.self) { colIndex in
+                LazyVStack(spacing: 10) {
+                    ForEach(Array(columns[colIndex].enumerated()), id: \.element.id) { rowIndex, cluster in
+                        let globalIndex = rowIndex * columnCount + colIndex
+                        NavigationLink(value: cluster) {
+                            MasonryClusterCard(
+                                cluster: cluster,
+                                category: viewModel.selectedCategory,
+                                height: masonryHeight(for: globalIndex),
+                                onRename: { newName in
+                                    Task { await viewModel.renameCluster(clusterId: cluster.id, newName: newName) }
+                                }
+                            )
+                        }
+                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
                     }
-                    .contentShape(Rectangle())
-            .buttonStyle(.plain)
-                }
-            }
-
-            // Right column
-            LazyVStack(spacing: 10) {
-                ForEach(Array(rightColumn.enumerated()), id: \.element.id) { index, cluster in
-                    NavigationLink(value: cluster) {
-                        MasonryClusterCard(
-                            cluster: cluster,
-                            category: viewModel.selectedCategory,
-                            height: masonryHeight(for: index * 2 + 1),
-                            onRename: { newName in
-                                Task { await viewModel.renameCluster(clusterId: cluster.id, newName: newName) }
-                            }
-                        )
-                    }
-                    .contentShape(Rectangle())
-            .buttonStyle(.plain)
                 }
             }
         }
@@ -199,19 +194,15 @@ struct LibraryView: View {
     // MARK: - Skeletons
 
     private var masonrySkeletons: some View {
-        HStack(alignment: .top, spacing: 10) {
-            LazyVStack(spacing: 10) {
-                ForEach(0..<3, id: \.self) { i in
-                    SkeletonCard()
-                        .frame(height: masonryHeight(for: i * 2))
-                        .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusSM))
-                }
-            }
-            LazyVStack(spacing: 10) {
-                ForEach(0..<3, id: \.self) { i in
-                    SkeletonCard()
-                        .frame(height: masonryHeight(for: i * 2 + 1))
-                        .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusSM))
+        let columnCount = isIPad ? 3 : 2
+        return HStack(alignment: .top, spacing: 10) {
+            ForEach(0..<columnCount, id: \.self) { col in
+                LazyVStack(spacing: 10) {
+                    ForEach(0..<3, id: \.self) { row in
+                        SkeletonCard()
+                            .frame(height: masonryHeight(for: row * columnCount + col))
+                            .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusSM))
+                    }
                 }
             }
         }

@@ -48,40 +48,40 @@ MARKETING_TEXT = {
         "headline": "A calmer home for\nfamily photos.",
     },
     "02_library_people": {
-        "eyebrow": "LIBRARY",
+        "eyebrow": "PEOPLE",
         "headline": "Everyone you love,\norganized by AI.",
     },
-    "03_library_pets": {
-        "eyebrow": "LIBRARY",
-        "headline": "Your furry family,\nautomatically grouped.",
+    "03_person_detail": {
+        "eyebrow": "EVERY DETAIL",
+        "headline": "See the full story\nbehind every photo.",
     },
-    "04_search_browse": {
-        "eyebrow": "SEARCH",
-        "headline": "Find any moment\nin seconds.",
+    "04_library_pets": {
+        "eyebrow": "PETS TOO",
+        "headline": "They're family.\nWe know that.",
     },
-    "05_search_results": {
-        "eyebrow": "SEARCH",
-        "headline": "Find any moment\nin seconds.",
+    "05_library_vehicles": {
+        "eyebrow": "VEHICLES",
+        "headline": "Every car, every trip,\nautomatically tracked.",
     },
-    "06_photo_detail": {
-        "eyebrow": "DETAIL",
-        "headline": "Every detail,\nbeautifully presented.",
+    "06_search_results": {
+        "eyebrow": "FIND ANYTHING",
+        "headline": "Search the way\nyou remember.",
     },
     "07_together_picker": {
         "eyebrow": "TOGETHER",
-        "headline": "Find photos of\npeople together.",
+        "headline": "Find every photo of\nthe people who matter.",
     },
     "08_settings": {
-        "eyebrow": "SETTINGS",
-        "headline": "Your household,\nyour control.",
+        "eyebrow": "YOUR HOUSEHOLD",
+        "headline": "Built for the whole\nfamily to share.",
     },
-    "09_notifications_inbox": {
-        "eyebrow": "NOTIFICATIONS",
-        "headline": "Stay in the loop\nwith your family.",
+    "09_login": {
+        "eyebrow": "GET STARTED",
+        "headline": "Sign in with Flickr.\nThat's it.",
     },
     "10_onboarding": {
         "eyebrow": "WELCOME",
-        "headline": "A calmer home for\nfamily photos.",
+        "headline": "Private. Warm.\nCompletely yours.",
     },
 }
 
@@ -95,12 +95,13 @@ FRAME_SIZES = {
 
 # ---------------------------------------------------------------------------
 # Device frame dimensions (relative to output canvas)
+# Modeled after iPhone 15 Pro: ~55pt corner radius at 3x = 165px / 1290 ≈ 0.128
 # ---------------------------------------------------------------------------
-DEVICE_CORNER_RADIUS_RATIO = 0.045   # Corner radius as fraction of width
-DEVICE_BORDER_WIDTH_RATIO = 0.008    # Frame border thickness
-SCREENSHOT_PADDING_RATIO = 0.06      # Padding around the device frame
-HEADER_HEIGHT_RATIO = 0.28           # Portion of canvas for marketing text
-DEVICE_AREA_RATIO = 0.68            # Portion of canvas for the device
+DEVICE_CORNER_RADIUS_RATIO = 0.125   # Rounded like a real iPhone 15 Pro
+DEVICE_BORDER_WIDTH_RATIO = 0.004    # Very thin titanium edge
+SCREENSHOT_PADDING_RATIO = 0.05      # Padding around the device frame
+HEADER_HEIGHT_RATIO = 0.26           # Portion of canvas for marketing text
+DEVICE_AREA_RATIO = 0.70             # Portion of canvas for the device
 
 
 # ---------------------------------------------------------------------------
@@ -175,76 +176,120 @@ def draw_device_frame(
     corner_radius: int,
     border_width: int,
 ) -> None:
-    """Draw a rounded-rect device frame and paste the screenshot inside."""
+    """Draw an iPhone 15 Pro-style device frame and paste the screenshot inside.
+
+    The real iPhone 15 Pro has:
+    - Titanium edge (~2-3px visible at this scale)
+    - Very large corner radius (~55pt = 165px at 3x)
+    - Screen that extends nearly edge-to-edge
+    - Dynamic Island: ~126x37pt = 378x111px at 3x
+    """
     x1, y1, x2, y2 = frame_rect
     frame_w = x2 - x1
     frame_h = y2 - y1
 
-    # Resize the screenshot to fit the frame interior
-    inset = border_width * 2
-    inner_w = frame_w - inset
-    inner_h = frame_h - inset
+    # The screen is inset from the outer edge by the border
+    screen_x1 = x1 + border_width
+    screen_y1 = y1 + border_width
+    screen_x2 = x2 - border_width
+    screen_y2 = y2 - border_width
+    screen_w = screen_x2 - screen_x1
+    screen_h = screen_y2 - screen_y1
 
-    # Scale screenshot to fill the inner area, maintaining aspect ratio
+    # Scale screenshot to fill the screen area
     ss_ratio = screenshot.width / screenshot.height
-    inner_ratio = inner_w / inner_h
+    screen_ratio = screen_w / screen_h
 
-    if ss_ratio > inner_ratio:
-        # Screenshot is wider — fit to height
-        new_h = inner_h
-        new_w = int(inner_h * ss_ratio)
+    if ss_ratio > screen_ratio:
+        new_h = screen_h
+        new_w = int(screen_h * ss_ratio)
     else:
-        # Screenshot is taller — fit to width
-        new_w = inner_w
-        new_h = int(inner_w / ss_ratio)
+        new_w = screen_w
+        new_h = int(screen_w / ss_ratio)
 
     resized = screenshot.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
-    # Center-crop to inner dimensions
-    crop_x = (new_w - inner_w) // 2
-    crop_y = (new_h - inner_h) // 2
-    cropped = resized.crop((crop_x, crop_y, crop_x + inner_w, crop_y + inner_h))
+    # Center-crop to screen dimensions
+    crop_x = (new_w - screen_w) // 2
+    crop_y = (new_h - screen_h) // 2
+    cropped = resized.crop((crop_x, crop_y, crop_x + screen_w, crop_y + screen_h))
 
     draw = ImageDraw.Draw(canvas)
+    screen_radius = max(corner_radius - border_width, 4)
 
-    # Draw the outer frame (dark border)
+    # 1. Draw outer shadow (soft, large, behind everything)
+    shadow_expand = int(frame_w * 0.02)
+    for i in range(shadow_expand, 0, -1):
+        alpha_factor = 1 - (i / shadow_expand)
+        shade = int(12 * alpha_factor)
+        shadow_color = (
+            max(PAPER[0] - shade, 0),
+            max(PAPER[1] - shade, 0),
+            max(PAPER[2] - shade, 0),
+        )
+        draw.rounded_rectangle(
+            [x1 - i, y1 - i + 2, x2 + i, y2 + i + 4],
+            radius=corner_radius + i,
+            fill=shadow_color,
+        )
+
+    # 2. Draw the titanium outer frame
+    # Subtle gradient: dark edge with a slight metallic highlight
     draw.rounded_rectangle(
         [x1, y1, x2, y2],
         radius=corner_radius,
-        fill=(30, 30, 30),
+        fill=(58, 58, 60),  # Natural titanium tone
     )
-
-    # Draw the inner area (slightly lighter, simulating bezel)
-    inner_radius = max(corner_radius - border_width, 0)
+    # Inner highlight to simulate the chamfered edge
     draw.rounded_rectangle(
-        [x1 + border_width, y1 + border_width, x2 - border_width, y2 - border_width],
-        radius=inner_radius,
-        fill=(20, 20, 20),
+        [x1 + 1, y1 + 1, x2 - 1, y2 - 1],
+        radius=corner_radius - 1,
+        fill=(48, 48, 50),
     )
 
-    # Create a mask for the rounded inner area
-    mask = Image.new("L", (inner_w, inner_h), 0)
+    # 3. Draw the black bezel (very thin, between frame and screen)
+    draw.rounded_rectangle(
+        [screen_x1, screen_y1, screen_x2, screen_y2],
+        radius=screen_radius,
+        fill=(0, 0, 0),
+    )
+
+    # 4. Create rounded mask for the screen content
+    mask = Image.new("L", (screen_w, screen_h), 0)
     mask_draw = ImageDraw.Draw(mask)
     mask_draw.rounded_rectangle(
-        [0, 0, inner_w, inner_h],
-        radius=inner_radius,
+        [0, 0, screen_w, screen_h],
+        radius=screen_radius,
         fill=255,
     )
 
-    # Paste the screenshot with the rounded mask
-    canvas.paste(cropped, (x1 + border_width, y1 + border_width), mask)
+    # 5. Paste the screenshot
+    canvas.paste(cropped, (screen_x1, screen_y1), mask)
 
-    # Draw the Dynamic Island notch
-    island_w = int(frame_w * 0.28)
-    island_h = int(frame_w * 0.075)
-    island_x = x1 + (frame_w - island_w) // 2
-    island_y = y1 + border_width + int(frame_w * 0.035)
-    island_radius = island_h // 2
-
+    # 6. Side buttons (power on right, volume on left) — subtle details
+    button_color = (52, 52, 54)
+    # Power button (right side)
+    power_y = y1 + int(frame_h * 0.28)
+    power_h = int(frame_h * 0.06)
     draw.rounded_rectangle(
-        [island_x, island_y, island_x + island_w, island_y + island_h],
-        radius=island_radius,
-        fill=(15, 15, 15),
+        [x2, power_y, x2 + 2, power_y + power_h],
+        radius=1,
+        fill=button_color,
+    )
+    # Volume up (left side)
+    vol_up_y = y1 + int(frame_h * 0.22)
+    vol_h = int(frame_h * 0.04)
+    draw.rounded_rectangle(
+        [x1 - 2, vol_up_y, x1, vol_up_y + vol_h],
+        radius=1,
+        fill=button_color,
+    )
+    # Volume down (left side)
+    vol_down_y = vol_up_y + vol_h + int(frame_h * 0.015)
+    draw.rounded_rectangle(
+        [x1 - 2, vol_down_y, x1, vol_down_y + vol_h],
+        radius=1,
+        fill=button_color,
     )
 
 

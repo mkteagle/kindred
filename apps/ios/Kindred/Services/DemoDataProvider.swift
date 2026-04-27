@@ -122,8 +122,8 @@ final class DemoDataProvider {
         "demo_p5": "detail_Friends",
     ]
 
-    // All available stock photo filenames for fallback
-    private static let allPhotos = [
+    // People-only photos (used when replacing Flickr URLs in person detail)
+    private static let peoplePhotos = [
         "family-campfire-1", "family-campfire-2", "family-campfire-3", "family-campfire-4",
         "family-holiday-1", "family-holiday-2", "family-van-1", "family-van-2",
         "family-music", "family-evening", "family-campervan", "family-inside-van",
@@ -133,6 +133,10 @@ final class DemoDataProvider {
         "mom-child-joy", "parent-child", "parent-child-bw", "shadow-puppets",
     ]
 
+    // Per-category fallback photos for clusters without detail files
+    private static let petPhotos = ["dog-retriever", "cat-tabby", "dog-puppy"]
+    private static let vehiclePhotos = ["car-suv", "truck-pickup"]
+
     func getClusterDetail(category: String, clusterId: String) -> ClusterDetail {
         // Try to load from real AI detail file
         if let filename = Self.detailFiles[clusterId],
@@ -140,12 +144,19 @@ final class DemoDataProvider {
            let data = try? Data(contentsOf: url),
            let detail = try? JSONDecoder().decode(ClusterDetail.self, from: data) {
             // Swap any remaining Flickr URLs to local demo:// URLs
+            // Use category-appropriate photos so pets/vehicles don't bleed into people clusters
+            let photoPool: [String]
+            switch category {
+            case "pets": photoPool = Self.petPhotos
+            case "vehicles": photoPool = Self.vehiclePhotos
+            default: photoPool = Self.peoplePhotos
+            }
             let fixedItems = detail.items.map { item -> Detection in
                 var thumb = item.thumb_url ?? ""
                 var photo = item.photo_url
                 if thumb.contains("staticflickr") || thumb.isEmpty {
-                    let idx = abs(item.id.hashValue) % Self.allPhotos.count
-                    thumb = "demo://file_\(Self.allPhotos[idx])"
+                    let idx = abs(item.id.hashValue) % photoPool.count
+                    thumb = "demo://file_\(photoPool[idx])"
                     photo = thumb
                 }
                 return Detection(
@@ -159,8 +170,13 @@ final class DemoDataProvider {
             return ClusterDetail(cluster_id: clusterId, items: fixedItems)
         }
 
-        // Fallback: generate from allPhotos
-        let photos = Array(Self.allPhotos.prefix(6))
+        // Fallback: use category-appropriate photos
+        let photos: [String]
+        switch category {
+        case "pets": photos = Self.petPhotos
+        case "vehicles": photos = Self.vehiclePhotos
+        default: photos = Array(Self.peoplePhotos.prefix(6))
+        }
         let detections = photos.enumerated().map { (i, filename) in
             Detection(
                 id: "\(clusterId)_det_\(i)", category: category,

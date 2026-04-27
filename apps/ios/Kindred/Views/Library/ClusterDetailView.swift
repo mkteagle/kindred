@@ -9,12 +9,12 @@ struct ClusterDetailView: View {
     @State private var showRename = false
     @State private var nameInput = ""
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    private let photoColumns = [
-        GridItem(.flexible(), spacing: 4),
-        GridItem(.flexible(), spacing: 4),
-        GridItem(.flexible(), spacing: 4),
-    ]
+    private var photoColumns: [GridItem] {
+        let count = horizontalSizeClass == .regular ? 5 : 3
+        return Array(repeating: GridItem(.flexible(), spacing: 4), count: count)
+    }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -28,7 +28,7 @@ struct ClusterDetailView: View {
                 // Photos grid
                 photosGrid
             }
-            .padding(.bottom, 110)
+            .padding(.bottom, horizontalSizeClass == .regular ? 32 : 110)
         }
         .kindredPaperBackground()
         .navigationBarTitleDisplayMode(.inline)

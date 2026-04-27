@@ -8,6 +8,7 @@ struct FullScreenPhotoView: View {
     /// Optional array of all photos in the context (grid) for swipe navigation
     var allItems: [PhotoGridItem]?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var scale: CGFloat = 1.0
     @State private var imageData: Data?
     @State private var isLoading = true
@@ -21,6 +22,8 @@ struct FullScreenPhotoView: View {
     // Swipe navigation
     @State private var currentIndex: Int = 0
     @State private var dragOffset: CGFloat = 0
+
+    private var isIPad: Bool { horizontalSizeClass == .regular }
 
     private enum PhotoSheet: String, Identifiable {
         case info, overflow, share
@@ -45,45 +48,79 @@ struct FullScreenPhotoView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            // Photo with swipe
-            photoLayer
+            if isIPad && activeSheet == .info {
+                // iPad: side-by-side layout — photo on left, info panel on right
+                HStack(spacing: 0) {
+                    ZStack {
+                        photoLayer
+                        // Gradient overlays
+                        VStack(spacing: 0) {
+                            LinearGradient(
+                                colors: [Color.black.opacity(0.45), Color.clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .frame(height: 140)
+                            Spacer()
+                            LinearGradient(
+                                colors: [Color.clear, Color.black.opacity(0.55)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .frame(height: 200)
+                        }
+                        .allowsHitTesting(false)
+                        topToolbar
+                        actionDock
+                    }
 
-            // Gradient overlays
-            VStack(spacing: 0) {
-                LinearGradient(
-                    colors: [Color.black.opacity(0.45), Color.clear],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: 140)
-                Spacer()
-                LinearGradient(
-                    colors: [Color.clear, Color.black.opacity(0.55)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: 200)
-            }
-            .ignoresSafeArea()
-            .allowsHitTesting(false)
+                    // Info sidebar
+                    infoSheetContent
+                        .frame(width: 340)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+                .ignoresSafeArea()
+            } else {
+                // Standard layout (iPhone + iPad without info)
+                photoLayer
 
-            // Top toolbar
-            topToolbar
+                // Gradient overlays
+                VStack(spacing: 0) {
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.45), Color.clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 140)
+                    Spacer()
+                    LinearGradient(
+                        colors: [Color.clear, Color.black.opacity(0.55)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 200)
+                }
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
 
-            // Title chip + swipe hint
-            titleOverlay
+                // Top toolbar
+                topToolbar
 
-            // Bottom action dock
-            actionDock
+                // Title chip + swipe hint
+                titleOverlay
 
-            // Info sheet overlay
-            if activeSheet == .info {
-                infoSheetOverlay
-            }
+                // Bottom action dock
+                actionDock
 
-            // Overflow menu overlay
-            if activeSheet == .overflow {
-                overflowMenuOverlay
+                // Info sheet overlay (iPhone only)
+                if !isIPad && activeSheet == .info {
+                    infoSheetOverlay
+                }
+
+                // Overflow menu overlay
+                if activeSheet == .overflow {
+                    overflowMenuOverlay
+                }
             }
         }
         .preferredColorScheme(.dark)

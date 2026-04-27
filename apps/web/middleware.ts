@@ -6,9 +6,11 @@ export function middleware(request: NextRequest) {
   const flickrToken = request.cookies.get("flickr_token");
   const { pathname } = request.nextUrl;
 
-  // Allow: landing page, login, join, reset, API routes, docs, static files
+  // Allow: landing page, demo, login, join, reset, API routes, docs, static files
   if (
     pathname === "/" ||
+    pathname === "/demo" ||
+    pathname.startsWith("/demo/") ||
     pathname === "/login" ||
     pathname.startsWith("/join") ||
     pathname.startsWith("/reset") ||
@@ -18,6 +20,7 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/docs") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
+    pathname.startsWith("/screenshots") ||
     pathname.endsWith(".svg") ||
     pathname.endsWith(".ico") ||
     pathname.endsWith(".png") ||

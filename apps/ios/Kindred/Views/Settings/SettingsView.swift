@@ -8,6 +8,9 @@ struct SettingsView: View {
     @State private var showPrivacyInfo = false
     @State private var showBackendURL = false
     @State private var showAvatarPicker = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var isIPad: Bool { horizontalSizeClass == .regular }
 
     var body: some View {
         NavigationStack {
@@ -59,8 +62,10 @@ struct SettingsView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 24)
-                    .padding(.bottom, 110)
+                    .padding(.bottom, isIPad ? 32 : 110)
                 }
+                .frame(maxWidth: isIPad ? 640 : .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity)
             }
             .kindredPaperBackground()
             .navigationBarHidden(true)

@@ -1,7 +1,7 @@
 {
   "clusters": [
-    {"id": "demo_v1", "label": "Family Van", "det_count": 38, "photo_count": 22, "avatar": null, "thumb_url": "demo://file_family-van-1", "photo_url": "demo://file_family-van-1"},
-    {"id": "demo_v2", "label": "Campervan", "det_count": 21, "photo_count": 14, "avatar": null, "thumb_url": "demo://file_family-campervan", "photo_url": "demo://file_family-campervan"}
+    {"id": "demo_v1", "label": "Family SUV", "det_count": 38, "photo_count": 22, "avatar": null, "thumb_url": "demo://file_car-suv", "photo_url": "demo://file_car-suv"},
+    {"id": "demo_v2", "label": "Dad's Truck", "det_count": 21, "photo_count": 14, "avatar": null, "thumb_url": "demo://file_truck-pickup", "photo_url": "demo://file_truck-pickup"}
   ],
   "noise_count": 1
 }

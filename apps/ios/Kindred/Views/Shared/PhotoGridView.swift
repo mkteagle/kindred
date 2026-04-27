@@ -6,9 +6,17 @@ struct PhotoGridView: View {
     var columns: Int = 2
     var spacing: CGFloat = 10
     var onTap: ((PhotoGridItem) -> Void)?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var effectiveColumns: Int {
+        if horizontalSizeClass == .regular {
+            return max(columns, 4)
+        }
+        return columns
+    }
 
     private var gridColumns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: spacing), count: columns)
+        Array(repeating: GridItem(.flexible(), spacing: spacing), count: effectiveColumns)
     }
 
     var body: some View {

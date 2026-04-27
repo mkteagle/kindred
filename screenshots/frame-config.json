@@ -8,83 +8,83 @@
     {
       "id": 1,
       "slug": "home-feed",
-      "eyebrow": "YOUR HOUSEHOLD",
+      "eyebrow": "HOME",
       "headline": "A calmer home for\nfamily photos.",
       "subline": "Memories surface. People are found. Nothing leaves your hands.",
-      "screenshot": "01-home-feed.png",
+      "screenshot": "01_home_feed.png",
       "placeholderColor": "#f7ebd4"
     },
     {
       "id": 2,
       "slug": "library-people",
-      "eyebrow": "PEOPLE FIRST",
-      "headline": "Everyone you love,\norganized automatically.",
+      "eyebrow": "PEOPLE",
+      "headline": "Everyone you love,\norganized by AI.",
       "subline": null,
-      "screenshot": "02-library-people.png",
+      "screenshot": "02_library_people.png",
       "placeholderColor": "#fbf4e7"
     },
     {
       "id": 3,
-      "slug": "library-pets",
-      "eyebrow": "PETS TOO",
-      "headline": "They're family.\nWe know that.",
+      "slug": "person-detail",
+      "eyebrow": "EVERY DETAIL",
+      "headline": "See the full story\nbehind every photo.",
       "subline": null,
-      "screenshot": "03-library-pets.png",
+      "screenshot": "03_person_detail.png",
       "placeholderColor": "#fbf4e7"
     },
     {
       "id": 4,
-      "slug": "search",
-      "eyebrow": "FIND ANYTHING",
-      "headline": "Search the way\nyou remember.",
-      "subline": "Names, places, or things.",
-      "screenshot": "04-search.png",
-      "placeholderColor": "#f7ebd4"
+      "slug": "library-pets",
+      "eyebrow": "PETS TOO",
+      "headline": "They're family.\nWe know that.",
+      "subline": null,
+      "screenshot": "04_library_pets.png",
+      "placeholderColor": "#fbf4e7"
     },
     {
       "id": 5,
-      "slug": "photo-detail",
-      "eyebrow": "EVERY DETAIL",
-      "headline": "See the full story\nbehind every photo.",
+      "slug": "library-vehicles",
+      "eyebrow": "VEHICLES",
+      "headline": "Every car, every trip,\nautomatically tracked.",
       "subline": null,
-      "screenshot": "05-photo-detail.png",
-      "placeholderColor": "#2a201b"
+      "screenshot": "05_library_vehicles.png",
+      "placeholderColor": "#fbf4e7"
     },
     {
       "id": 6,
+      "slug": "search-results",
+      "eyebrow": "FIND ANYTHING",
+      "headline": "Search the way\nyou remember.",
+      "subline": "Names, places, or things.",
+      "screenshot": "06_search_results.png",
+      "placeholderColor": "#f7ebd4"
+    },
+    {
+      "id": 7,
       "slug": "together",
       "eyebrow": "TOGETHER",
       "headline": "Find every photo of\nthe people who matter.",
       "subline": null,
-      "screenshot": "06-together.png",
+      "screenshot": "07_together_picker.png",
       "placeholderColor": "#fbf4e7"
     },
     {
-      "id": 7,
-      "slug": "memories",
-      "eyebrow": "ON THIS DAY",
-      "headline": "The moments that\nkeep coming back.",
-      "subline": null,
-      "screenshot": "07-memories.png",
-      "placeholderColor": "#f7ebd4"
-    },
-    {
       "id": 8,
-      "slug": "settings-household",
+      "slug": "settings",
       "eyebrow": "YOUR HOUSEHOLD",
-      "headline": "Built for the whole family,\nnot just the organized one.",
+      "headline": "Built for the whole\nfamily to share.",
       "subline": null,
-      "screenshot": "08-settings-household.png",
+      "screenshot": "08_settings.png",
       "placeholderColor": "#fbf4e7"
     },
     {
       "id": 9,
-      "slug": "notifications",
-      "eyebrow": "STAY IN THE LOOP",
-      "headline": "Know what's happening\nwithout the noise.",
+      "slug": "login",
+      "eyebrow": "GET STARTED",
+      "headline": "Sign in with Flickr.\nThat's it.",
       "subline": null,
-      "screenshot": "09-notifications.png",
-      "placeholderColor": "#fbf4e7"
+      "screenshot": "09_login.png",
+      "placeholderColor": "#f7ebd4"
     },
     {
       "id": 10,
@@ -92,7 +92,7 @@
       "eyebrow": "WELCOME",
       "headline": "Private. Warm.\nCompletely yours.",
       "subline": "Backed by Flickr. Sorted by AI. Owned by you.",
-      "screenshot": "10-onboarding.png",
+      "screenshot": "10_onboarding.png",
       "placeholderColor": "#2f4a36"
     }
   ]

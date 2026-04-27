@@ -10,6 +10,9 @@ struct HomeView: View {
     @State private var showMemory = false
     @State private var showInbox = false
     @State private var lastLoadedAt: Date?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var isIPad: Bool { horizontalSizeClass == .regular }
 
     /// Callback for tab navigation from notification taps
     var onNavigateToTab: ((Int) -> Void)? = nil
@@ -42,8 +45,10 @@ struct HomeView: View {
                     // "On this day" card
                     onThisDayCard
 
-                    Spacer().frame(height: 110)
+                    Spacer().frame(height: isIPad ? 32 : 110)
                 }
+                .frame(maxWidth: isIPad ? 900 : .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity)
             }
             .kindredPaperBackground()
             .navigationBarHidden(true)
@@ -172,7 +177,7 @@ struct HomeView: View {
                 .position(x: w * 0.72, y: 148)
             }
         }
-        .frame(height: 195)
+        .frame(height: isIPad ? 260 : 195)
         .clipped() // Prevent photos from bleeding into content below
         .padding(.horizontal, 14)
         .padding(.top, 16)
@@ -281,11 +286,11 @@ struct HomeView: View {
             if libraryVM.isLoading {
                 // Skeleton cards while loading
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(0..<3, id: \.self) { _ in
+                    HStack(spacing: isIPad ? 16 : 12) {
+                        ForEach(0..<(isIPad ? 5 : 3), id: \.self) { _ in
                             VStack(alignment: .leading, spacing: 0) {
                                 SkeletonCard()
-                                    .frame(width: 200, height: 130)
+                                    .frame(width: isIPad ? 240 : 200, height: isIPad ? 160 : 130)
                                 VStack(alignment: .leading, spacing: 6) {
                                     RoundedRectangle(cornerRadius: 4)
                                         .fill(KindredTheme.canvas)
@@ -297,7 +302,7 @@ struct HomeView: View {
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 12)
                             }
-                            .frame(width: 200)
+                            .frame(width: isIPad ? 240 : 200)
                             .kindredCardStyle()
                         }
                     }
@@ -305,13 +310,13 @@ struct HomeView: View {
                 }
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(topClusters.prefix(6)) { cluster in
+                    HStack(spacing: isIPad ? 16 : 12) {
+                        ForEach(topClusters.prefix(isIPad ? 10 : 6)) { cluster in
                             NavigationLink(value: cluster) {
                                 memoryCard(cluster: cluster)
                             }
                             .contentShape(Rectangle())
-            .buttonStyle(.plain)
+                            .buttonStyle(.plain)
                         }
                         Spacer().frame(width: 8)
                     }
@@ -322,7 +327,9 @@ struct HomeView: View {
     }
 
     private func memoryCard(cluster: ClusterSummary) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let cardWidth: CGFloat = isIPad ? 240 : 200
+        let cardHeight: CGFloat = isIPad ? 160 : 130
+        return VStack(alignment: .leading, spacing: 0) {
             // Cover image
             let coverURL = cluster.photo_url ?? cluster.thumb_url ?? cluster.avatar
             Group {
@@ -339,7 +346,7 @@ struct HomeView: View {
                     }
                 }
             }
-            .frame(width: 200, height: 130)
+            .frame(width: cardWidth, height: cardHeight)
             .clipped()
 
             VStack(alignment: .leading, spacing: 4) {
@@ -354,7 +361,7 @@ struct HomeView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
         }
-        .frame(width: 200)
+        .frame(width: cardWidth)
         .background(KindredTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusSM))
         .overlay(
@@ -376,29 +383,29 @@ struct HomeView: View {
             if libraryVM.isLoading {
                 // Skeleton avatars
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 14) {
-                        ForEach(0..<6, id: \.self) { _ in
+                    HStack(spacing: isIPad ? 18 : 14) {
+                        ForEach(0..<(isIPad ? 10 : 6), id: \.self) { _ in
                             VStack(spacing: 4) {
                                 Circle()
                                     .fill(KindredTheme.canvas)
-                                    .frame(width: 56, height: 56)
+                                    .frame(width: isIPad ? 64 : 56, height: isIPad ? 64 : 56)
                                     .kindredShimmer()
                                 RoundedRectangle(cornerRadius: 3)
                                     .fill(KindredTheme.canvas)
                                     .frame(width: 40, height: 10)
                             }
-                            .frame(width: 60)
+                            .frame(width: isIPad ? 72 : 60)
                         }
                     }
                     .padding(.leading, 20)
                 }
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 14) {
-                        ForEach(topClusters.prefix(8)) { cluster in
+                    HStack(spacing: isIPad ? 18 : 14) {
+                        ForEach(topClusters.prefix(isIPad ? 14 : 8)) { cluster in
                             NavigationLink(value: cluster) {
                                 VStack(spacing: 4) {
-                                    KindredAvatar(url: cluster.avatar ?? cluster.thumb_url, size: 56)
+                                    KindredAvatar(url: cluster.avatar ?? cluster.thumb_url, size: isIPad ? 64 : 56)
                                     Text(cluster.label?.split(separator: " ").first.map(String.init) ?? "?")
                                         .font(.kindredName)
                                         .foregroundStyle(KindredTheme.ash)
@@ -407,10 +414,10 @@ struct HomeView: View {
                                         .font(.kindredMicro)
                                         .foregroundStyle(KindredTheme.mist)
                                 }
-                                .frame(width: 60)
+                                .frame(width: isIPad ? 72 : 60)
                             }
                             .contentShape(Rectangle())
-            .buttonStyle(.plain)
+                            .buttonStyle(.plain)
                         }
                         Spacer().frame(width: 8)
                     }

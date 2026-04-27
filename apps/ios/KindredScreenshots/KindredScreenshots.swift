@@ -1,7 +1,7 @@
 import XCTest
 
 /// UI tests that capture App Store screenshots using demo mode.
-/// No network calls, no credentials needed — uses bundled demo data.
+/// Generates 10 screenshots covering all major features.
 final class KindredScreenshots: XCTestCase {
 
     private var app: XCUIApplication!
@@ -19,7 +19,7 @@ final class KindredScreenshots: XCTestCase {
     }
 
     func testCaptureAllScreenshots() {
-        // Handle onboarding if shown
+        // ── 10. Onboarding ──────────────────────────────────
         let getStarted = app.buttons["Get started"]
         let continueBtn = app.buttons["Continue"]
         if getStarted.waitForExistence(timeout: 3) || continueBtn.waitForExistence(timeout: 1) {
@@ -30,88 +30,129 @@ final class KindredScreenshots: XCTestCase {
             }
         }
 
-        // Tap "Try the demo"
+        // ── 9. Login screen ────────────────────────────────
         let demoButton = app.buttons["Try the demo"]
         if demoButton.waitForExistence(timeout: 5) {
+            takeScreenshot(named: "09_login")
             demoButton.tap()
             sleep(2)
         }
 
-        // Verify Home loaded
         guard app.staticTexts["Kindred"].waitForExistence(timeout: 5) else {
             XCTFail("Could not enter demo mode")
             return
         }
 
-        // 01 — Home
+        // ── 1. Home Feed ───────────────────────────────────
         sleep(1)
         takeScreenshot(named: "01_home_feed")
 
-        // 02 — Library People
+        // ── 7. Together Picker ─────────────────────────────
+        // Tap the Together card on the home screen
+        let togetherButton = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] 'Together'")
+        ).firstMatch
+        if togetherButton.waitForExistence(timeout: 3) {
+            togetherButton.tap()
+            sleep(2)
+            takeScreenshot(named: "07_together_picker")
+            // Dismiss Together (tap the back/chevron button)
+            let backButton = app.navigationBars.buttons.firstMatch
+            if backButton.waitForExistence(timeout: 2) {
+                backButton.tap()
+                sleep(1)
+            }
+        }
+
+        // ── 2. Library — People ────────────────────────────
         tapTab("Library")
         sleep(2)
         takeScreenshot(named: "02_library_people")
 
-        // 03 — Library Pets
-        let petsChip = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Pets'")).firstMatch
+        // ── 3. Person Detail (Mom) ─────────────────────────
+        // Try tapping the Mom card by its label text
+        let momLabel = app.staticTexts["Mom"]
+        if momLabel.waitForExistence(timeout: 3) && momLabel.isHittable {
+            momLabel.tap()
+            sleep(2)
+            takeScreenshot(named: "03_person_detail")
+            // Go back to library
+            let backBtn = app.navigationBars.buttons.firstMatch
+            if backBtn.waitForExistence(timeout: 2) {
+                backBtn.tap()
+                sleep(1)
+            }
+        } else {
+            // Fallback: tap the first card in the grid
+            let firstCard = app.buttons.matching(
+                NSPredicate(format: "label CONTAINS[c] 'Mom'")
+            ).firstMatch
+            if firstCard.waitForExistence(timeout: 2) {
+                firstCard.tap()
+                sleep(2)
+                takeScreenshot(named: "03_person_detail")
+                app.navigationBars.buttons.firstMatch.tap()
+                sleep(1)
+            }
+        }
+
+        // ── 4. Library — Pets ──────────────────────────────
+        let petsChip = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] 'Pets'")
+        ).firstMatch
         if petsChip.waitForExistence(timeout: 3) {
             petsChip.tap()
             sleep(1)
         }
-        takeScreenshot(named: "03_library_pets")
+        takeScreenshot(named: "04_library_pets")
 
-        // 04 — Search
+        // ── 5. Library — Vehicles ──────────────────────────
+        let vehiclesChip = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] 'Vehicles'")
+        ).firstMatch
+        if vehiclesChip.waitForExistence(timeout: 3) {
+            vehiclesChip.tap()
+            sleep(1)
+        }
+        takeScreenshot(named: "05_library_vehicles")
+
+        // ── 6. Search Results ──────────────────────────────
         tapTab("Search")
         sleep(1)
-        takeScreenshot(named: "04_search")
-
-        // 05 — Search results
         let searchField = app.textFields.firstMatch
         if searchField.waitForExistence(timeout: 3) {
             searchField.tap()
-            searchField.typeText("beach")
+            searchField.typeText("campfire")
             sleep(2)
+            // Dismiss keyboard so results are fully visible
+            if app.keyboards.count > 0 {
+                app.typeText("\n")
+                sleep(1)
+            }
         }
-        takeScreenshot(named: "05_search_results")
+        takeScreenshot(named: "06_search_results")
 
-        // 06 — Settings
+        // ── 8. Settings ────────────────────────────────────
+        // Swipe down to ensure keyboard is dismissed and tab bar is accessible
+        app.swipeDown()
+        sleep(1)
         tapTab("Settings")
         sleep(1)
-        takeScreenshot(named: "06_settings")
-
-        // 07 — Scroll settings
-        app.swipeUp()
-        sleep(1)
-        takeScreenshot(named: "07_settings_more")
-
-        // Cleanup — scroll to Sign Out and exit demo (best effort, don't fail test)
-        app.swipeUp()
-        app.swipeUp()
-        sleep(1)
-        let signOutBtn = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Sign Out'")).firstMatch
-        if signOutBtn.exists && signOutBtn.isHittable {
-            signOutBtn.tap()
-            sleep(1)
-        }
+        takeScreenshot(named: "08_settings")
     }
 
     private func tapTab(_ label: String) {
         let tab = app.buttons.matching(NSPredicate(format: "label == %@", label)).firstMatch
-        if tab.waitForExistence(timeout: 3) {
-            tab.tap()
-        }
+        if tab.waitForExistence(timeout: 3) { tab.tap() }
     }
 
     private func takeScreenshot(named name: String) {
         let screenshot = XCUIScreen.main.screenshot()
-
-        // Save to attachment (for Xcode)
         let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
-
-        // Also save directly to /tmp for easy access
+        // Save to /tmp for easy access
         let data = screenshot.pngRepresentation
         let path = "/tmp/kindred_screenshots/\(name).png"
         try? FileManager.default.createDirectory(atPath: "/tmp/kindred_screenshots", withIntermediateDirectories: true)

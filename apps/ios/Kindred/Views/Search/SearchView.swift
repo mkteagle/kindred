@@ -3,6 +3,9 @@ import SwiftUI
 struct SearchView: View {
     @State private var viewModel = SearchViewModel()
     @State private var selectedPhoto: PhotoGridItem?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var isIPad: Bool { horizontalSizeClass == .regular }
 
     var body: some View {
         NavigationStack {
@@ -128,13 +131,13 @@ struct SearchView: View {
                     KindredEyebrow(text: "\(items.count) results")
                         .padding(.horizontal, 20)
 
-                    PhotoGridView(photoURLs: items) { item in
+                    PhotoGridView(photoURLs: items, columns: isIPad ? 4 : 2) { item in
                         selectedPhoto = item
                     }
                 }
             }
             .padding(.top, 16)
-            .padding(.bottom, 110)
+            .padding(.bottom, isIPad ? 32 : 110)
         }
     }
 

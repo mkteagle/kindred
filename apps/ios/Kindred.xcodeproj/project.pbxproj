@@ -7,6 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B7EB6B97F90D9C69C1A6A5C7 /* truck-pickup.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 58E2B8DC3035B79AC4D5851C /* truck-pickup.jpg */; };
+		9EAEF4E34AD5FE5866E8410C /* landscape-mountain.jpg in Resources */ = {isa = PBXBuildFile; fileRef = BDDCA5A97F0F6A74D974BFD2 /* landscape-mountain.jpg */; };
+		DF1A8120B6C5D69D82338937 /* landscape-forest.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 890D6F90F8182A61C89D5B55 /* landscape-forest.jpg */; };
+		F20DD4A169FC301E6FDE7ED9 /* landscape-beach.jpg in Resources */ = {isa = PBXBuildFile; fileRef = E163C7525C8CA297B5310D63 /* landscape-beach.jpg */; };
+		2B8027CE9704B7B4A30C1DD4 /* dog-retriever.jpg in Resources */ = {isa = PBXBuildFile; fileRef = F30BB17F9660ABFF82FB49EF /* dog-retriever.jpg */; };
+		470E17FE3BE5522C068D4D26 /* dog-puppy.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 1119BA4446A9BE20092363F5 /* dog-puppy.jpg */; };
+		3BE1DBBDCA5FD485FA7957E0 /* cat-tabby.jpg in Resources */ = {isa = PBXBuildFile; fileRef = EC5F5CC710EE03EDBF7B08BD /* cat-tabby.jpg */; };
+		8808EE67F71FF6BBF3CAB0DD /* car-suv.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 56B1C739D633DD656A5850B2 /* car-suv.jpg */; };
 		4C254C021AB93A01DC1C0521 /* demo_clusters_raw.json in Resources */ = {isa = PBXBuildFile; fileRef = 867705BFAB478BA040249A5C /* demo_clusters_raw.json */; };
 		13F5D28287B6A61F2F08813B /* detail_Friends.json in Resources */ = {isa = PBXBuildFile; fileRef = 3CE894B87D800EFC9096F701 /* detail_Friends.json */; };
 		85A5613C634B8D78430E0A52 /* detail_Uncle_Jim.json in Resources */ = {isa = PBXBuildFile; fileRef = 99A5FFA7C0DE296DD80F451F /* detail_Uncle_Jim.json */; };
@@ -116,6 +124,14 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		58E2B8DC3035B79AC4D5851C /* truck-pickup.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/truck-pickup.jpg"; sourceTree = SOURCE_ROOT; };
+		BDDCA5A97F0F6A74D974BFD2 /* landscape-mountain.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/landscape-mountain.jpg"; sourceTree = SOURCE_ROOT; };
+		890D6F90F8182A61C89D5B55 /* landscape-forest.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/landscape-forest.jpg"; sourceTree = SOURCE_ROOT; };
+		E163C7525C8CA297B5310D63 /* landscape-beach.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/landscape-beach.jpg"; sourceTree = SOURCE_ROOT; };
+		F30BB17F9660ABFF82FB49EF /* dog-retriever.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/dog-retriever.jpg"; sourceTree = SOURCE_ROOT; };
+		1119BA4446A9BE20092363F5 /* dog-puppy.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/dog-puppy.jpg"; sourceTree = SOURCE_ROOT; };
+		EC5F5CC710EE03EDBF7B08BD /* cat-tabby.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/cat-tabby.jpg"; sourceTree = SOURCE_ROOT; };
+		56B1C739D633DD656A5850B2 /* car-suv.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/car-suv.jpg"; sourceTree = SOURCE_ROOT; };
 		867705BFAB478BA040249A5C /* demo_clusters_raw.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "Kindred/DemoData/demo_clusters_raw.json"; sourceTree = SOURCE_ROOT; };
 		3CE894B87D800EFC9096F701 /* detail_Friends.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "Kindred/DemoData/detail_Friends.json"; sourceTree = SOURCE_ROOT; };
 		99A5FFA7C0DE296DD80F451F /* detail_Uncle_Jim.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "Kindred/DemoData/detail_Uncle_Jim.json"; sourceTree = SOURCE_ROOT; };
@@ -516,6 +532,14 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B7EB6B97F90D9C69C1A6A5C7 /* truck-pickup.jpg in Resources */,
+				9EAEF4E34AD5FE5866E8410C /* landscape-mountain.jpg in Resources */,
+				DF1A8120B6C5D69D82338937 /* landscape-forest.jpg in Resources */,
+				F20DD4A169FC301E6FDE7ED9 /* landscape-beach.jpg in Resources */,
+				2B8027CE9704B7B4A30C1DD4 /* dog-retriever.jpg in Resources */,
+				470E17FE3BE5522C068D4D26 /* dog-puppy.jpg in Resources */,
+				3BE1DBBDCA5FD485FA7957E0 /* cat-tabby.jpg in Resources */,
+				8808EE67F71FF6BBF3CAB0DD /* car-suv.jpg in Resources */,
 				4C254C021AB93A01DC1C0521 /* demo_clusters_raw.json in Resources */,
 				13F5D28287B6A61F2F08813B /* detail_Friends.json in Resources */,
 				85A5613C634B8D78430E0A52 /* detail_Uncle_Jim.json in Resources */,
