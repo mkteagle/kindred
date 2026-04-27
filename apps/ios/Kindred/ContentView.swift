@@ -3,7 +3,6 @@ import SwiftUI
 struct ContentView: View {
     @State private var selectedTab = 0
     @State private var demo = DemoDataProvider.shared
-    @State private var sidebarVisibility: NavigationSplitViewVisibility = .doubleColumn
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
@@ -46,7 +45,7 @@ struct ContentView: View {
     // MARK: - iPad Layout (sidebar + content)
 
     private var iPadLayout: some View {
-        NavigationSplitView(columnVisibility: $sidebarVisibility) {
+        NavigationSplitView(columnVisibility: .constant(.doubleColumn)) {
             iPadSidebar
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 300)
         } detail: {

@@ -41,7 +41,7 @@ struct FullScreenPhotoView: View {
 
     private var proxyURL: URL? {
         let photoId = currentItem.id
-        return URL(string: "https://api.kindredphotos.app/photos/\(photoId)/image?size=h")
+        return URL(string: "\(APIClient.publicBaseURL)/photos/\(photoId)/image?size=h")
     }
 
     var body: some View {
