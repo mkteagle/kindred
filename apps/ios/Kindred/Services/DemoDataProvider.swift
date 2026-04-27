@@ -268,7 +268,6 @@ struct DemoThumbnailView: View {
                 Image(uiImage: uiImage)
                     .renderingMode(.original)
                     .resizable()
-                    .scaledToFill()
             } else {
                 // No photo — just show the canvas color, no gradient
                 KindredTheme.canvas

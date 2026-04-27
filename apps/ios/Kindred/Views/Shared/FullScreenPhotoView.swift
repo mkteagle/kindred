@@ -155,6 +155,7 @@ struct FullScreenPhotoView: View {
         Group {
             if DemoDataProvider.isDemoURL(photo.photoURL) {
                 DemoThumbnailView(urlString: photo.photoURL, cornerRadius: 0)
+                    .aspectRatio(contentMode: .fit)
                     .frame(width: size.width, height: size.height)
             } else {
                 AsyncImage(url: URL(string: photo.photoURL)) { phase in
@@ -162,9 +163,8 @@ struct FullScreenPhotoView: View {
                     case .success(let image):
                         image
                             .resizable()
-                            .aspectRatio(contentMode: .fill)
+                            .aspectRatio(contentMode: .fit)
                             .frame(width: size.width, height: size.height)
-                            .clipped()
                     case .failure:
                         VStack(spacing: 12) {
                             Image(systemName: "photo.badge.exclamationmark")
