@@ -19,3 +19,9 @@ __pycache__
 apps/ios/DerivedData/
 apps/ios/build/
 *.xcuserdata
+
+# Secrets — NEVER commit
+*.p8
+fastlane/api_key.json
+fastlane/screenshots/
+.DS_Store
