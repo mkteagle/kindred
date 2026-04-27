@@ -20,8 +20,9 @@ set -euo pipefail
 echo "=== Kindred Photos — Xcode Cloud Screenshot Pipeline ==="
 echo ""
 
-# Only run for the Screenshots workflow
-if [ "${CI_WORKFLOW:-}" != "Screenshots" ]; then
+# Only run for the screenshots workflow (case-insensitive)
+WORKFLOW_LOWER=$(echo "${CI_WORKFLOW:-}" | tr '[:upper:]' '[:lower:]')
+if [ "$WORKFLOW_LOWER" != "screenshots" ]; then
     echo "Not the Screenshots workflow (CI_WORKFLOW=${CI_WORKFLOW:-unset}). Skipping."
     exit 0
 fi
