@@ -28,6 +28,7 @@ interface ClusterCardProps {
     detectionIds: string[]
   ) => void;
   allClusters: ClusterSummary[];
+  processing?: boolean;
   gridSelecting?: boolean;
   gridSelected?: boolean;
   onGridToggle?: (clusterId: string) => void;
@@ -41,6 +42,7 @@ export const ClusterCard = ({
   onMerge,
   onRemoveDetections,
   allClusters,
+  processing,
   gridSelecting,
   gridSelected,
   onGridToggle,
@@ -86,7 +88,7 @@ export const ClusterCard = ({
 
   return (
     <article
-      className={`cluster-card ${gridSelected ? "grid-selected" : ""}`}
+      className={`cluster-card ${gridSelected ? "grid-selected" : ""} ${processing ? "cluster-card-processing" : ""}`}
       data-cluster-id={cluster.id}
       onClick={
         gridSelecting ? () => onGridToggle?.(cluster.id) : undefined
@@ -97,6 +99,11 @@ export const ClusterCard = ({
           : undefined
       }
     >
+      {processing && (
+        <div className="card-spinner">
+          <Spinner />
+        </div>
+      )}
       {gridSelecting && (
         <span className={`grid-check ${gridSelected ? "checked" : ""}`}>
           {gridSelected ? "\u2713" : ""}

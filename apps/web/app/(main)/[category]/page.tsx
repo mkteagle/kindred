@@ -24,6 +24,7 @@ import { BACKEND, CATEGORIES, fmt, toBackendCategory } from "@/lib/constants";
 import { useLightbox } from "@/components/photo-lightbox";
 import type { LightboxPhoto } from "@/components/photo-lightbox";
 import { useUser } from "@/lib/use-user";
+import { useToastContext } from "@/components/notifications";
 
 const API = "/api";
 
@@ -119,6 +120,7 @@ function UnmatchedSection({
   const [expanded, setExpanded] = useState(false);
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const qc = useQueryClient();
+  const { addToast } = useToastContext();
   const bCat = toBackendCategory(category);
 
   const { data, isLoading } = useQuery<UnmatchedData>({
@@ -131,16 +133,25 @@ function UnmatchedSection({
 
   const handleAssign = async (detectionId: string, targetClusterId: string) => {
     setAssigningId(null);
+    const target = allClusters.find((c) => c.id === targetClusterId);
+    const targetName = target?.label || "cluster";
     qc.setQueryData<UnmatchedData>(["unmatched", category], (old) => {
       if (!old) return old;
       return { ...old, items: old.items.filter((i) => i.id !== detectionId), count: old.count - 1 };
     });
-    await fetch(`${BACKEND}/clusters/assign`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category: bCat, detection_id: detectionId, target_cluster_id: targetClusterId }),
-    });
-    onAssigned();
+    try {
+      const resp = await fetch(`${BACKEND}/clusters/assign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category: bCat, detection_id: detectionId, target_cluster_id: targetClusterId }),
+      });
+      if (!resp.ok) throw new Error(`Failed: ${resp.status}`);
+      addToast({ type: "activity", title: `Assigned to "${targetName}"`, message: "Detection moved to group", autoDismissMs: 3000 });
+      onAssigned();
+    } catch (e) {
+      addToast({ type: "activity", title: "Failed to assign", message: String(e), autoDismissMs: 5000 });
+      qc.invalidateQueries({ queryKey: ["unmatched"] }); // Restore on error
+    }
   };
 
   const handleDismissSingle = async (detectionId: string) => {
@@ -148,11 +159,19 @@ function UnmatchedSection({
       if (!old) return old;
       return { ...old, items: old.items.filter((i) => i.id !== detectionId), count: old.count - 1 };
     });
-    fetch(`${BACKEND}/clusters/dismiss-detection`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category: bCat, detection_id: detectionId }),
-    }).then(() => onAssigned());
+    try {
+      const resp = await fetch(`${BACKEND}/clusters/dismiss-detection`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category: bCat, detection_id: detectionId }),
+      });
+      if (!resp.ok) throw new Error(`Failed: ${resp.status}`);
+      addToast({ type: "activity", title: "Detection dismissed", message: "Unmatched face removed", autoDismissMs: 3000 });
+      onAssigned();
+    } catch (e) {
+      addToast({ type: "activity", title: "Failed to dismiss", message: String(e), autoDismissMs: 5000 });
+      qc.invalidateQueries({ queryKey: ["unmatched"] }); // Restore on error
+    }
   };
 
   const [clustering, setClustering] = useState(false);
@@ -160,13 +179,17 @@ function UnmatchedSection({
   const recluster = async () => {
     setClustering(true);
     try {
-      await fetch(`${BACKEND}/cluster`, {
+      const resp = await fetch(`${BACKEND}/cluster`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ category: bCat, eps: 0.65, min_samples: 2 }),
       });
+      if (!resp.ok) throw new Error(`Failed: ${resp.status}`);
+      addToast({ type: "admin", title: "Re-clustering complete", message: "Unmatched faces regrouped", autoDismissMs: 4000 });
       qc.invalidateQueries({ queryKey: ["unmatched"] });
       onAssigned();
+    } catch (e) {
+      addToast({ type: "admin", title: "Re-clustering failed", message: String(e), autoDismissMs: 5000 });
     } finally {
       setClustering(false);
     }
@@ -207,22 +230,30 @@ function UnmatchedSection({
               onDismiss={handleDismissSingle}
               onNewName={async (detectionId: string, name: string) => {
                 // Create a new cluster with this name and assign the detection
-                const newClusterId = crypto.randomUUID();
-                await fetch(`${BACKEND}/clusters/assign`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ category: bCat, detection_id: detectionId, target_cluster_id: newClusterId }),
-                });
-                await fetch(`${BACKEND}/clusters/label`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ category: bCat, cluster_id: newClusterId, name }),
-                });
-                qc.setQueryData<UnmatchedData>(["unmatched", category], (old) => {
-                  if (!old) return old;
-                  return { ...old, items: old.items.filter((i) => i.id !== detectionId), count: old.count - 1 };
-                });
-                onAssigned();
+                try {
+                  const newClusterId = crypto.randomUUID();
+                  const assignResp = await fetch(`${BACKEND}/clusters/assign`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ category: bCat, detection_id: detectionId, target_cluster_id: newClusterId }),
+                  });
+                  if (!assignResp.ok) throw new Error(`Assign failed: ${assignResp.status}`);
+                  const labelResp = await fetch(`${BACKEND}/clusters/label`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ category: bCat, cluster_id: newClusterId, name }),
+                  });
+                  if (!labelResp.ok) throw new Error(`Label failed: ${labelResp.status}`);
+                  qc.setQueryData<UnmatchedData>(["unmatched", category], (old) => {
+                    if (!old) return old;
+                    return { ...old, items: old.items.filter((i) => i.id !== detectionId), count: old.count - 1 };
+                  });
+                  addToast({ type: "activity", title: `Created "${name}"`, message: "New group created and detection assigned", autoDismissMs: 3000 });
+                  onAssigned();
+                } catch (e) {
+                  addToast({ type: "activity", title: "Failed to create group", message: String(e), autoDismissMs: 5000 });
+                  qc.invalidateQueries({ queryKey: ["unmatched"] });
+                }
               }}
             />
           ))}
@@ -247,6 +278,7 @@ function VirtualizedGrid({
   onMerge,
   onRemoveDetections,
   allClusters,
+  processingIds,
   gridSelecting,
   gridSelected,
   onGridToggle,
@@ -259,6 +291,7 @@ function VirtualizedGrid({
   onMerge: (cat: string, src: string, tgt: string) => void;
   onRemoveDetections: (cat: string, id: string, dets: string[]) => void;
   allClusters: ClusterSummary[];
+  processingIds: Set<string>;
   gridSelecting: boolean;
   gridSelected: Set<string>;
   onGridToggle: (id: string) => void;
@@ -329,6 +362,7 @@ function VirtualizedGrid({
                   onMerge={onMerge}
                   onRemoveDetections={onRemoveDetections}
                   allClusters={allClusters}
+                  processing={processingIds.has(cluster.id)}
                   gridSelecting={gridSelecting}
                   gridSelected={gridSelected.has(cluster.id)}
                   onGridToggle={onGridToggle}
@@ -349,6 +383,8 @@ export default function CategoryPage() {
   const categoryParam = (params.category as string) || "people";
   const qc = useQueryClient();
   const { isAdmin: isEffectiveAdmin } = useUser();
+  const { addToast } = useToastContext();
+  const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -587,11 +623,13 @@ export default function CategoryPage() {
       if (!photos.length) {
         setScanStatus("No photos found.");
         setScanning(false);
+        addToast({ type: "sync", title: "No photos found", message: "Your library appears empty", autoDismissMs: 4000 });
         return;
       }
       setScanStatus(
         `Found ${fmt.format(photos.length)} photos. Starting analysis...`
       );
+      addToast({ type: "sync", title: "Scan started", message: `Analyzing ${fmt.format(photos.length)} photos`, autoDismissMs: 4000 });
       const analyzeResp = await fetch(`${API}/flickr/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -609,6 +647,7 @@ export default function CategoryPage() {
     } catch (error) {
       setScanStatus(`Error: ${(error as Error).message}`);
       setScanning(false);
+      addToast({ type: "sync", title: "Scan failed", message: (error as Error).message, autoDismissMs: 5000 });
     }
   };
 
@@ -617,18 +656,27 @@ export default function CategoryPage() {
     clusterId: string,
     name: string
   ) => {
-    await fetch(`${BACKEND}/clusters/label`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category: toBackendCategory(category), cluster_id: clusterId, name }),
-    });
-    invalidate();
+    setProcessingIds(prev => new Set(prev).add(clusterId));
+    try {
+      const resp = await fetch(`${BACKEND}/clusters/label`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category: toBackendCategory(category), cluster_id: clusterId, name }),
+      });
+      if (!resp.ok) throw new Error(`Failed: ${resp.status}`);
+      addToast({ type: "activity", title: `Named "${name}"`, message: `${activeInfo.singular} updated`, autoDismissMs: 3000 });
+      invalidate();
+    } catch (e) {
+      addToast({ type: "activity", title: "Failed to rename", message: String(e), autoDismissMs: 5000 });
+    } finally {
+      setProcessingIds(prev => { const next = new Set(prev); next.delete(clusterId); return next; });
+    }
   };
 
   const buildGroups = async () => {
     setClustering(true);
     try {
-      await fetch(`${BACKEND}/cluster`, {
+      const resp = await fetch(`${BACKEND}/cluster`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -637,7 +685,11 @@ export default function CategoryPage() {
           min_samples: 2,
         }),
       });
+      if (!resp.ok) throw new Error(`Failed: ${resp.status}`);
+      addToast({ type: "admin", title: "Groups built", message: `${activeInfo.label} grouped successfully`, autoDismissMs: 4000 });
       invalidate();
+    } catch (e) {
+      addToast({ type: "admin", title: "Failed to build groups", message: String(e), autoDismissMs: 5000 });
     } finally {
       setClustering(false);
     }
@@ -647,31 +699,49 @@ export default function CategoryPage() {
   const reclassifySpecies = async () => {
     setReclassifying(true);
     try {
-      await fetch(`${BACKEND}/clusters/clean-species?category=${backendCat}`, {
+      const resp = await fetch(`${BACKEND}/clusters/clean-species?category=${backendCat}`, {
         method: "POST",
       });
+      if (!resp.ok) throw new Error(`Failed: ${resp.status}`);
+      addToast({ type: "admin", title: "Species reclassified", message: "Labels updated from model", autoDismissMs: 4000 });
       invalidate();
+    } catch (e) {
+      addToast({ type: "admin", title: "Failed to reclassify", message: String(e), autoDismissMs: 5000 });
     } finally {
       setReclassifying(false);
     }
   };
 
   const handleDismiss = async (category: string, clusterId: string) => {
+    // Capture cluster name before optimistic removal
+    const cluster = summary?.clusters.find((c) => c.id === clusterId);
+    const clusterName = cluster?.label || `Unnamed ${activeInfo.singular}`;
+    setProcessingIds(prev => new Set(prev).add(clusterId));
     qc.setQueryData<ClustersSummaryResponse>(
       ["clusters-summary", category],
       (old) => {
         if (!old) return old;
         return {
           ...old,
-          clusters: old.clusters.filter((cluster) => cluster.id !== clusterId),
+          clusters: old.clusters.filter((c) => c.id !== clusterId),
         };
       }
     );
-    fetch(`${BACKEND}/clusters/dismiss`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category: toBackendCategory(category), cluster_id: clusterId }),
-    }).then(() => invalidate());
+    try {
+      const resp = await fetch(`${BACKEND}/clusters/dismiss`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category: toBackendCategory(category), cluster_id: clusterId }),
+      });
+      if (!resp.ok) throw new Error(`Failed: ${resp.status}`);
+      addToast({ type: "activity", title: `Dismissed "${clusterName}"`, message: "Removed from library", autoDismissMs: 3000 });
+      invalidate();
+    } catch (e) {
+      addToast({ type: "activity", title: "Failed to dismiss", message: String(e), autoDismissMs: 5000 });
+      invalidate(); // Refetch to restore state on error
+    } finally {
+      setProcessingIds(prev => { const next = new Set(prev); next.delete(clusterId); return next; });
+    }
   };
 
   const handleMerge = async (
@@ -679,6 +749,9 @@ export default function CategoryPage() {
     sourceId: string,
     targetId: string
   ) => {
+    const target = summary?.clusters.find((c) => c.id === targetId);
+    const targetName = target?.label || `Unnamed ${activeInfo.singular}`;
+    setProcessingIds(prev => { const next = new Set(prev); next.add(sourceId); next.add(targetId); return next; });
     qc.setQueryData<ClustersSummaryResponse>(
       ["clusters-summary", category],
       (old) => {
@@ -700,15 +773,25 @@ export default function CategoryPage() {
         };
       }
     );
-    fetch(`${BACKEND}/clusters/merge`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        category: toBackendCategory(category),
-        source_id: sourceId,
-        target_id: targetId,
-      }),
-    }).then(() => invalidate());
+    try {
+      const resp = await fetch(`${BACKEND}/clusters/merge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category: toBackendCategory(category),
+          source_id: sourceId,
+          target_id: targetId,
+        }),
+      });
+      if (!resp.ok) throw new Error(`Failed: ${resp.status}`);
+      addToast({ type: "activity", title: `Merged into "${targetName}"`, message: "Groups combined", autoDismissMs: 3000 });
+      invalidate();
+    } catch (e) {
+      addToast({ type: "activity", title: "Failed to merge", message: String(e), autoDismissMs: 5000 });
+      invalidate(); // Refetch to restore state on error
+    } finally {
+      setProcessingIds(prev => { const next = new Set(prev); next.delete(sourceId); next.delete(targetId); return next; });
+    }
   };
 
   const handleRemoveDetections = async (
@@ -717,6 +800,7 @@ export default function CategoryPage() {
     detectionIds: string[]
   ) => {
     const idSet = new Set(detectionIds);
+    setProcessingIds(prev => new Set(prev).add(clusterId));
     qc.setQueryData<ClusterDetail>(
       ["cluster-detail", category, clusterId],
       (old) => {
@@ -738,15 +822,25 @@ export default function CategoryPage() {
         };
       }
     );
-    fetch(`${BACKEND}/clusters/remove-detections`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        category: toBackendCategory(category),
-        cluster_id: clusterId,
-        detection_ids: detectionIds,
-      }),
-    }).then(() => invalidate());
+    try {
+      const resp = await fetch(`${BACKEND}/clusters/remove-detections`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category: toBackendCategory(category),
+          cluster_id: clusterId,
+          detection_ids: detectionIds,
+        }),
+      });
+      if (!resp.ok) throw new Error(`Failed: ${resp.status}`);
+      addToast({ type: "activity", title: `Removed ${detectionIds.length} detection${detectionIds.length > 1 ? "s" : ""}`, message: "Detections removed from group", autoDismissMs: 3000 });
+      invalidate();
+    } catch (e) {
+      addToast({ type: "activity", title: "Failed to remove detections", message: String(e), autoDismissMs: 5000 });
+      invalidate(); // Refetch to restore state on error
+    } finally {
+      setProcessingIds(prev => { const next = new Set(prev); next.delete(clusterId); return next; });
+    }
   };
 
   // Keep a stable sort order — only re-sort when the cluster list fundamentally changes
@@ -1095,6 +1189,7 @@ export default function CategoryPage() {
                 onMerge={handleMerge}
                 onRemoveDetections={handleRemoveDetections}
                 allClusters={summary?.clusters || []}
+                processingIds={processingIds}
                 gridSelecting={gridSelecting}
                 gridSelected={gridSelected}
                 onGridToggle={(id) => {
@@ -1126,6 +1221,7 @@ export default function CategoryPage() {
               onMerge={handleMerge}
               onRemoveDetections={handleRemoveDetections}
               allClusters={summary?.clusters || []}
+              processingIds={processingIds}
               gridSelecting={gridSelecting}
               gridSelected={gridSelected}
               onGridToggle={(id) => {
@@ -1241,14 +1337,19 @@ export default function CategoryPage() {
           onMerge={handleMerge}
           onRemoveDetections={handleRemoveDetections}
           onDeleteDetection={async (detectionId: string) => {
-            fetch(`${BACKEND}/detections/delete`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ detection_id: detectionId }),
-            }).then(() => {
+            try {
+              const resp = await fetch(`${BACKEND}/detections/delete`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ detection_id: detectionId }),
+              });
+              if (!resp.ok) throw new Error(`Failed: ${resp.status}`);
+              addToast({ type: "activity", title: "Detection removed", message: "Photo detection deleted", autoDismissMs: 3000 });
               qc.invalidateQueries({ queryKey: ["cluster-detail"] });
               invalidate();
-            });
+            } catch (e) {
+              addToast({ type: "activity", title: "Failed to delete detection", message: String(e), autoDismissMs: 5000 });
+            }
           }}
           onClose={() => { setReviewOpen(false); invalidate(); }}
         />

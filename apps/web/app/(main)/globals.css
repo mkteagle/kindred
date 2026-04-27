@@ -8556,3 +8556,31 @@ dialog::backdrop { background: rgba(18, 18, 24, .6); backdrop-filter: blur(6px);
   .demo-lightbox-prev { left: 8px; }
   .demo-lightbox-next { right: 8px; }
 }
+
+/* Cluster card processing overlay */
+.cluster-card-processing {
+  position: relative;
+}
+.cluster-card-processing::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(251, 244, 231, 0.7);
+  border-radius: inherit;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.15s ease;
+}
+.cluster-card-processing .card-spinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 6;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
