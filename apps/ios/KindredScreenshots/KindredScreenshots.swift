@@ -141,9 +141,43 @@ final class KindredScreenshots: XCTestCase {
         takeScreenshot(named: "08_settings")
     }
 
+    private var isIPad: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad
+    }
+
     private func tapTab(_ label: String) {
+        // Try exact match first (works on iPhone tab bar)
         let tab = app.buttons.matching(NSPredicate(format: "label == %@", label)).firstMatch
-        if tab.waitForExistence(timeout: 3) { tab.tap() }
+        if tab.waitForExistence(timeout: 2) && tab.isHittable {
+            tab.tap()
+            return
+        }
+        // On iPad, sidebar may be collapsed — try toggling it
+        if isIPad {
+            // Look for the sidebar toggle button (NavigationSplitView back/menu button)
+            let toggles = app.navigationBars.buttons
+            if toggles.count > 0 {
+                // The first button in the nav bar is usually the sidebar toggle
+                let toggle = toggles.firstMatch
+                if toggle.exists && toggle.isHittable {
+                    toggle.tap()
+                    sleep(1)
+                }
+            }
+            // Try finding the sidebar button with CONTAINS (label may include icon name)
+            let sidebarBtn = app.buttons.matching(
+                NSPredicate(format: "label CONTAINS[c] %@", label)
+            ).firstMatch
+            if sidebarBtn.waitForExistence(timeout: 3) && sidebarBtn.isHittable {
+                sidebarBtn.tap()
+                return
+            }
+            // Last resort: try static texts
+            let text = app.staticTexts[label]
+            if text.waitForExistence(timeout: 2) && text.isHittable {
+                text.tap()
+            }
+        }
     }
 
     private func takeScreenshot(named name: String) {
@@ -152,10 +186,12 @@ final class KindredScreenshots: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
-        // Save to /tmp for easy access
+        // Save to /tmp — use device-specific subfolder
+        let isIPad = UIDevice.current.userInterfaceIdiom == .pad
+        let folder = isIPad ? "/tmp/kindred_screenshots_ipad" : "/tmp/kindred_screenshots"
         let data = screenshot.pngRepresentation
-        let path = "/tmp/kindred_screenshots/\(name).png"
-        try? FileManager.default.createDirectory(atPath: "/tmp/kindred_screenshots", withIntermediateDirectories: true)
+        let path = "\(folder)/\(name).png"
+        try? FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
         try? data.write(to: URL(fileURLWithPath: path))
     }
 }

@@ -89,8 +89,10 @@ MARKETING_TEXT = {
 # App Store required sizes
 # ---------------------------------------------------------------------------
 FRAME_SIZES = {
-    "6.7": (1290, 2796),  # iPhone 15 Pro Max
-    "6.1": (1179, 2556),  # iPhone 15 Pro
+    "6.7": (1290, 2796),   # iPhone 15 Pro Max
+    "6.1": (1179, 2556),   # iPhone 15 Pro
+    "13": (2064, 2752),    # iPad Pro 13" (M4/M5)
+    "12.9": (2048, 2732),  # iPad Pro 12.9" (older)
 }
 
 # ---------------------------------------------------------------------------
@@ -175,6 +177,7 @@ def draw_device_frame(
     frame_rect: tuple[int, int, int, int],
     corner_radius: int,
     border_width: int,
+    is_ipad: bool = False,
 ) -> None:
     """Draw an iPhone 15 Pro-style device frame and paste the screenshot inside.
 
@@ -266,31 +269,43 @@ def draw_device_frame(
     # 5. Paste the screenshot
     canvas.paste(cropped, (screen_x1, screen_y1), mask)
 
-    # 6. Side buttons (power on right, volume on left) — subtle details
-    button_color = (52, 52, 54)
-    # Power button (right side)
-    power_y = y1 + int(frame_h * 0.28)
-    power_h = int(frame_h * 0.06)
-    draw.rounded_rectangle(
-        [x2, power_y, x2 + 2, power_y + power_h],
-        radius=1,
-        fill=button_color,
-    )
-    # Volume up (left side)
-    vol_up_y = y1 + int(frame_h * 0.22)
-    vol_h = int(frame_h * 0.04)
-    draw.rounded_rectangle(
-        [x1 - 2, vol_up_y, x1, vol_up_y + vol_h],
-        radius=1,
-        fill=button_color,
-    )
-    # Volume down (left side)
-    vol_down_y = vol_up_y + vol_h + int(frame_h * 0.015)
-    draw.rounded_rectangle(
-        [x1 - 2, vol_down_y, x1, vol_down_y + vol_h],
-        radius=1,
-        fill=button_color,
-    )
+    # 6. Dynamic Island + side buttons (iPhone only — iPads don't have these)
+    if not is_ipad:
+        island_w = int(frame_w * 0.29)
+        island_h = int(frame_w * 0.085)
+        island_x = x1 + (frame_w - island_w) // 2
+        island_y = screen_y1 + int(frame_w * 0.03)
+        island_radius = island_h // 2
+
+        draw = ImageDraw.Draw(canvas)
+        draw.rounded_rectangle(
+            [island_x, island_y, island_x + island_w, island_y + island_h],
+            radius=island_radius,
+            fill=(0, 0, 0),
+        )
+
+        # Side buttons
+        button_color = (52, 52, 54)
+        power_y = y1 + int(frame_h * 0.28)
+        power_h = int(frame_h * 0.06)
+        draw.rounded_rectangle(
+            [x2, power_y, x2 + 2, power_y + power_h],
+            radius=1,
+            fill=button_color,
+        )
+        vol_up_y = y1 + int(frame_h * 0.22)
+        vol_h = int(frame_h * 0.04)
+        draw.rounded_rectangle(
+            [x1 - 2, vol_up_y, x1, vol_up_y + vol_h],
+            radius=1,
+            fill=button_color,
+        )
+        vol_down_y = vol_up_y + vol_h + int(frame_h * 0.015)
+        draw.rounded_rectangle(
+            [x1 - 2, vol_down_y, x1, vol_down_y + vol_h],
+            radius=1,
+            fill=button_color,
+        )
 
 
 def draw_marketing_text(
@@ -390,8 +405,15 @@ def frame_screenshot(
     device_w = canvas_w - (padding * 2)
     device_h = device_area_h
 
-    # Maintain reasonable device aspect ratio (~19.5:9 for modern iPhones)
-    target_device_ratio = 19.5 / 9.0
+    # Detect iPad vs iPhone based on size label
+    is_ipad = size_label in ("13", "12.9")
+
+    # Device aspect ratio: iPhones ~19.5:9, iPads ~4:3
+    if is_ipad:
+        target_device_ratio = 4.0 / 3.0
+    else:
+        target_device_ratio = 19.5 / 9.0
+
     if device_h / device_w > target_device_ratio:
         device_h = int(device_w * target_device_ratio)
     elif device_w / device_h > 1 / target_device_ratio:
@@ -410,6 +432,7 @@ def frame_screenshot(
         (device_x, device_y, device_x + device_w, device_y + device_h),
         corner_radius,
         border_width,
+        is_ipad=is_ipad,
     )
 
     # Draw marketing text in the header area
