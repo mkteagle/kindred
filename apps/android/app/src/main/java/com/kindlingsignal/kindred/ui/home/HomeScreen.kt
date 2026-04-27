@@ -41,6 +41,7 @@ import com.kindlingsignal.kindred.util.greetingTimeOfDay
  */
 @Composable
 fun HomeScreen(
+    onTogetherClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // Load data — in demo mode use DemoDataProvider, else empty for now
@@ -80,7 +81,7 @@ fun HomeScreen(
         MemoryWallScatter(timeline = timeline)
 
         // Together link
-        TogetherLink(clusters = clusters)
+        TogetherLink(clusters = clusters, onClick = onTogetherClick)
 
         // Worth finding again
         WorthFindingSection(clusters = clusters)
@@ -236,6 +237,7 @@ private data class ScatterConfig(
 @Composable
 private fun TogetherLink(
     clusters: List<ClusterSummary>,
+    onClick: () -> Unit = {},
 ) {
     Row(
         modifier = Modifier
@@ -246,7 +248,7 @@ private fun TogetherLink(
             .clip(KindredShape.RadiusMD)
             .background(KindredColors.Card)
             .border(1.dp, KindredColors.Line, KindredShape.RadiusMD)
-            .clickable { /* TODO: open together */ }
+            .clickable { onClick() }
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

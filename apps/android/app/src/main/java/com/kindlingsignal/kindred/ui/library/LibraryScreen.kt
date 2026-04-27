@@ -10,8 +10,12 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -19,6 +23,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.kindlingsignal.kindred.data.demo.DemoDataProvider
 import com.kindlingsignal.kindred.data.model.ClusterCategory
@@ -29,21 +34,31 @@ import com.kindlingsignal.kindred.ui.theme.KindredShape
 import com.kindlingsignal.kindred.ui.theme.KindredType
 
 /**
- * Library screen with People/Pets/Vehicles chip tabs and a masonry grid.
+ * Library screen with search bar, People/Pets/Vehicles chip tabs, stats summary,
+ * and masonry grid of ClusterCards.
  * Matches iOS LibraryView.
  */
 @Composable
 fun LibraryScreen(
+    onClusterClick: (category: String, clusterId: String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     var selectedCategory by rememberSaveable { mutableStateOf(ClusterCategory.PEOPLE) }
+    var searchQuery by remember { mutableStateOf(TextFieldValue("")) }
 
-    val clusters = remember(selectedCategory) {
+    val allClusters = remember(selectedCategory) {
         if (DemoDataProvider.isActive) {
             DemoDataProvider.getClusterSummary(selectedCategory.apiName).clusters
                 .sortedByDescending { it.photoCount }
         } else {
             emptyList()
+        }
+    }
+
+    val clusters = remember(allClusters, searchQuery.text) {
+        if (searchQuery.text.isEmpty()) allClusters
+        else allClusters.filter {
+            (it.label ?: "").contains(searchQuery.text, ignoreCase = true)
         }
     }
 
@@ -70,13 +85,14 @@ fun LibraryScreen(
                     style = KindredType.Title,
                     color = KindredColors.Ash,
                 )
-                val photoCount = when (selectedCategory) {
-                    ClusterCategory.PEOPLE -> stats?.people?.photos
-                    ClusterCategory.PETS -> stats?.pets?.photos
-                    ClusterCategory.VEHICLES -> stats?.vehicles?.photos
-                } ?: 0
+                val totalDetections = (stats?.people?.detections ?: 0) +
+                        (stats?.pets?.detections ?: 0) +
+                        (stats?.vehicles?.detections ?: 0)
+                val totalPhotos = (stats?.people?.photos ?: 0) +
+                        (stats?.pets?.photos ?: 0) +
+                        (stats?.vehicles?.photos ?: 0)
                 Text(
-                    text = "$photoCount photos",
+                    text = "$totalDetections detections across $totalPhotos photos",
                     style = KindredType.Meta,
                     color = KindredColors.Mist,
                 )
@@ -99,6 +115,53 @@ fun LibraryScreen(
                     contentDescription = "Filter",
                     tint = KindredColors.Pine,
                     modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+
+        // Search bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(top = 6.dp, bottom = 4.dp)
+                .clip(KindredShape.RadiusSM)
+                .background(KindredColors.Card)
+                .border(1.dp, KindredColors.Line, KindredShape.RadiusSM)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Search,
+                contentDescription = null,
+                tint = KindredColors.Mist,
+                modifier = Modifier.size(16.dp),
+            )
+            Box(modifier = Modifier.weight(1f)) {
+                if (searchQuery.text.isEmpty()) {
+                    Text(
+                        text = "Find a named person\u2026",
+                        style = KindredType.Caption,
+                        color = KindredColors.Mist,
+                    )
+                }
+                BasicTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    textStyle = KindredType.Caption.copy(color = KindredColors.Ash),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (searchQuery.text.isNotEmpty()) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Clear",
+                    tint = KindredColors.Mist,
+                    modifier = Modifier
+                        .size(16.dp)
+                        .clickable { searchQuery = TextFieldValue("") },
                 )
             }
         }
@@ -141,12 +204,14 @@ fun LibraryScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     Text(
-                        text = "No ${selectedCategory.displayName.lowercase()} yet",
+                        text = if (searchQuery.text.isNotEmpty()) "No matches"
+                        else "No ${selectedCategory.displayName.lowercase()} yet",
                         style = KindredType.H3,
                         color = KindredColors.Ash,
                     )
                     Text(
-                        text = "Sync your library to get started.",
+                        text = if (searchQuery.text.isNotEmpty()) "Try a different name."
+                        else "Sync your library to get started.",
                         style = KindredType.Body,
                         color = KindredColors.Mist,
                     )
@@ -169,6 +234,9 @@ fun LibraryScreen(
                     MasonryClusterCard(
                         cluster = cluster,
                         imageHeight = heights[index % heights.size].dp,
+                        modifier = Modifier.clickable {
+                            onClusterClick(selectedCategory.apiName, cluster.id)
+                        },
                     )
                 }
             }
@@ -177,7 +245,7 @@ fun LibraryScreen(
 }
 
 /**
- * Category chip — active state uses Ash background, inactive uses Card.
+ * Category chip -- active state uses Ash background, inactive uses Card.
  * Matches iOS KindredChip.
  */
 @Composable
@@ -212,7 +280,7 @@ private fun CategoryChip(
             style = KindredType.mono(10),
             color = if (isActive) KindredColors.Gold else KindredColors.Pine,
             modifier = Modifier
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(999.dp))
+                .clip(RoundedCornerShape(999.dp))
                 .background(
                     if (isActive) KindredColors.Paper.copy(alpha = 0.18f)
                     else KindredColors.Forest.copy(alpha = 0.1f)

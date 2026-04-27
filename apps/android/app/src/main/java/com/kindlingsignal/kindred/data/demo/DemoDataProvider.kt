@@ -157,6 +157,113 @@ object DemoDataProvider {
         vehicles = CategoryStats(detections = 4, photos = 3, groups = 1),
     )
 
+    /**
+     * Returns a list of Detection objects for a specific cluster,
+     * simulating the cluster detail API response.
+     */
+    fun getClusterDetail(category: String, clusterId: String): List<Detection> {
+        val clusters = getClusterSummary(category).clusters
+        val cluster = clusters.firstOrNull { it.id == clusterId } ?: return emptyList()
+
+        // Generate detections from available demo drawables, cycling through them
+        val count = cluster.photoCount
+        return (0 until count).map { i ->
+            val key = demoKeys[i % demoKeys.size]
+            Detection(
+                id = "${clusterId}_det_$i",
+                category = category,
+                subtype = if (category == "people") "face" else category,
+                photoId = "${clusterId}_photo_$i",
+                photoUrl = "demo://file_$key",
+                thumbUrl = "demo://file_$key",
+                flickrUrl = null,
+                photoTitle = cluster.label?.let { "$it - Photo ${i + 1}" } ?: "Photo ${i + 1}",
+                owner = null,
+                detScore = 0.95f,
+                chip = null,
+            )
+        }
+    }
+
+    /**
+     * Searches demo photos by keyword, matching against photo titles and known terms.
+     * Mirrors the iOS search_results.json logic.
+     */
+    fun searchDemoPhotos(query: String): List<SearchResult> {
+        val q = query.lowercase()
+
+        // Keyword to demo photo mappings
+        val keywordMap = mapOf(
+            "campfire" to listOf("family-campfire-1"),
+            "fire" to listOf("family-campfire-1"),
+            "sunset" to listOf("couple-sunset"),
+            "couple" to listOf("couple-sunset"),
+            "golden" to listOf("couple-sunset"),
+            "holiday" to listOf("family-holiday-1"),
+            "christmas" to listOf("family-holiday-1"),
+            "gathering" to listOf("family-holiday-1"),
+            "dog" to listOf("dog-retriever"),
+            "buddy" to listOf("dog-retriever"),
+            "retriever" to listOf("dog-retriever"),
+            "pet" to listOf("dog-retriever"),
+            "park" to listOf("dog-retriever"),
+            "campervan" to listOf("family-campervan"),
+            "van" to listOf("family-campervan"),
+            "road" to listOf("family-campervan"),
+            "trip" to listOf("family-campervan"),
+            "beach" to listOf("couple-sunset", "family-campervan"),
+            "joy" to listOf("mom-child-joy"),
+            "child" to listOf("mom-child-joy"),
+            "maya" to listOf("mom-child-joy"),
+            "mom" to listOf("family-campfire-1", "mom-child-joy"),
+            "dad" to listOf("couple-sunset", "family-holiday-1"),
+            "family" to listOf("family-campfire-1", "family-holiday-1", "family-campervan"),
+            "birthday" to listOf("family-holiday-1", "mom-child-joy"),
+        )
+
+        // Collect matching keys
+        val matchedKeys = mutableSetOf<String>()
+        keywordMap.forEach { (keyword, keys) ->
+            if (keyword.contains(q) || q.contains(keyword)) {
+                matchedKeys.addAll(keys)
+            }
+        }
+
+        // If no keyword matches, try fuzzy matching against all demo photo keys
+        if (matchedKeys.isEmpty()) {
+            demoKeys.forEach { key ->
+                if (key.contains(q)) {
+                    matchedKeys.add(key)
+                }
+            }
+        }
+
+        // Build search results
+        return matchedKeys.mapIndexed { index, key ->
+            val titleMap = mapOf(
+                "family-campfire-1" to "Campfire evening",
+                "couple-sunset" to "Golden hour",
+                "family-holiday-1" to "Holiday gathering",
+                "dog-retriever" to "Buddy at the park",
+                "family-campervan" to "Road trip",
+                "mom-child-joy" to "Afternoon light",
+            )
+            SearchResult(
+                photoId = "search_$key",
+                distance = 0.1f + (index * 0.05f),
+                photoUrl = "demo://file_$key",
+                thumbUrl = "demo://file_$key",
+                flickrUrl = null,
+                photoTitle = titleMap[key] ?: key.replace("-", " ").replaceFirstChar { it.uppercase() },
+                owner = null,
+                matchType = null,
+                matchName = null,
+                matchClusterId = null,
+                matchCategory = null,
+            )
+        }
+    }
+
     fun getTimeline(): TimelineResponse = TimelineResponse(
         months = listOf(
             TimelineMonth(
