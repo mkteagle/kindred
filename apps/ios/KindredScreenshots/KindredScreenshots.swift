@@ -104,9 +104,17 @@ final class KindredScreenshots: XCTestCase {
 
     private func takeScreenshot(named name: String) {
         let screenshot = XCUIScreen.main.screenshot()
+
+        // Save to attachment (for Xcode)
         let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+
+        // Also save directly to /tmp for easy access
+        let data = screenshot.pngRepresentation
+        let path = "/tmp/kindred_screenshots/\(name).png"
+        try? FileManager.default.createDirectory(atPath: "/tmp/kindred_screenshots", withIntermediateDirectories: true)
+        try? data.write(to: URL(fileURLWithPath: path))
     }
 }
