@@ -55,7 +55,7 @@ final class TogetherViewModel {
         error = nil
         if DemoDataProvider.shared.isActive {
             // Return shared family photos for any combo of people
-            let sharedPhotos = ["family-group-1", "family-group-2", "family-dinner", "family-beach", "kids-birthday"]
+            let sharedPhotos = ["family-campfire-1", "family-campfire-2", "family-holiday-1", "family-three-sunset", "family-music", "family-campervan", "family-inside-van"]
             results = sharedPhotos.enumerated().map { (i, filename) in
                 TogetherPhoto(
                     photo_id: "together_\(i)",
