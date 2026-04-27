@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://kindredphotos.app"><img src="https://img.shields.io/badge/web-kindredphotos.app-4f46e5?style=flat-square" alt="Website" /></a>
-  <a href="https://demo.kindredphotos.app"><img src="https://img.shields.io/badge/demo-try%20it%20live-f59e0b?style=flat-square" alt="Live Demo" /></a>
+  <a href="https://kindredphotos.app/demo"><img src="https://img.shields.io/badge/demo-try%20it%20live-f59e0b?style=flat-square" alt="Live Demo" /></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-AGPL--3.0-22c55e?style=flat-square" alt="License" /></a>
   <img src="https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
   <img src="https://img.shields.io/badge/frontend-Next.js-000000?style=flat-square&logo=nextdotjs&logoColor=white" alt="Next.js" />
@@ -205,7 +205,7 @@ The scan runs in the background. Depending on library size, the initial import m
 
 Try Kindred without setting anything up:
 
-**[demo.kindredphotos.app](https://demo.kindredphotos.app)**
+**[kindredphotos.app/demo](https://kindredphotos.app/demo)**
 
 The demo runs with stock photography from [Pexels](https://www.pexels.com/) and pre-computed AI data. It showcases the full browsing experience -- people, pets, vehicles, scenes, search, and the Together feature -- without connecting to a real Flickr account.
 
@@ -273,7 +273,7 @@ You are free to self-host, modify, and distribute Kindred. If you run a modified
 
 ## Credits
 
-**Kindred Photos** is built by [Kindling Signal](https://kindredphotos.app).
+**Kindred Photos** is built by [Kindling Signal](https://bykindling.com).
 
 Demo photography provided by [Pexels](https://www.pexels.com/) contributors -- free to use under the Pexels license.
 

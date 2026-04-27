@@ -53,6 +53,7 @@ SKIP_TESTS=false
 SKIP_FRAMES=false
 DO_IPHONE=true
 DO_IPAD=true
+DO_UPLOAD=false
 
 # ---------------------------------------------------------------------------
 # Parse arguments
@@ -75,8 +76,12 @@ while [[ $# -gt 0 ]]; do
             DO_IPHONE=false
             shift
             ;;
+        --upload)
+            DO_UPLOAD=true
+            shift
+            ;;
         --help|-h)
-            echo "Usage: $0 [--skip-tests] [--skip-frames] [--iphone-only] [--ipad-only]"
+            echo "Usage: $0 [--skip-tests] [--skip-frames] [--iphone-only] [--ipad-only] [--upload]"
             echo ""
             echo "Options:"
             echo "  --skip-tests    Skip running iOS UI tests (use existing raw screenshots)"
@@ -166,18 +171,32 @@ success "npx available"
 # ═══════════════════════════════════════════════════════════════════════════
 step "Step 2: Ensuring Playwright is installed"
 
-# Check if playwright is available
-if npx playwright --version &>/dev/null 2>&1; then
-    success "Playwright already installed: $(npx playwright --version 2>&1)"
-else
-    info "Installing Playwright..."
-    npm install --no-save playwright 2>&1
+# Check if playwright package exists locally or globally
+PLAYWRIGHT_OK=false
+if [ -d "$PROJECT_ROOT/node_modules/playwright" ]; then
+    PLAYWRIGHT_OK=true
+    success "Playwright found in project node_modules"
+elif [ -d "$PROJECT_ROOT/node_modules/playwright-core" ]; then
+    PLAYWRIGHT_OK=true
+    success "Playwright-core found in project node_modules"
 fi
 
-# Ensure Chromium browser is installed
-info "Ensuring Chromium browser is available..."
-npx playwright install chromium 2>&1 | tail -3
-success "Playwright Chromium ready"
+if [ "$PLAYWRIGHT_OK" = false ]; then
+    info "Playwright not found. Installing locally..."
+    cd "$PROJECT_ROOT"
+    npm install --save-dev playwright 2>&1 | tail -5
+    cd "$OLDPWD"
+    success "Playwright installed"
+fi
+
+# Ensure Chromium browser binary is downloaded
+if npx playwright install --dry-run chromium 2>&1 | grep -q "already installed"; then
+    success "Chromium browser already installed"
+else
+    info "Downloading Chromium browser..."
+    npx playwright install chromium 2>&1 | tail -5
+    success "Chromium browser ready"
+fi
 
 # ═══════════════════════════════════════════════════════════════════════════
 # STEP 3 & 4: Run iOS UI tests
@@ -396,26 +415,88 @@ echo "  open $APPSTORE_IPHONE_DIR"
 echo "  open $APPSTORE_IPAD_DIR"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# App Store Connect upload (placeholder)
+# STEP 8: Upload to App Store Connect (optional — requires --upload flag)
 # ═══════════════════════════════════════════════════════════════════════════
-# To upload screenshots to App Store Connect, use one of:
-#
-# Option A: Transporter CLI (recommended)
-#   brew install apple/apple/transporter
-#   transporter -m upload -f /path/to/package.itmsp \
-#     -u your@apple.id -p @keychain:AC_PASSWORD
-#
-# Option B: altool (deprecated but still works)
-#   xcrun altool --upload-app -f /path/to/app.ipa \
-#     --type ios --apiKey KEY_ID --apiIssuer ISSUER_ID
-#
-# Option C: App Store Connect API + fastlane deliver
-#   fastlane deliver --skip_binary_upload \
-#     --screenshots_path screenshots/appstore \
-#     --api_key_path api_key.json
-#
-# All options require App Store Connect API key setup:
-#   1. Create API key at https://appstoreconnect.apple.com/access/integrations/api
-#   2. Download the .p8 key file
-#   3. Note the Key ID and Issuer ID
-#   4. Store securely (never commit to git)
+
+if [ "$DO_UPLOAD" = true ]; then
+    step "Step 8: Uploading to App Store Connect"
+
+    # Check for fastlane
+    if ! command -v fastlane &>/dev/null; then
+        warn "fastlane not found. Installing..."
+        if command -v brew &>/dev/null; then
+            brew install fastlane 2>&1 | tail -3
+        else
+            fail "fastlane not found and brew not available. Install with: brew install fastlane"
+        fi
+    fi
+    success "fastlane found: $(fastlane --version 2>&1 | head -1)"
+
+    # Check for API key
+    API_KEY_FILE="$PROJECT_ROOT/fastlane/api_key.json"
+    if [ ! -f "$API_KEY_FILE" ]; then
+        warn "App Store Connect API key not found at $API_KEY_FILE"
+        echo ""
+        echo "  To set up App Store Connect API key:"
+        echo "  1. Go to https://appstoreconnect.apple.com/access/integrations/api"
+        echo "  2. Create a new key with 'App Manager' role"
+        echo "  3. Download the .p8 file"
+        echo "  4. Create fastlane/api_key.json with:"
+        echo ""
+        echo '  {'
+        echo '    "key_id": "YOUR_KEY_ID",'
+        echo '    "issuer_id": "YOUR_ISSUER_ID",'
+        echo '    "key_filepath": "fastlane/AuthKey_KEYID.p8"'
+        echo '  }'
+        echo ""
+        fail "Set up the API key first, then re-run with --upload"
+    fi
+
+    # Prepare fastlane screenshot directory structure
+    # fastlane expects: screenshots/en-US/iPhone 6.7"/*.png
+    FASTLANE_DIR="$PROJECT_ROOT/fastlane/screenshots/en-US"
+    mkdir -p "$FASTLANE_DIR"
+
+    if [ "$DO_IPHONE" = true ]; then
+        IPHONE_FL_DIR="$FASTLANE_DIR/iPhone 6.7-inch"
+        rm -rf "$IPHONE_FL_DIR"
+        mkdir -p "$IPHONE_FL_DIR"
+        for f in "$APPSTORE_IPHONE_DIR"/*.png; do
+            [ -f "$f" ] || continue
+            cp "$f" "$IPHONE_FL_DIR/"
+        done
+        info "Prepared $(ls "$IPHONE_FL_DIR"/*.png 2>/dev/null | wc -l | tr -d ' ') iPhone screenshots for upload"
+    fi
+
+    if [ "$DO_IPAD" = true ]; then
+        IPAD_FL_DIR="$FASTLANE_DIR/iPad Pro 13-inch"
+        rm -rf "$IPAD_FL_DIR"
+        mkdir -p "$IPAD_FL_DIR"
+        for f in "$APPSTORE_IPAD_DIR"/*.png; do
+            [ -f "$f" ] || continue
+            cp "$f" "$IPAD_FL_DIR/"
+        done
+        info "Prepared $(ls "$IPAD_FL_DIR"/*.png 2>/dev/null | wc -l | tr -d ' ') iPad screenshots for upload"
+    fi
+
+    # Run fastlane deliver (screenshots only, no binary)
+    info "Uploading screenshots to App Store Connect..."
+    cd "$PROJECT_ROOT"
+    fastlane deliver \
+        --skip_binary_upload \
+        --skip_metadata \
+        --screenshots_path "fastlane/screenshots" \
+        --api_key_path "$API_KEY_FILE" \
+        --overwrite_screenshots \
+        --force \
+        2>&1 | tail -20
+
+    success "Screenshots uploaded to App Store Connect!"
+    echo ""
+    echo "  Check them at: https://appstoreconnect.apple.com"
+    echo ""
+else
+    echo ""
+    echo -e "${YELLOW}Tip:${RESET} To upload to App Store Connect, re-run with --upload"
+    echo "  $0 --skip-tests --skip-frames --upload"
+fi
