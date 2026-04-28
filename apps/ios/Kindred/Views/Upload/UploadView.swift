@@ -426,7 +426,7 @@ struct PhotoAssetCell: View {
     private func loadThumbnail() async {
         let manager = PHImageManager.default()
         let options = PHImageRequestOptions()
-        options.deliveryMode = .opportunistic
+        options.deliveryMode = .highQualityFormat
         options.isNetworkAccessAllowed = true
         options.resizeMode = .fast
 
