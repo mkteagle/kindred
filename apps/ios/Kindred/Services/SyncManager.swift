@@ -41,6 +41,15 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
 
         if autoSyncEnabled {
             PHPhotoLibrary.shared().register(self)
+            scheduleBackgroundSync()
+            // Start syncing immediately on launch — don't wait for background task interval
+            Task {
+                // Wait for auth state to be ready
+                try? await Task.sleep(for: .seconds(2))
+                if FlickrAuth.shared.isAuthenticated {
+                    await syncNewPhotos()
+                }
+            }
         }
     }
 
@@ -51,6 +60,8 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
         if enabled {
             PHPhotoLibrary.shared().register(self)
             scheduleBackgroundSync()
+            // Start syncing right away when user enables auto-backup
+            Task { await syncNewPhotos() }
         } else {
             PHPhotoLibrary.shared().unregisterChangeObserver(self)
             BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.backgroundTaskId)
