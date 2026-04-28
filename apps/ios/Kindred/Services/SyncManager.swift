@@ -44,11 +44,9 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
             scheduleBackgroundSync()
             // Start syncing immediately on launch — don't wait for background task interval
             Task {
-                // Wait for auth state to be ready
-                try? await Task.sleep(for: .seconds(2))
-                if FlickrAuth.shared.isAuthenticated {
-                    await syncNewPhotos()
-                }
+                // Brief delay to let session restore from keychain
+                try? await Task.sleep(for: .seconds(1))
+                await syncNewPhotos()
             }
         }
     }
@@ -120,8 +118,8 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
     @MainActor
     func syncNewPhotos() async {
         guard !isSyncing else { return }
-        guard FlickrAuth.shared.isAuthenticated else {
-            syncError = "Not connected to Flickr"
+        guard SessionManager.shared.isAuthenticated else {
+            syncError = "Not signed in"
             return
         }
 
