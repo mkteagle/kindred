@@ -19,6 +19,7 @@ __pycache__
 apps/ios/DerivedData/
 apps/ios/build/
 *.xcuserdata
+GoogleService-Info.plist
 
 # Secrets — NEVER commit
 *.p8
