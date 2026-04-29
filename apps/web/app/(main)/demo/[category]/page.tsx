@@ -113,8 +113,15 @@ function DemoClusterCard({ cluster, categoryId }: { cluster: DemoCluster; catego
               <img src={cluster.photos[1]} alt="" className="cover-photo" />
               <img src={cluster.avatar} alt="" className="cover-avatar-pip" />
             </>
+          ) : cluster.photos.length === 1 ? (
+            <>
+              <img src={cluster.photos[0]} alt="" className="cover-photo" />
+              <img src={cluster.avatar} alt="" className="cover-avatar-pip" />
+            </>
           ) : (
-            <img src={cluster.avatar} alt="" className="cover-photo" />
+            <div className="cover-avatar-only">
+              <img src={cluster.avatar} alt="" className="cover-avatar-small" />
+            </div>
           )}
           <span className="cover-badge">
             {fmt.format(cluster.photoCount)} photos

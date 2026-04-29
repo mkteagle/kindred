@@ -1,6 +1,7 @@
 import Foundation
 import Photos
 import UniformTypeIdentifiers
+import UIKit
 
 /// Handles uploading photos and videos via the Kindred backend proxy.
 /// The backend uses the household admin's Flickr OAuth credentials, so any
@@ -63,38 +64,60 @@ final class FlickrUploader: NSObject {
             return
         }
 
-        for (index, asset) in toUpload.enumerated() {
-            let mediaLabel = asset.mediaType == .video ? "Video" : "Photo"
-            currentAssetTitle = "\(mediaLabel) \(index + 1) of \(toUpload.count)"
-            currentProgress = 0
-
-            // Double-check in case another upload finished this one concurrently
-            if PhotoLibraryManager.shared.isUploaded(localIdentifier: asset.localIdentifier) {
-                uploadedCount += 1
-                totalProgress = Float(index + 1) / Float(toUpload.count)
-                continue
+        var bgTaskId: UIBackgroundTaskIdentifier = .invalid
+        bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "kindred.upload") {
+            UIApplication.shared.endBackgroundTask(bgTaskId)
+            bgTaskId = .invalid
+        }
+        defer {
+            if bgTaskId != .invalid {
+                UIApplication.shared.endBackgroundTask(bgTaskId)
             }
+        }
 
-            do {
-                print("[FlickrUploader] Loading asset data for \(index + 1)/\(toUpload.count)...")
-                let (data, filename, contentType) = try await getOriginalAssetData(asset)
-                print("[FlickrUploader] Got \(data.count) bytes, filename: \(filename), type: \(contentType)")
+        await withTaskGroup(of: Void.self) { group in
+            var inFlight = 0
+            var pending = toUpload.enumerated().makeIterator()
 
-                let title = asset.creationDate.map { formatDate($0) } ?? "\(mediaLabel) \(index + 1)"
-                print("[FlickrUploader] Uploading to backend...")
-                let photoId = try await uploadData(data, filename: filename, contentType: contentType, title: title)
-                print("[FlickrUploader] Upload success! photo_id: \(photoId)")
+            func addNext() {
+                guard let (index, asset) = pending.next() else { return }
+                inFlight += 1
+                let mediaLabel = asset.mediaType == .video ? "Video" : "Photo"
+                group.addTask {
+                    defer {
+                        Task { @MainActor in
+                            self.totalProgress = Float(index + 1) / Float(toUpload.count)
+                        }
+                    }
 
-                PhotoLibraryManager.shared.markAsUploaded(localIdentifier: asset.localIdentifier, flickrPhotoId: photoId)
-                await MainActor.run { uploadedCount += 1 }
-            } catch {
-                print("[FlickrUploader] ERROR uploading \(index + 1): \(error)")
-                await MainActor.run {
-                    lastError = "Failed to upload \(mediaLabel.lowercased()) \(index + 1): \(error.localizedDescription)"
+                    if PhotoLibraryManager.shared.isUploaded(localIdentifier: asset.localIdentifier) {
+                        await MainActor.run { self.uploadedCount += 1 }
+                        return
+                    }
+
+                    do {
+                        print("[FlickrUploader] Loading \(index + 1)/\(toUpload.count)...")
+                        let (data, filename, contentType) = try await self.getOriginalAssetData(asset)
+                        let title = asset.creationDate.map { self.formatDate($0) } ?? "\(mediaLabel) \(index + 1)"
+                        let photoId = try await self.uploadData(data, filename: filename, contentType: contentType, title: title)
+                        print("[FlickrUploader] Done \(index + 1), photo_id: \(photoId)")
+                        PhotoLibraryManager.shared.markAsUploaded(localIdentifier: asset.localIdentifier, flickrPhotoId: photoId)
+                        await MainActor.run { self.uploadedCount += 1 }
+                    } catch {
+                        print("[FlickrUploader] ERROR \(index + 1): \(error)")
+                        await MainActor.run {
+                            self.lastError = "Failed to upload \(mediaLabel.lowercased()) \(index + 1): \(error.localizedDescription)"
+                        }
+                    }
                 }
             }
 
-            totalProgress = Float(index + 1) / Float(toUpload.count)
+            for _ in 0..<min(3, toUpload.count) { addNext() }
+
+            for await _ in group {
+                inFlight -= 1
+                addNext()
+            }
         }
 
         isUploading = false

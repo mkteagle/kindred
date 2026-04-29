@@ -141,43 +141,71 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
             return
         }
 
-        // Upload in batches
-        for (index, asset) in toSync.enumerated() {
-            if Task.isCancelled { break }
-
-            // Skip if already uploaded (race condition guard)
-            if PhotoLibraryManager.shared.isUploaded(localIdentifier: asset.localIdentifier) {
-                syncedCount += 1
-                syncProgress = Float(index + 1) / Float(totalToSync)
-                continue
+        // Request background execution time so iOS doesn't suspend us mid-sync
+        var bgTaskId: UIBackgroundTaskIdentifier = .invalid
+        bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "kindred.sync") {
+            UIApplication.shared.endBackgroundTask(bgTaskId)
+            bgTaskId = .invalid
+        }
+        defer {
+            if bgTaskId != .invalid {
+                UIApplication.shared.endBackgroundTask(bgTaskId)
             }
+        }
 
-            do {
-                let (data, filename, contentType) = try await getAssetData(asset)
-                let title = asset.creationDate.map { formatDate($0) } ?? "Photo \(index + 1)"
-                let photoId = try await FlickrUploader.shared.uploadData(
-                    data, filename: filename, contentType: contentType, title: title
-                )
+        // Upload up to 3 assets concurrently
+        await withTaskGroup(of: Void.self) { group in
+            var inFlight = 0
+            var pending = toSync.enumerated().makeIterator()
 
-                // Mark as uploaded immediately — the photo is on Flickr
-                PhotoLibraryManager.shared.markAsUploaded(
-                    localIdentifier: asset.localIdentifier,
-                    flickrPhotoId: photoId
-                )
-                syncedCount += 1
+            func addNext() {
+                guard let (index, asset) = pending.next() else { return }
+                inFlight += 1
+                group.addTask {
+                    defer {
+                        Task { @MainActor in
+                            self.syncProgress = Float(index + 1) / Float(self.totalToSync)
+                        }
+                    }
 
-                // Process with backend for detection + clustering (non-blocking)
-                if asset.mediaType == .image {
-                    try? await APIClient.shared.processPhoto(photoId: photoId, url: nil)
+                    if PhotoLibraryManager.shared.isUploaded(localIdentifier: asset.localIdentifier) {
+                        await MainActor.run { self.syncedCount += 1 }
+                        return
+                    }
+
+                    do {
+                        let (data, filename, contentType) = try await self.getAssetData(asset)
+                        let title = asset.creationDate.map { self.formatDate($0) } ?? "Photo \(index + 1)"
+                        let photoId = try await FlickrUploader.shared.uploadData(
+                            data, filename: filename, contentType: contentType, title: title
+                        )
+                        // Mark uploaded before ML processing so a crash doesn't re-upload
+                        PhotoLibraryManager.shared.markAsUploaded(
+                            localIdentifier: asset.localIdentifier,
+                            flickrPhotoId: photoId
+                        )
+                        await MainActor.run { self.syncedCount += 1 }
+                        // Non-blocking ML pipeline
+                        if asset.mediaType == .image {
+                            try? await APIClient.shared.processPhoto(photoId: photoId, url: nil)
+                        }
+                    } catch {
+                        let mediaLabel = asset.mediaType == .video ? "video" : "photo"
+                        print("[SyncManager] Failed to sync \(mediaLabel) \(index + 1)/\(self.totalToSync): \(error.localizedDescription)")
+                        await MainActor.run {
+                            self.failedCount += 1
+                            self.syncError = "\(self.failedCount) item\(self.failedCount == 1 ? "" : "s") failed to upload"
+                        }
+                    }
                 }
-            } catch {
-                failedCount += 1
-                let mediaLabel = asset.mediaType == .video ? "video" : "photo"
-                print("[SyncManager] Failed to sync \(mediaLabel) \(index + 1)/\(totalToSync): \(error.localizedDescription)")
-                syncError = "\(failedCount) item\(failedCount == 1 ? "" : "s") failed to upload"
             }
 
-            syncProgress = Float(index + 1) / Float(totalToSync)
+            for _ in 0..<min(3, toSync.count) { addNext() }
+
+            for await _ in group {
+                inFlight -= 1
+                if !Task.isCancelled { addNext() }
+            }
         }
 
         lastSyncDate = Date()

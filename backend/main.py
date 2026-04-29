@@ -2594,11 +2594,6 @@ async def upload_photo(
     if ext not in (".mp4", ".mov"):
         background_tasks.add_task(_process_uploaded_photo, photo_id)
 
-    uploader_name = user.get("display_name") or user.get("username") or "A member"
-    create_notification("photo_uploaded", f"{uploader_name} uploaded a photo",
-        title or filename,
-        {"photo_id": photo_id, "uploader": user.get("username", "")})
-
     return {"photo_id": photo_id, "status": "ok"}
 
 
@@ -2621,42 +2616,42 @@ async def upload_photos_batch(
     if not creds:
         raise HTTPException(500, "Flickr OAuth not configured — ask your household admin to connect Flickr")
 
-    results = []
+    # Read all file data upfront (UploadFile streams can't be read concurrently)
+    file_items = []
     for i, photo_file in enumerate(photos):
         try:
             _validate_upload_file(photo_file)
             file_data = await photo_file.read()
             if len(file_data) > UPLOAD_MAX_SIZE:
-                results.append({"filename": photo_file.filename, "status": "error", "error": "File too large"})
-                continue
-            if len(file_data) == 0:
-                results.append({"filename": photo_file.filename, "status": "error", "error": "Empty file"})
-                continue
+                file_items.append({"filename": photo_file.filename or f"file_{i}", "error": "File too large"})
+            elif len(file_data) == 0:
+                file_items.append({"filename": photo_file.filename or f"file_{i}", "error": "Empty file"})
+            else:
+                filename = photo_file.filename or f"upload_{i}.jpg"
+                file_items.append({"filename": filename, "data": file_data, "title": title or os.path.splitext(filename)[0]})
+        except HTTPException as e:
+            file_items.append({"filename": photo_file.filename or f"file_{i}", "error": e.detail})
+        except Exception as e:
+            file_items.append({"filename": photo_file.filename or f"file_{i}", "error": str(e)})
 
-            filename = photo_file.filename or f"upload_{i}.jpg"
-            file_title = title or os.path.splitext(filename)[0]
-
-            photo_id = await _upload_to_flickr(file_data, filename, file_title, description, creds)
-
-            # Trigger async ML processing for images
-            ext = os.path.splitext(filename)[1].lower()
+    async def upload_one(item: dict) -> dict:
+        if "error" in item:
+            return {"filename": item["filename"], "status": "error", "error": item["error"]}
+        try:
+            photo_id = await _upload_to_flickr(item["data"], item["filename"], item["title"], description, creds)
+            ext = os.path.splitext(item["filename"])[1].lower()
             if ext not in (".mp4", ".mov"):
                 background_tasks.add_task(_process_uploaded_photo, photo_id)
-
-            results.append({"filename": filename, "photo_id": photo_id, "status": "ok"})
+            return {"filename": item["filename"], "photo_id": photo_id, "status": "ok"}
         except HTTPException as e:
-            results.append({"filename": photo_file.filename or f"file_{i}", "status": "error", "error": e.detail})
+            return {"filename": item["filename"], "status": "error", "error": e.detail}
         except Exception as e:
-            results.append({"filename": photo_file.filename or f"file_{i}", "status": "error", "error": str(e)})
+            return {"filename": item["filename"], "status": "error", "error": str(e)}
 
+    import asyncio
+    results = await asyncio.gather(*[upload_one(item) for item in file_items])
     ok_count = sum(1 for r in results if r["status"] == "ok")
-    uploader_name = user.get("display_name") or user.get("username") or "A member"
-    if ok_count > 0:
-        create_notification("photos_uploaded", f"{uploader_name} uploaded {ok_count} photo{'s' if ok_count != 1 else ''}",
-            f"{ok_count} of {len(photos)} uploaded successfully",
-            {"count": ok_count, "uploader": user.get("username", "")})
-
-    return {"results": results, "uploaded": ok_count, "failed": len(photos) - ok_count}
+    return {"results": list(results), "uploaded": ok_count, "failed": len(photos) - ok_count}
 
 
 async def _process_uploaded_photo(photo_id: str) -> None:
@@ -3329,11 +3324,6 @@ async def delete_flickr_photos(req: FlickrDeleteRequest, admin=Depends(require_a
                     failed.append({"photo_id": photo_id, "error": data.get("message", "Unknown error")})
             except Exception as e:
                 failed.append({"photo_id": photo_id, "error": str(e)})
-
-    if deleted:
-        create_notification("photos_deleted", f"{len(deleted)} photos deleted from Flickr",
-            f"{len(failed)} failed" if failed else "All successful",
-            {"deleted_count": len(deleted), "failed_count": len(failed)})
 
     return {"deleted": deleted, "failed": failed, "count": len(deleted)}
 
