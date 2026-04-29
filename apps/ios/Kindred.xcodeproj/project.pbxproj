@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		01FFC05E2AAB22D9C980AEFC /* FlickrUploader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CDA1E9F98FE735D3749D0C /* FlickrUploader.swift */; };
+		BB1A2C3D4E5F6A7B8C9D0E1F /* BackgroundUploadSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB9A8B7C6D5E4F3A2B1C0D9E /* BackgroundUploadSession.swift */; };
 		02D2166F11FF1B8CE074C8C3 /* ObjectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB482EA5F25D0C836C3D924A /* ObjectsView.swift */; };
 		051CBC370877331D2CBFB934 /* SyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42B787BDA6C935F8D2B42952 /* SyncManager.swift */; };
 		0823EAF5D3A56FC0FD2F0BE3 /* Kindred/DemoData/detail_Maya.json in Resources */ = {isa = PBXBuildFile; fileRef = 1243F97D0527B76A1EB3118A /* Kindred/DemoData/detail_Maya.json */; };
@@ -187,6 +188,7 @@
 		A031975B4CE78BD0CA40D18F /* Kindred/DemoData/Photos/family-van-1.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/family-van-1.jpg"; sourceTree = SOURCE_ROOT; };
 		A16B733FCCAB52104B2EA56F /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A8CDA1E9F98FE735D3749D0C /* FlickrUploader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlickrUploader.swift; sourceTree = "<group>"; };
+		BB9A8B7C6D5E4F3A2B1C0D9E /* BackgroundUploadSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundUploadSession.swift; sourceTree = "<group>"; };
 		AA35EF8D42D7E4E252753DE5 /* Kindred/DemoData/Photos/family-campfire-1.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Kindred/DemoData/Photos/family-campfire-1.jpg"; sourceTree = SOURCE_ROOT; };
 		AA414D430AEC0B4455CB57C5 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		AC69BCBAE00AEBBB66665D63 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -396,6 +398,7 @@
 				DE00000000000000000011 /* DemoDataProvider.swift */,
 				EAC1F337CB9BB5B39A0E999E /* FlickrAuth.swift */,
 				A8CDA1E9F98FE735D3749D0C /* FlickrUploader.swift */,
+				BB9A8B7C6D5E4F3A2B1C0D9E /* BackgroundUploadSession.swift */,
 				436E630D09BC6B267BF169AB /* KeychainHelper.swift */,
 				7509439126E8BDE1ED220CC6 /* OAuthHelper.swift */,
 				B4DB0BBF98D5FE45C7410D3A /* PhotoLibraryManager.swift */,
@@ -657,6 +660,7 @@
 				3D966BFB4DF21AE8E4968A57 /* ExploreViewModel.swift in Sources */,
 				30E69353AFBDD5C25A4CDB5F /* FlickrAuth.swift in Sources */,
 				01FFC05E2AAB22D9C980AEFC /* FlickrUploader.swift in Sources */,
+				BB1A2C3D4E5F6A7B8C9D0E1F /* BackgroundUploadSession.swift in Sources */,
 				3A78FA25FDF6D940174CBE17 /* FullScreenPhotoView.swift in Sources */,
 				F08E3C4F26C0AE62ACE7A89A /* KeychainHelper.swift in Sources */,
 				0CF8819540C63D0C35617BCD /* KindredApp.swift in Sources */,
