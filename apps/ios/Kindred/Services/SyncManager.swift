@@ -17,6 +17,7 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
     private(set) var totalToSync = 0
     private(set) var lastSyncDate: Date?
     private(set) var syncError: String?
+    private(set) var failedCount = 0
     private(set) var autoSyncEnabled = false
 
     private let lastSyncKey = "kindred_last_sync_date"
@@ -126,6 +127,7 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
         isSyncing = true
         syncError = nil
         syncedCount = 0
+        failedCount = 0
 
         // Fetch current library state
         await PhotoLibraryManager.shared.fetchPhotos()
@@ -157,18 +159,22 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
                     data, filename: filename, contentType: contentType, title: title
                 )
 
-                // Process with backend for detection + clustering
-                if asset.mediaType == .image {
-                    try await APIClient.shared.processPhoto(photoId: photoId, url: nil)
-                }
-
+                // Mark as uploaded immediately — the photo is on Flickr
                 PhotoLibraryManager.shared.markAsUploaded(
                     localIdentifier: asset.localIdentifier,
                     flickrPhotoId: photoId
                 )
                 syncedCount += 1
+
+                // Process with backend for detection + clustering (non-blocking)
+                if asset.mediaType == .image {
+                    try? await APIClient.shared.processPhoto(photoId: photoId, url: nil)
+                }
             } catch {
-                syncError = "Sync error on item \(index + 1): \(error.localizedDescription)"
+                failedCount += 1
+                let mediaLabel = asset.mediaType == .video ? "video" : "photo"
+                print("[SyncManager] Failed to sync \(mediaLabel) \(index + 1)/\(totalToSync): \(error.localizedDescription)")
+                syncError = "\(failedCount) item\(failedCount == 1 ? "" : "s") failed to upload"
             }
 
             syncProgress = Float(index + 1) / Float(totalToSync)

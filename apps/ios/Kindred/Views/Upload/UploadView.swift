@@ -155,9 +155,16 @@ struct UploadView: View {
                             .font(.kindredMeta)
                             .foregroundStyle(KindredTheme.pine)
                         Spacer()
-                        Text("\(syncManager.syncedCount)/\(syncManager.totalToSync)")
-                            .font(.kindredMeta)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 4) {
+                            Text("\(syncManager.syncedCount)/\(syncManager.totalToSync)")
+                                .font(.kindredMeta)
+                                .foregroundStyle(.secondary)
+                            if syncManager.failedCount > 0 {
+                                Text("· \(syncManager.failedCount) failed")
+                                    .font(.kindredMeta)
+                                    .foregroundStyle(.red)
+                            }
+                        }
                     }
                     ProgressView(value: syncManager.syncProgress)
                         .tint(KindredTheme.pine)
