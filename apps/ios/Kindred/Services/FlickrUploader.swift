@@ -26,14 +26,40 @@ final class FlickrUploader: NSObject {
 
     /// Upload raw file data via the Kindred backend, which proxies to Flickr
     /// using the household admin's credentials. Any member can upload.
-    func uploadData(_ data: Data, filename: String, contentType: String, title: String, description: String = "") async throws -> String {
-        let response = try await APIClient.shared.uploadPhoto(
-            data: data,
-            filename: filename,
-            title: title,
-            description: description
+    func uploadData(_ data: Data, filename: String, contentType: String, title: String, description: String = "", localIdentifier: String = "") async throws -> String {
+        let baseURL = await APIClient.shared.currentBaseURL()
+        guard let url = URL(string: "\(baseURL)/photos/upload") else {
+            throw URLError(.badURL)
+        }
+
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let token = await APIClient.shared.currentSessionToken() {
+            req.setValue(token, forHTTPHeaderField: "X-Session-Token")
+        }
+
+        var body = Data()
+        func field(_ name: String, _ value: String) {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+        field("title", title)
+        field("description", description)
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"photo\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(contentType)\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+
+        return try await BackgroundUploadSession.shared.upload(
+            request: req,
+            body: body,
+            localIdentifier: localIdentifier,
+            filename: filename
         )
-        return response.photo_id
     }
 
     // MARK: - Batch Upload from Photo Library
@@ -99,7 +125,7 @@ final class FlickrUploader: NSObject {
                         print("[FlickrUploader] Loading \(index + 1)/\(toUpload.count)...")
                         let (data, filename, contentType) = try await self.getOriginalAssetData(asset)
                         let title = asset.creationDate.map { self.formatDate($0) } ?? "\(mediaLabel) \(index + 1)"
-                        let photoId = try await self.uploadData(data, filename: filename, contentType: contentType, title: title)
+                        let photoId = try await self.uploadData(data, filename: filename, contentType: contentType, title: title, localIdentifier: asset.localIdentifier)
                         print("[FlickrUploader] Done \(index + 1), photo_id: \(photoId)")
                         PhotoLibraryManager.shared.markAsUploaded(localIdentifier: asset.localIdentifier, flickrPhotoId: photoId)
                         await MainActor.run { self.uploadedCount += 1 }

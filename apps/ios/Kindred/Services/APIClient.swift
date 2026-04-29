@@ -24,6 +24,9 @@ actor APIClient {
         self.sessionToken = token
     }
 
+    func currentSessionToken() -> String? { sessionToken }
+    func currentBaseURL() -> String { baseURL }
+
     /// Synchronously accessible base URL for constructing image proxy URLs
     nonisolated(unsafe) static var publicBaseURL: String = ""
 

@@ -1,7 +1,24 @@
 import SwiftUI
+import UIKit
+
+class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        if identifier == BackgroundUploadSession.sessionIdentifier {
+            BackgroundUploadSession.shared.backgroundCompletionHandler = completionHandler
+        } else {
+            completionHandler()
+        }
+    }
+}
 
 @main
 struct KindredApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
     init() {
         configureAppearance()
         Analytics.configure()

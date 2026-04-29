@@ -177,7 +177,8 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
                         let (data, filename, contentType) = try await self.getAssetData(asset)
                         let title = asset.creationDate.map { self.formatDate($0) } ?? "Photo \(index + 1)"
                         let photoId = try await FlickrUploader.shared.uploadData(
-                            data, filename: filename, contentType: contentType, title: title
+                            data, filename: filename, contentType: contentType, title: title,
+                            localIdentifier: asset.localIdentifier
                         )
                         // Mark uploaded before ML processing so a crash doesn't re-upload
                         PhotoLibraryManager.shared.markAsUploaded(
