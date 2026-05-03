@@ -19,6 +19,11 @@ final class PhotoLibraryManager {
     private var uploadedMap: [String: String] = [:]
     private let uploadedMapKey = "kindred_uploaded_photos"
 
+    // Serializes access to uploadedMap and notUploadedPhotos. markAsUploaded
+    // is called concurrently from background upload tasks and the URLSession
+    // delegate; without this, parallel removeAll calls crash with "Index out of range".
+    private let lock = NSLock()
+
     private init() {
         loadUploadedMap()
     }
@@ -56,14 +61,17 @@ final class PhotoLibraryManager {
 
         // Prune the uploaded map — remove entries for photos no longer on the device
         let currentIDs = Set(assets.map(\.localIdentifier))
-        let staleKeys = uploadedMap.keys.filter { !currentIDs.contains($0) }
-        if !staleKeys.isEmpty {
-            for key in staleKeys { uploadedMap.removeValue(forKey: key) }
-            saveUploadedMap()
+        let (mapKeys, newUploadedCount) = lock.withLock { () -> (Set<String>, Int) in
+            let staleKeys = uploadedMap.keys.filter { !currentIDs.contains($0) }
+            if !staleKeys.isEmpty {
+                for key in staleKeys { uploadedMap.removeValue(forKey: key) }
+                saveUploadedMap()
+            }
+            return (Set(uploadedMap.keys), uploadedMap.count)
         }
 
-        self.uploadedCount = uploadedMap.count
-        self.notUploadedPhotos = assets.filter { !uploadedMap.keys.contains($0.localIdentifier) }
+        self.uploadedCount = newUploadedCount
+        self.notUploadedPhotos = assets.filter { !mapKeys.contains($0.localIdentifier) }
 
         // Estimate storage savings for uploaded photos
         await estimateStorageSavings()
@@ -74,14 +82,23 @@ final class PhotoLibraryManager {
     // MARK: - Upload Tracking
 
     func markAsUploaded(localIdentifier: String, flickrPhotoId: String) {
+        lock.lock()
         uploadedMap[localIdentifier] = flickrPhotoId
         saveUploadedMap()
-        uploadedCount = uploadedMap.count
-        notUploadedPhotos.removeAll { $0.localIdentifier == localIdentifier }
+        let newCount = uploadedMap.count
+        lock.unlock()
+
+        // Mutate @Observable state on MainActor so SwiftUI observation is consistent.
+        Task { @MainActor in
+            self.uploadedCount = newCount
+            self.notUploadedPhotos.removeAll { $0.localIdentifier == localIdentifier }
+        }
     }
 
     func isUploaded(localIdentifier: String) -> Bool {
-        uploadedMap[localIdentifier] != nil
+        lock.lock()
+        defer { lock.unlock() }
+        return uploadedMap[localIdentifier] != nil
     }
 
     // MARK: - Delete Local Copies
@@ -103,7 +120,10 @@ final class PhotoLibraryManager {
     }
 
     func getUploadedAssets() -> [PHAsset] {
-        allPhotos.filter { uploadedMap.keys.contains($0.localIdentifier) }
+        lock.lock()
+        let mapKeys = Set(uploadedMap.keys)
+        lock.unlock()
+        return allPhotos.filter { mapKeys.contains($0.localIdentifier) }
     }
 
     // MARK: - Storage Estimation
