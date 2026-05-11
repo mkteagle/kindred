@@ -298,15 +298,19 @@ function VirtualizedGrid({
 }) {
   const parentRef = useRef<HTMLDivElement>(null);
 
-  // Calculate columns based on container width
+  // Calculate columns based on container width.
+  // Must match the CSS for .grid: minmax(220px, 1fr) + 20px gap.
+  // If this drifts from the CSS, JS slices N items per row but CSS fits
+  // N-1, and the Nth item wraps inside the row — leaving a "lonely" card.
+  const GRID_MIN = 220;
+  const GRID_GAP = 20;
   const [columns, setColumns] = useState(3);
   useEffect(() => {
     const el = parentRef.current;
     if (!el) return;
     const observer = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect.width || 900;
-      // Match the CSS grid: minmax(220px, 1fr) + 14px gap
-      setColumns(Math.max(1, Math.floor((width + 14) / (220 + 14))));
+      setColumns(Math.max(1, Math.floor((width + GRID_GAP) / (GRID_MIN + GRID_GAP))));
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -314,7 +318,7 @@ function VirtualizedGrid({
 
   const rowCount = Math.ceil(items.length / columns);
 
-  const ROW_GAP = 24;
+  const ROW_GAP = GRID_GAP;
   const virtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => typeof window !== "undefined" ? document.documentElement : null,
