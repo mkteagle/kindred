@@ -2607,6 +2607,9 @@ async def upload_photo(
     photo: UploadFile = File(...),
     title: str = Form(""),
     description: str = Form(""),
+    taken_at_unix: int | None = Form(None),
+    latitude: float | None = Form(None),
+    longitude: float | None = Form(None),
     skip_processing: bool = Query(False),
     privacy: str = Query("family"),
     album_id: str | None = Query(None),
@@ -2676,6 +2679,22 @@ async def upload_photo(
             except Exception as e:
                 print(f"[upload] tempfile cleanup failed for {candidate}: {e}")
 
+    # Restore original capture date from Google Takeout sidecar (EXIF is
+    # often stripped or wrong on Takeout exports). Failure non-fatal — the
+    # photo is on Flickr regardless, just dated as upload time.
+    if taken_at_unix:
+        try:
+            await _flickr_set_dates(photo_id, taken_at_unix, creds)
+        except Exception as e:
+            print(f"[upload] setDates failed for photo {photo_id}: {e}")
+
+    # Apply GPS coords from sidecar.
+    if latitude is not None and longitude is not None:
+        try:
+            await _flickr_set_location(photo_id, latitude, longitude, creds)
+        except Exception as e:
+            print(f"[upload] setLocation failed for photo {photo_id}: {e}")
+
     # Add to album if requested. Failure here doesn't roll back the upload —
     # the photo is on Flickr, the album link just didn't take.
     if album_id:
@@ -2690,6 +2709,34 @@ async def upload_photo(
         background_tasks.add_task(_process_uploaded_photo, photo_id)
 
     return {"photo_id": photo_id, "status": "ok", "album_id": album_id}
+
+
+@app.post("/photos/{photo_id}/metadata")
+async def update_photo_metadata(
+    photo_id: str,
+    taken_at_unix: int | None = Form(None),
+    latitude: float | None = Form(None),
+    longitude: float | None = Form(None),
+    user=Depends(get_current_user),
+):
+    """Apply metadata to an existing Flickr photo.
+
+    Used to retroactively fix photos uploaded before the sidecar-aware
+    upload path existed — desktop client walks its done queue and calls this
+    for each photo where a Google Takeout sidecar is now available.
+    """
+    creds = get_flickr_credentials()
+    if not creds:
+        raise HTTPException(500, "Flickr OAuth not configured")
+
+    applied = []
+    if taken_at_unix:
+        await _flickr_set_dates(photo_id, taken_at_unix, creds)
+        applied.append("date_taken")
+    if latitude is not None and longitude is not None:
+        await _flickr_set_location(photo_id, latitude, longitude, creds)
+        applied.append("location")
+    return {"photo_id": photo_id, "applied": applied}
 
 
 @app.post("/photos/upload-batch")
@@ -3470,6 +3517,68 @@ async def list_flickr_albums(user=Depends(get_current_user)):
                 break
             page += 1
     return {"albums": albums}
+
+
+async def _flickr_set_dates(photo_id: str, taken_at_unix: int, creds: dict) -> None:
+    """Set the 'date taken' on an existing Flickr photo.
+
+    Flickr extracts date taken from EXIF on upload, but Google Photos Takeout
+    often strips or mangles the EXIF dates — so we restore the real date from
+    the sidecar JSON after upload."""
+    import urllib.parse
+    from datetime import datetime, timezone
+
+    dt = datetime.fromtimestamp(taken_at_unix, tz=timezone.utc)
+    date_taken_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    flickr_url = "https://api.flickr.com/services/rest"
+    params = {
+        "method": "flickr.photos.setDates",
+        "photo_id": photo_id,
+        "date_taken": date_taken_str,
+        "date_taken_granularity": "0",  # 0 = exact second
+        "format": "json",
+        "nojsoncallback": "1",
+    }
+    oauth_params = _flickr_oauth_sign(flickr_url, params, creds, method="POST")
+    auth_header = "OAuth " + ", ".join(
+        f'{k}="{urllib.parse.quote(str(v), "")}"' for k, v in oauth_params.items()
+    )
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(flickr_url, data=params, headers={"Authorization": auth_header})
+    try:
+        data = resp.json()
+    except Exception:
+        data = {"stat": "fail"}
+    if data.get("stat") != "ok":
+        raise HTTPException(502, f"setDates failed for {photo_id}: {data.get('message', 'unknown')}")
+
+
+async def _flickr_set_location(photo_id: str, lat: float, lon: float, creds: dict) -> None:
+    """Set the geotag on an existing Flickr photo via flickr.photos.geo.setLocation."""
+    import urllib.parse
+
+    flickr_url = "https://api.flickr.com/services/rest"
+    params = {
+        "method": "flickr.photos.geo.setLocation",
+        "photo_id": photo_id,
+        "lat": f"{lat:.6f}",
+        "lon": f"{lon:.6f}",
+        "format": "json",
+        "nojsoncallback": "1",
+    }
+    oauth_params = _flickr_oauth_sign(flickr_url, params, creds, method="POST")
+    auth_header = "OAuth " + ", ".join(
+        f'{k}="{urllib.parse.quote(str(v), "")}"' for k, v in oauth_params.items()
+    )
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(flickr_url, data=params, headers={"Authorization": auth_header})
+    try:
+        data = resp.json()
+    except Exception:
+        data = {"stat": "fail"}
+    if data.get("stat") != "ok":
+        raise HTTPException(502, f"setLocation failed for {photo_id}: {data.get('message', 'unknown')}")
 
 
 async def _flickr_set_perms(
