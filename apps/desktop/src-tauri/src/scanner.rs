@@ -8,11 +8,15 @@ use walkdir::WalkDir;
 use crate::db::Db;
 use crate::error::{AppError, Result};
 
+// Everything Flickr accepts. Flickr converts BMP/TIFF/WebP/HEIC to JPEG
+// server-side, so they're fine to upload. RAW formats are NOT in this list —
+// Flickr rejects DNG/CR2/CR3/NEF/ARW etc.
 const SUPPORTED_EXTENSIONS: &[&str] = &[
-    "jpg", "jpeg", "heic", "heif", "png",
-    // Phase 2 (needs backend streaming + larger max size):
-    // "dng", "cr2", "cr3", "nef", "arw", "raf", "orf", "rw2", "tif", "tiff",
-    // "mp4", "mov",
+    // Images
+    "jpg", "jpeg", "png", "gif", "bmp", "tif", "tiff", "webp", "heic", "heif",
+    // Videos
+    "mp4", "mov", "m4v", "m4p", "avi", "wmv",
+    "mpeg", "mpg", "3gp", "m2ts", "ogg", "ogv",
 ];
 
 #[derive(Serialize, Clone, Debug)]

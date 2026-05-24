@@ -226,7 +226,8 @@ export function Dashboard({ onOpenSettings }: Props) {
         )}
         <p className="text-xs text-ink-500 mt-2">
           Uploads are <b>private</b> by default — not visible to family, friends, or public.
-          MVP supports JPEG, HEIC, PNG.
+          Supports JPEG, PNG, GIF, BMP, TIFF, WebP, HEIC, and videos (MP4, MOV, M4V, AVI, WMV, MPEG, 3GP, M2TS, OGG).
+          Max 1 GB per file.
         </p>
       </section>
 

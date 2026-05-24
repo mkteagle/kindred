@@ -129,9 +129,6 @@ impl KindredClient {
         path: &Path,
         album_id: Option<&str>,
     ) -> std::result::Result<UploadResponse, UploadError> {
-        let bytes = tokio::fs::read(path)
-            .await
-            .map_err(|e| UploadError::Network(format!("read file: {}", e)))?;
         let filename = path
             .file_name()
             .and_then(|n| n.to_str())
@@ -144,7 +141,18 @@ impl KindredClient {
             .to_string();
         let mime = mime_for(&filename);
 
-        let part = reqwest::multipart::Part::bytes(bytes)
+        // Stream the file so we don't buffer multi-GB videos into RAM.
+        let file = tokio::fs::File::open(path)
+            .await
+            .map_err(|e| UploadError::Network(format!("open file: {}", e)))?;
+        let size = file
+            .metadata()
+            .await
+            .map_err(|e| UploadError::Network(format!("file metadata: {}", e)))?
+            .len();
+        let stream = tokio_util::io::ReaderStream::new(file);
+        let body = reqwest::Body::wrap_stream(stream);
+        let part = reqwest::multipart::Part::stream_with_length(body, size)
             .file_name(filename)
             .mime_str(&mime)
             .map_err(|e| UploadError::BadResponse(e.to_string()))?;
@@ -209,14 +217,24 @@ fn urlencode(s: &str) -> String {
 fn mime_for(filename: &str) -> &'static str {
     let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
     match ext.as_str() {
+        // Images
         "jpg" | "jpeg" => "image/jpeg",
         "png" => "image/png",
-        "heic" | "heif" => "image/heic",
         "gif" => "image/gif",
-        "webp" => "image/webp",
+        "bmp" => "image/bmp",
         "tif" | "tiff" => "image/tiff",
-        "mp4" => "video/mp4",
+        "webp" => "image/webp",
+        "heic" | "heif" => "image/heic",
+        // Videos
+        "mp4" | "m4p" => "video/mp4",
         "mov" => "video/quicktime",
+        "m4v" => "video/x-m4v",
+        "avi" => "video/x-msvideo",
+        "wmv" => "video/x-ms-wmv",
+        "mpeg" | "mpg" => "video/mpeg",
+        "3gp" => "video/3gpp",
+        "m2ts" => "video/mp2t",
+        "ogg" | "ogv" => "video/ogg",
         _ => "application/octet-stream",
     }
 }

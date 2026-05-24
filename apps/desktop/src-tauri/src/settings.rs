@@ -66,8 +66,4 @@ impl SettingsStore {
         f(&mut s);
         self.persist(s)
     }
-
-    pub fn get_api_key(&self) -> Option<String> {
-        self.settings.read().unwrap().api_key.clone()
-    }
 }
