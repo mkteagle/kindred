@@ -2430,24 +2430,47 @@ def appears_with(cluster_id: str, limit: int = 15):
 
 # ── Photo Upload (proxy to Flickr via admin credentials) ────────────────────
 
-UPLOAD_MAX_SIZE = 50 * 1024 * 1024  # 50 MB
+UPLOAD_MAX_SIZE = 1024 * 1024 * 1024  # 1 GB (Flickr's per-video limit on Pro)
 UPLOAD_ALLOWED_TYPES = {
+    # Images
     "image/jpeg", "image/png", "image/gif", "image/heic", "image/heif",
-    "video/mp4", "video/quicktime",
+    "image/webp", "image/bmp", "image/tiff",
+    # Videos
+    "video/mp4", "video/quicktime", "video/x-m4v",
+    "video/x-msvideo", "video/x-ms-wmv",
+    "video/mpeg", "video/3gpp", "video/mp2t",
+    "video/ogg",
 }
 UPLOAD_ALLOWED_EXTENSIONS = {
-    ".jpg", ".jpeg", ".png", ".gif", ".heic", ".heif", ".mp4", ".mov",
+    # Images (Flickr converts BMP/TIFF/WebP/HEIC to JPEG server-side)
+    ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tif", ".tiff",
+    ".webp", ".heic", ".heif",
+    # Videos
+    ".mp4", ".mov", ".m4v", ".m4p", ".avi", ".wmv",
+    ".mpeg", ".mpg", ".3gp", ".m2ts", ".ogg", ".ogv",
 }
 
 def _content_type_for_filename(filename: str) -> str:
     ext = os.path.splitext(filename)[1].lower()
     mapping = {
+        # Images
         ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
         ".png": "image/png", ".gif": "image/gif",
         ".heic": "image/heic", ".heif": "image/heif",
+        ".webp": "image/webp", ".bmp": "image/bmp",
+        ".tif": "image/tiff", ".tiff": "image/tiff",
+        # Videos
         ".mp4": "video/mp4", ".mov": "video/quicktime",
+        ".m4v": "video/x-m4v", ".m4p": "video/mp4",
+        ".avi": "video/x-msvideo", ".wmv": "video/x-ms-wmv",
+        ".mpeg": "video/mpeg", ".mpg": "video/mpeg",
+        ".3gp": "video/3gpp", ".m2ts": "video/mp2t",
+        ".ogg": "video/ogg", ".ogv": "video/ogg",
     }
     return mapping.get(ext, "application/octet-stream")
+
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".m4p", ".avi", ".wmv",
+                    ".mpeg", ".mpg", ".3gp", ".m2ts", ".ogg", ".ogv"}
 
 def _validate_upload_file(file: UploadFile) -> None:
     """Validate an upload file's extension and content type."""
@@ -2467,41 +2490,48 @@ PRIVACY_FLAGS = {
 }
 
 async def _upload_to_flickr(
-    file_data: bytes,
+    file_path: str,
     filename: str,
     title: str,
     description: str,
     creds: dict,
     privacy: str = "family",
 ) -> str:
-    """Upload a single file to Flickr using the admin's OAuth credentials. Returns the Flickr photo ID."""
+    """Stream a single file from disk to Flickr using the admin's OAuth credentials.
+    Returns the Flickr photo ID. Caller is responsible for cleaning up file_path.
+    """
     import hmac
     import hashlib
     import time as _t
     import urllib.parse
 
-    # Convert HEIC/HEIF to JPEG — Flickr doesn't accept HEIC
     ext = os.path.splitext(filename)[1].lower()
+
+    # Convert HEIC/HEIF to JPEG — Flickr doesn't accept HEIC.
+    # Loads the image into memory for PIL conversion, then writes to a new
+    # JPEG file alongside the original. The original temp file is replaced.
     if ext in (".heic", ".heif"):
         try:
             from PIL import Image
-            import io
             try:
                 from pillow_heif import register_heif_opener
                 register_heif_opener()
             except ImportError:
                 pass
-            img = Image.open(io.BytesIO(file_data))
-            buf = io.BytesIO()
-            img.convert("RGB").save(buf, format="JPEG", quality=92)
-            file_data = buf.getvalue()
+            img = Image.open(file_path)
+            jpeg_path = file_path + ".jpg"
+            img.convert("RGB").save(jpeg_path, format="JPEG", quality=92)
+            try:
+                os.unlink(file_path)
+            except FileNotFoundError:
+                pass
+            file_path = jpeg_path
             filename = os.path.splitext(filename)[0] + ".jpg"
-            print(f"[upload] Converted HEIC to JPEG: {len(file_data)} bytes")
+            print(f"[upload] Converted HEIC to JPEG: {os.path.getsize(file_path)} bytes")
         except Exception as e:
             print(f"[upload] HEIC conversion failed: {e}, uploading as-is")
 
     upload_url = "https://up.flickr.com/services/upload/"
-
     is_public, is_friend, is_family = PRIVACY_FLAGS.get(privacy, PRIVACY_FLAGS["family"])
 
     # Parameters that go into the OAuth signature (everything EXCEPT the photo binary)
@@ -2539,30 +2569,20 @@ async def _upload_to_flickr(
         for k, v in oauth_params.items()
     )
 
-    # Build multipart body
-    boundary = f"Boundary-{uuid.uuid4().hex}"
     content_type = _content_type_for_filename(filename)
 
-    body = b""
-    for key, value in flickr_params.items():
-        body += f"--{boundary}\r\n".encode()
-        body += f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode()
-        body += f"{value}\r\n".encode()
-    body += f"--{boundary}\r\n".encode()
-    body += f'Content-Disposition: form-data; name="photo"; filename="{filename}"\r\n'.encode()
-    body += f"Content-Type: {content_type}\r\n\r\n".encode()
-    body += file_data
-    body += f"\r\n--{boundary}--\r\n".encode()
-
-    async with httpx.AsyncClient(timeout=300) as client:
-        resp = await client.post(
-            upload_url,
-            content=body,
-            headers={
-                "Authorization": auth_header,
-                "Content-Type": f"multipart/form-data; boundary={boundary}",
-            },
-        )
+    # Stream file to Flickr — httpx constructs the multipart body and reads
+    # the file in chunks, so a 1GB video doesn't get buffered into memory.
+    # Long timeout because video uploads from a home network can take a while.
+    with open(file_path, "rb") as f:
+        files = {"photo": (filename, f, content_type)}
+        async with httpx.AsyncClient(timeout=3600) as client:
+            resp = await client.post(
+                upload_url,
+                data=flickr_params,
+                files=files,
+                headers={"Authorization": auth_header},
+            )
 
     if resp.status_code not in range(200, 300):
         raise HTTPException(502, f"Flickr upload failed (HTTP {resp.status_code}): {resp.text[:500]}")
@@ -2572,7 +2592,6 @@ async def _upload_to_flickr(
     import re
     match = re.search(r"<photoid>(\d+)</photoid>", response_text)
     if not match:
-        # Check for error
         err_match = re.search(r'<err code="(\d+)" msg="([^"]*)"', response_text)
         if err_match:
             raise HTTPException(502, f"Flickr upload error {err_match.group(1)}: {err_match.group(2)}")
@@ -2603,19 +2622,13 @@ async def upload_photo(
     - `privacy` — one of: private, family (default), friends, friends_family, public
     - `album_id` — if set, photo is added to this Flickr photoset after upload
     """
+    import tempfile
+
     if privacy not in PRIVACY_FLAGS:
         raise HTTPException(400, f"Invalid privacy '{privacy}'. Must be one of: {', '.join(PRIVACY_FLAGS)}")
 
     _validate_upload_file(photo)
 
-    # Read file data and enforce size limit
-    file_data = await photo.read()
-    if len(file_data) > UPLOAD_MAX_SIZE:
-        raise HTTPException(413, f"File too large. Maximum size is {UPLOAD_MAX_SIZE // (1024*1024)}MB")
-    if len(file_data) == 0:
-        raise HTTPException(400, "Empty file")
-
-    # Get admin Flickr credentials
     creds = get_flickr_credentials()
     if not creds:
         raise HTTPException(500, "Flickr OAuth not configured — ask your household admin to connect Flickr")
@@ -2624,7 +2637,44 @@ async def upload_photo(
     if not title:
         title = os.path.splitext(filename)[0]
 
-    photo_id = await _upload_to_flickr(file_data, filename, title, description, creds, privacy=privacy)
+    # Spool the upload to a tempfile in chunks, enforcing the size limit as we go.
+    # This keeps memory bounded even for 1GB videos — UploadFile would otherwise
+    # buffer in a SpooledTemporaryFile but `.read()` returns the whole thing.
+    suffix = os.path.splitext(filename)[1]
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    tmp_path = tmp.name
+    try:
+        total = 0
+        CHUNK = 1024 * 1024  # 1 MB
+        while True:
+            chunk = await photo.read(CHUNK)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > UPLOAD_MAX_SIZE:
+                tmp.close()
+                raise HTTPException(
+                    413,
+                    f"File too large. Maximum size is {UPLOAD_MAX_SIZE // (1024*1024)}MB",
+                )
+            tmp.write(chunk)
+        tmp.close()
+        if total == 0:
+            raise HTTPException(400, "Empty file")
+
+        photo_id = await _upload_to_flickr(
+            tmp_path, filename, title, description, creds, privacy=privacy
+        )
+    finally:
+        # _upload_to_flickr may have replaced tmp_path with a .jpg sibling for
+        # HEIC; clean up whatever's left.
+        for candidate in (tmp_path, tmp_path + ".jpg"):
+            try:
+                os.unlink(candidate)
+            except FileNotFoundError:
+                pass
+            except Exception as e:
+                print(f"[upload] tempfile cleanup failed for {candidate}: {e}")
 
     # Add to album if requested. Failure here doesn't roll back the upload —
     # the photo is on Flickr, the album link just didn't take.
@@ -2636,7 +2686,7 @@ async def upload_photo(
 
     # Trigger async ML processing for images (not videos), unless caller opted out
     ext = os.path.splitext(filename)[1].lower()
-    if not skip_processing and ext not in (".mp4", ".mov"):
+    if not skip_processing and ext not in VIDEO_EXTENSIONS:
         background_tasks.add_task(_process_uploaded_photo, photo_id)
 
     return {"photo_id": photo_id, "status": "ok", "album_id": album_id}
