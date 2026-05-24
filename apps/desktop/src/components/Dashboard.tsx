@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, events, type Album, type ScanProgress, type ScanTriggerResponse, type StatusCounts, type UploadEvent } from "../lib/tauri";
+import { api, events, type Album, type FixMetadataResult, type ScanProgress, type ScanTriggerResponse, type SidecarRescanProgress, type StatusCounts, type UploadEvent } from "../lib/tauri";
 import { basename, formatBytes, formatDuration } from "../lib/format";
 import { FailureList } from "./FailureList";
 
@@ -27,6 +27,8 @@ export function Dashboard({ onOpenSettings }: Props) {
   const [rate, setRate] = useState<{ bps: number; eta: number }>({ bps: 0, eta: Infinity });
   const ratePoints = useRef<{ t: number; bytes: number }[]>([]);
   const [scanTrigger, setScanTrigger] = useState<{ state: "idle" | "running" | "done" | "error"; msg?: string }>({ state: "idle" });
+  const [sidecarRescan, setSidecarRescan] = useState<{ state: "idle" | "running" | "done" | "error"; progress?: SidecarRescanProgress; msg?: string }>({ state: "idle" });
+  const [fixMeta, setFixMeta] = useState<{ state: "idle" | "running" | "done" | "error"; result?: FixMetadataResult; msg?: string }>({ state: "idle" });
   const [albums, setAlbums] = useState<Album[] | null>(null);
   const [albumsLoading, setAlbumsLoading] = useState(false);
   const [albumsError, setAlbumsError] = useState<string | null>(null);
@@ -92,6 +94,12 @@ export function Dashboard({ onOpenSettings }: Props) {
       setScanState(p);
       setScanning(false);
     }));
+    unsubs.push(events.onSidecarRescanProgress((p) =>
+      setSidecarRescan((s) => ({ ...s, state: "running", progress: p })),
+    ));
+    unsubs.push(events.onSidecarRescanComplete((p) =>
+      setSidecarRescan({ state: "done", progress: p, msg: `Found ${p.found.toLocaleString()} sidecars across ${p.total.toLocaleString()} pending files.` }),
+    ));
     return () => {
       unsubs.forEach((p) => p.then((fn) => fn()));
     };
@@ -102,7 +110,7 @@ export function Dashboard({ onOpenSettings }: Props) {
     const path = await open({ directory: true, multiple: false });
     if (!path || typeof path !== "string") return;
     setScanning(true);
-    setScanState({ scanned: 0, queued: 0, skipped: 0, current_dir: path });
+    setScanState({ scanned: 0, queued: 0, skipped: 0, sidecars: 0, current_dir: path });
     try {
       await api.startScan(path, selectedAlbumId || null);
     } catch (e) {
@@ -152,6 +160,30 @@ export function Dashboard({ onOpenSettings }: Props) {
       });
     } catch (e) {
       setScanTrigger({ state: "error", msg: String(e) });
+    }
+  }
+
+  async function runSidecarRescan() {
+    setSidecarRescan({ state: "running" });
+    try {
+      await api.rescanSidecars();
+      // completion event will set state to "done"
+    } catch (e) {
+      setSidecarRescan({ state: "error", msg: String(e) });
+    }
+  }
+
+  async function runFixMetadata() {
+    setFixMeta({ state: "running" });
+    try {
+      const res = await api.fixExistingMetadata();
+      setFixMeta({
+        state: "done",
+        result: res,
+        msg: `Applied metadata to ${res.applied.toLocaleString()} of ${res.total.toLocaleString()} already-uploaded photos${res.failed > 0 ? ` (${res.failed} failed)` : ""}.`,
+      });
+    } catch (e) {
+      setFixMeta({ state: "error", msg: String(e) });
     }
   }
 
@@ -218,10 +250,11 @@ export function Dashboard({ onOpenSettings }: Props) {
           )}
         </div>
         {scanState && (
-          <div className="mt-3 text-sm text-ink-700 flex gap-4">
+          <div className="mt-3 text-sm text-ink-700 flex gap-4 flex-wrap">
             <span><b>{scanState.scanned.toLocaleString()}</b> files seen</span>
             <span><b>{scanState.queued.toLocaleString()}</b> queued</span>
             <span><b>{scanState.skipped.toLocaleString()}</b> skipped</span>
+            <span><b>{scanState.sidecars.toLocaleString()}</b> with sidecars</span>
           </div>
         )}
         <p className="text-xs text-ink-500 mt-2">
@@ -283,6 +316,56 @@ export function Dashboard({ onOpenSettings }: Props) {
                 <code className="truncate text-ink-700">{basename(f.path)}</code>
               </div>
             ))}
+          </div>
+        )}
+      </section>
+
+      <section className="card">
+        <h2 className="card-title">Google Photos Takeout sidecars</h2>
+        <p className="text-xs text-ink-500 mt-1">
+          Each photo from Google Takeout has a sibling <code>.supplemental-metadata.json</code> with
+          the original capture date, GPS, and caption. The scanner pairs them automatically. Use
+          these tools if you scanned before sidecar support was added, or to fix already-uploaded
+          photos that went up without their original dates.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            onClick={runSidecarRescan}
+            disabled={sidecarRescan.state === "running"}
+            className="btn-secondary"
+          >
+            {sidecarRescan.state === "running"
+              ? sidecarRescan.progress
+                ? `Scanning ${sidecarRescan.progress.checked.toLocaleString()}/${sidecarRescan.progress.total.toLocaleString()}…`
+                : "Scanning…"
+              : "Rescan sidecars on pending queue"}
+          </button>
+          <button
+            onClick={runFixMetadata}
+            disabled={fixMeta.state === "running" || counts.done === 0}
+            className="btn-secondary"
+          >
+            {fixMeta.state === "running" ? "Applying…" : "Fix dates on already-uploaded photos"}
+          </button>
+        </div>
+        {sidecarRescan.state === "done" && sidecarRescan.msg && (
+          <div className="mt-3 rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm text-emerald-800">
+            {sidecarRescan.msg}
+          </div>
+        )}
+        {sidecarRescan.state === "error" && (
+          <div className="mt-3 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800">
+            {sidecarRescan.msg}
+          </div>
+        )}
+        {fixMeta.state === "done" && fixMeta.msg && (
+          <div className="mt-3 rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm text-emerald-800">
+            {fixMeta.msg}
+          </div>
+        )}
+        {fixMeta.state === "error" && (
+          <div className="mt-3 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800">
+            {fixMeta.msg}
           </div>
         )}
       </section>

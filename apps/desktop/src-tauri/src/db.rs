@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS files (
     status TEXT NOT NULL DEFAULT 'pending',
     flickr_photo_id TEXT,
     target_album_id TEXT,
+    sidecar_path TEXT,
     error TEXT,
     attempts INTEGER NOT NULL DEFAULT 0,
     last_attempt_at INTEGER,
@@ -31,6 +32,7 @@ CREATE INDEX IF NOT EXISTS idx_files_source_root ON files(source_root);
 // SQLITE_ERROR for duplicate columns and there is no IF NOT EXISTS for ADD COLUMN.
 const MIGRATIONS: &[&str] = &[
     "ALTER TABLE files ADD COLUMN target_album_id TEXT",
+    "ALTER TABLE files ADD COLUMN sidecar_path TEXT",
 ];
 
 pub struct Db {
@@ -43,6 +45,7 @@ pub struct PendingFile {
     pub path: String,
     pub size_bytes: i64,
     pub target_album_id: Option<String>,
+    pub sidecar_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -89,12 +92,14 @@ impl Db {
         size: i64,
         mtime_ms: i64,
         target_album_id: Option<&str>,
+        sidecar_path: Option<&str>,
     ) -> Result<bool> {
         let conn = self.conn.lock().unwrap();
         let changed = conn.execute(
-            "INSERT OR IGNORE INTO files (source_root, path, size_bytes, mtime_ms, target_album_id)
-             VALUES (?, ?, ?, ?, ?)",
-            params![source_root, path, size, mtime_ms, target_album_id],
+            "INSERT OR IGNORE INTO files
+             (source_root, path, size_bytes, mtime_ms, target_album_id, sidecar_path)
+             VALUES (?, ?, ?, ?, ?, ?)",
+            params![source_root, path, size, mtime_ms, target_album_id, sidecar_path],
         )?;
         Ok(changed > 0)
     }
@@ -107,7 +112,7 @@ impl Db {
                  attempts=attempts+1,
                  last_attempt_at=unixepoch()
              WHERE id = (SELECT id FROM files WHERE status='pending' ORDER BY id LIMIT 1)
-             RETURNING id, path, size_bytes, target_album_id",
+             RETURNING id, path, size_bytes, target_album_id, sidecar_path",
         )?;
         let res = stmt.query_row([], |row| {
             Ok(PendingFile {
@@ -115,6 +120,7 @@ impl Db {
                 path: row.get(1)?,
                 size_bytes: row.get(2)?,
                 target_album_id: row.get(3)?,
+                sidecar_path: row.get(4)?,
             })
         });
         match res {
@@ -122,6 +128,48 @@ impl Db {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e.into()),
         }
+    }
+
+    /// Backfill sidecar_path for existing rows where we missed it on first scan.
+    /// Returns the number of rows updated. Used by the "rescan sidecars for
+    /// existing queue" command so users don't have to re-scan their whole drive
+    /// just to pick up sidecars after this feature was added.
+    pub fn set_sidecar(&self, id: i64, sidecar_path: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE files SET sidecar_path=? WHERE id=?",
+            params![sidecar_path, id],
+        )?;
+        Ok(())
+    }
+
+    /// Iterate all rows currently missing a sidecar_path. Used by the sidecar
+    /// backfill scan so we don't have to walk the whole drive again.
+    pub fn paths_missing_sidecar(&self) -> Result<Vec<(i64, String)>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, path FROM files WHERE sidecar_path IS NULL"
+        )?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Into::into)
+    }
+
+    /// Done rows that have a sidecar but no record of metadata being applied.
+    /// Used by the "fix recent uploads" command — those photos went to Flickr
+    /// without taken_at/geo since sidecar support didn't exist yet.
+    pub fn done_with_sidecar(&self) -> Result<Vec<(String, String)>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT flickr_photo_id, sidecar_path
+             FROM files
+             WHERE status='done'
+               AND flickr_photo_id IS NOT NULL
+               AND sidecar_path IS NOT NULL"
+        )?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Into::into)
     }
 
     pub fn mark_done(&self, id: i64, flickr_photo_id: &str) -> Result<()> {

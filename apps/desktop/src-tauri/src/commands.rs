@@ -89,6 +89,49 @@ pub async fn start_scan(
 }
 
 #[tauri::command]
+pub async fn rescan_sidecars(app: AppHandle, state: State<'_, AppState>) -> Result<usize> {
+    let db = state.db.clone();
+    scanner::rescan_sidecars(app, db).await
+}
+
+#[tauri::command]
+pub async fn fix_existing_metadata(state: State<'_, AppState>) -> Result<FixMetadataResult> {
+    let client = Arc::new(build_client(&state)?);
+    let db = state.db.clone();
+    let rows = db.done_with_sidecar()?;
+    let total = rows.len();
+    let mut applied = 0usize;
+    let mut failed = 0usize;
+    for (photo_id, sidecar_path) in rows {
+        let meta = crate::sidecar::parse_sidecar(std::path::Path::new(&sidecar_path));
+        let Some(meta) = meta else { continue };
+        if meta.is_empty() {
+            continue;
+        }
+        match client
+            .apply_metadata(&photo_id, meta.taken_at_unix, meta.latitude, meta.longitude)
+            .await
+        {
+            Ok(()) => applied += 1,
+            Err(e) => {
+                tracing::warn!("apply_metadata failed for {}: {}", photo_id, e);
+                failed += 1;
+            }
+        }
+        // gentle pacing to stay well under Flickr's per-key rate limit
+        tokio::time::sleep(std::time::Duration::from_millis(75)).await;
+    }
+    Ok(FixMetadataResult { total, applied, failed })
+}
+
+#[derive(serde::Serialize)]
+pub struct FixMetadataResult {
+    pub total: usize,
+    pub applied: usize,
+    pub failed: usize,
+}
+
+#[tauri::command]
 pub async fn list_albums(state: State<'_, AppState>) -> Result<Vec<Album>> {
     let client = build_client(&state)?;
     client.list_albums().await

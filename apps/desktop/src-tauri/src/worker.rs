@@ -115,7 +115,18 @@ async fn upload_one(
     );
 
     let path = std::path::PathBuf::from(&pending.path);
-    match client.upload_file(&path, pending.target_album_id.as_deref()).await {
+
+    // Read + parse the sidecar (Google Takeout JSON) if we stored one for this
+    // file at scan time. Done on the upload thread so a single re-scan can
+    // pick up new sidecars without needing to re-queue everything.
+    let meta = pending
+        .sidecar_path
+        .as_deref()
+        .map(std::path::PathBuf::from)
+        .and_then(|p| crate::sidecar::parse_sidecar(&p))
+        .filter(|m| !m.is_empty());
+
+    match client.upload_file(&path, pending.target_album_id.as_deref(), meta.as_ref()).await {
         Ok(resp) => {
             let _ = db.mark_done(pending.id, &resp.photo_id);
             state

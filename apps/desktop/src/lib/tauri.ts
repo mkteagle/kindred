@@ -31,7 +31,20 @@ export type ScanProgress = {
   scanned: number;
   queued: number;
   skipped: number;
+  sidecars: number;
   current_dir: string;
+};
+
+export type SidecarRescanProgress = {
+  checked: number;
+  total: number;
+  found: number;
+};
+
+export type FixMetadataResult = {
+  total: number;
+  applied: number;
+  failed: number;
 };
 
 export type UploadEvent = {
@@ -64,6 +77,8 @@ export const api = {
 
   startScan: (path: string, albumId: string | null) =>
     invoke<number>("start_scan", { path, albumId }),
+  rescanSidecars: () => invoke<number>("rescan_sidecars"),
+  fixExistingMetadata: () => invoke<FixMetadataResult>("fix_existing_metadata"),
   listAlbums: () => invoke<Album[]>("list_albums"),
   getStatus: () => invoke<StatusCounts>("get_status"),
 
@@ -87,4 +102,8 @@ export const events = {
     listen<unknown>("upload-started", () => cb()),
   onUploadStopped: (cb: () => void): Promise<UnlistenFn> =>
     listen<unknown>("upload-stopped", () => cb()),
+  onSidecarRescanProgress: (cb: (p: SidecarRescanProgress) => void): Promise<UnlistenFn> =>
+    listen<SidecarRescanProgress>("sidecar-rescan-progress", (e) => cb(e.payload)),
+  onSidecarRescanComplete: (cb: (p: SidecarRescanProgress) => void): Promise<UnlistenFn> =>
+    listen<SidecarRescanProgress>("sidecar-rescan-complete", (e) => cb(e.payload)),
 };

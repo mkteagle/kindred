@@ -4,6 +4,7 @@ mod error;
 mod kindred;
 mod scanner;
 mod settings;
+mod sidecar;
 mod worker;
 
 use std::sync::Arc;
@@ -47,6 +48,8 @@ pub fn run() {
             commands::trigger_scan,
             commands::list_albums,
             commands::start_scan,
+            commands::rescan_sidecars,
+            commands::fix_existing_metadata,
             commands::get_status,
             commands::start_upload,
             commands::stop_upload,

@@ -104,6 +104,41 @@ impl KindredClient {
         Ok(res.json().await?)
     }
 
+    pub async fn apply_metadata(
+        &self,
+        photo_id: &str,
+        taken_at_unix: Option<i64>,
+        latitude: Option<f64>,
+        longitude: Option<f64>,
+    ) -> Result<()> {
+        let url = format!("{}/photos/{}/metadata", self.base_url, photo_id);
+        let mut form = reqwest::multipart::Form::new();
+        if let Some(ts) = taken_at_unix {
+            form = form.text("taken_at_unix", ts.to_string());
+        }
+        if let (Some(lat), Some(lon)) = (latitude, longitude) {
+            form = form
+                .text("latitude", lat.to_string())
+                .text("longitude", lon.to_string());
+        }
+        let res = self
+            .client
+            .post(&url)
+            .header("X-API-Key", &self.api_key)
+            .multipart(form)
+            .send()
+            .await?;
+        if !res.status().is_success() {
+            let status = res.status();
+            let body = res.text().await.unwrap_or_default();
+            return Err(crate::error::AppError::Other(format!(
+                "apply metadata failed for {}: HTTP {} — {}",
+                photo_id, status, body
+            )));
+        }
+        Ok(())
+    }
+
     pub async fn list_albums(&self) -> Result<Vec<Album>> {
         let url = format!("{}/flickr/albums", self.base_url);
         let res = self
@@ -128,6 +163,7 @@ impl KindredClient {
         &self,
         path: &Path,
         album_id: Option<&str>,
+        meta: Option<&crate::sidecar::ExtractedMeta>,
     ) -> std::result::Result<UploadResponse, UploadError> {
         let filename = path
             .file_name()
@@ -156,9 +192,27 @@ impl KindredClient {
             .file_name(filename)
             .mime_str(&mime)
             .map_err(|e| UploadError::BadResponse(e.to_string()))?;
-        let form = reqwest::multipart::Form::new()
+        let mut form = reqwest::multipart::Form::new()
             .part("photo", part)
             .text("title", title);
+
+        // Sidecar metadata: backend turns these into flickr.photos.setDates /
+        // flickr.photos.geo.setLocation calls after the upload itself succeeds.
+        if let Some(m) = meta {
+            if let Some(ts) = m.taken_at_unix {
+                form = form.text("taken_at_unix", ts.to_string());
+            }
+            if let Some(d) = m.description.as_deref() {
+                if !d.is_empty() {
+                    form = form.text("description", d.to_string());
+                }
+            }
+            if let (Some(lat), Some(lon)) = (m.latitude, m.longitude) {
+                form = form
+                    .text("latitude", lat.to_string())
+                    .text("longitude", lon.to_string());
+            }
+        }
 
         // skip_processing=true: the backend won't run per-photo ML inline.
         // Callers should hit /scan/auto once at the end to index in batch.
