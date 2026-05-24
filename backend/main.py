@@ -3472,6 +3472,142 @@ async def list_flickr_albums(user=Depends(get_current_user)):
     return {"albums": albums}
 
 
+async def _flickr_set_perms(
+    photo_id: str,
+    is_public: str,
+    is_friend: str,
+    is_family: str,
+    creds: dict,
+) -> None:
+    """Update visibility on an existing Flickr photo via flickr.photos.setPerms."""
+    import urllib.parse
+
+    flickr_url = "https://api.flickr.com/services/rest"
+    params = {
+        "method": "flickr.photos.setPerms",
+        "photo_id": photo_id,
+        "is_public": is_public,
+        "is_friend": is_friend,
+        "is_family": is_family,
+        # perm_comment / perm_addmeta are required: 1 = friends and family only
+        "perm_comment": "1",
+        "perm_addmeta": "1",
+        "format": "json",
+        "nojsoncallback": "1",
+    }
+    oauth_params = _flickr_oauth_sign(flickr_url, params, creds, method="POST")
+    auth_header = "OAuth " + ", ".join(
+        f'{k}="{urllib.parse.quote(str(v), "")}"' for k, v in oauth_params.items()
+    )
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(flickr_url, data=params, headers={"Authorization": auth_header})
+    try:
+        data = resp.json()
+    except Exception:
+        data = {"stat": "fail", "message": resp.text[:200] if hasattr(resp, "text") else "non-json response"}
+    if data.get("stat") != "ok":
+        raise HTTPException(502, f"setPerms failed: {data.get('message', 'unknown')}")
+
+
+async def _list_recent_flickr_photos(min_upload_date: int, creds: dict) -> list[dict]:
+    """List photos uploaded after the given Unix timestamp via flickr.people.getPhotos."""
+    import urllib.parse
+
+    flickr_url = "https://api.flickr.com/services/rest"
+    out: list[dict] = []
+    page = 1
+    async with httpx.AsyncClient(timeout=30) as client:
+        while True:
+            params = {
+                "method": "flickr.people.getPhotos",
+                "user_id": creds["user_id"],
+                "min_upload_date": str(min_upload_date),
+                "per_page": "500",
+                "page": str(page),
+                "extras": "date_upload",
+                "format": "json",
+                "nojsoncallback": "1",
+            }
+            signed = _flickr_oauth_sign(flickr_url, params, creds)
+            auth_header = "OAuth " + ", ".join(
+                f'{k}="{urllib.parse.quote(str(v), "")}"' for k, v in signed.items()
+            )
+            qs = urllib.parse.urlencode(params)
+            resp = await client.get(f"{flickr_url}?{qs}", headers={"Authorization": auth_header})
+            data = resp.json()
+            if data.get("stat") != "ok":
+                raise HTTPException(502, f"Flickr listing error: {data.get('message', 'unknown')}")
+            photos = data.get("photos", {})
+            for p in photos.get("photo", []):
+                out.append({"id": p["id"], "title": p.get("title", "")})
+            if page >= int(photos.get("pages", 1)):
+                break
+            page += 1
+    return out
+
+
+@app.post("/photos/set-privacy")
+async def bulk_set_privacy(
+    privacy: str = Query("private"),
+    since_hours: int = Query(24, ge=1, le=720),
+    dry_run: bool = Query(False),
+    admin=Depends(require_admin),
+):
+    """Bulk-update privacy on photos uploaded in the last N hours.
+
+    Useful as a cleanup after a bulk run that landed with the wrong visibility
+    (e.g. uploads went up before the backend understood ?privacy=private).
+
+    Admin-only. Query params:
+    - `privacy` — target visibility (private, family, friends, friends_family, public)
+    - `since_hours` — only photos uploaded within this window (1–720)
+    - `dry_run=true` — return the count without making changes
+    """
+    import asyncio
+    import time as _t
+
+    if privacy not in PRIVACY_FLAGS:
+        raise HTTPException(400, f"Invalid privacy '{privacy}'. Must be one of: {', '.join(PRIVACY_FLAGS)}")
+
+    creds = get_flickr_credentials()
+    if not creds:
+        raise HTTPException(500, "Flickr OAuth not configured")
+
+    min_upload_date = int(_t.time()) - (since_hours * 3600)
+    photos = await _list_recent_flickr_photos(min_upload_date, creds)
+
+    if dry_run:
+        return {
+            "matched": len(photos),
+            "updated": 0,
+            "failed": [],
+            "dry_run": True,
+            "privacy": privacy,
+            "since_hours": since_hours,
+        }
+
+    is_public, is_friend, is_family = PRIVACY_FLAGS[privacy]
+    updated = 0
+    failed: list[dict] = []
+    for p in photos:
+        try:
+            await _flickr_set_perms(p["id"], is_public, is_friend, is_family, creds)
+            updated += 1
+            # gentle rate limiting — Flickr's per-key limit is 3600/hr
+            await asyncio.sleep(0.05)
+        except Exception as e:
+            failed.append({"photo_id": p["id"], "error": str(e)})
+
+    return {
+        "matched": len(photos),
+        "updated": updated,
+        "failed": failed,
+        "dry_run": False,
+        "privacy": privacy,
+        "since_hours": since_hours,
+    }
+
+
 async def _add_photo_to_album(photo_id: str, album_id: str, creds: dict) -> None:
     """Add a single photo to a Flickr album (photoset)."""
     import urllib.parse
