@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type SettingsView } from "../lib/tauri";
+import { Alert, KindredMark } from "./Primitives";
 
 type Props = {
   initial: SettingsView;
@@ -9,6 +10,7 @@ type Props = {
 export function Onboarding({ initial, onSaved }: Props) {
   const [baseUrl, setBaseUrl] = useState(initial.base_url ?? "");
   const [apiKey, setApiKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
   const [concurrency, setConcurrency] = useState(initial.concurrency);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -19,8 +21,6 @@ export function Onboarding({ initial, onSaved }: Props) {
     setBaseUrl(initial.base_url ?? "");
     setConcurrency(initial.concurrency);
   }, [initial]);
-
-  const canTest = baseUrl.trim().length > 0 && (apiKey.trim().length > 0 || initial.api_key_set);
 
   async function save(advance: boolean) {
     setSaving(true);
@@ -44,19 +44,13 @@ export function Onboarding({ initial, onSaved }: Props) {
     setTestResult(null);
     setError(null);
     try {
-      const payload = {
+      await api.setSettings({
         baseUrl: baseUrl.trim(),
         ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
-      };
-      console.log("[test] setSettings payload:", payload);
-      await api.setSettings(payload);
-      const current = await api.getSettings();
-      console.log("[test] settings after save:", current);
+      });
       const ok = await api.testConnection();
-      console.log("[test] testConnection result:", ok);
       setTestResult(ok ? "ok" : "fail");
     } catch (e) {
-      console.error("[test] error:", e);
       setTestResult("fail");
       setError(String(e));
     } finally {
@@ -65,21 +59,76 @@ export function Onboarding({ initial, onSaved }: Props) {
   }
 
   return (
-    <div className="min-h-full flex items-center justify-center p-8">
-      <div className="w-full max-w-md space-y-6">
-        <header>
-          <h1 className="text-2xl font-semibold">Kindred Uploader</h1>
-          <p className="text-ink-500 mt-1">
-            Connect to your Kindred backend to start uploading.
-          </p>
-        </header>
+    <div
+      className="min-h-full flex items-center justify-center"
+      style={{ background: "var(--color-paper)" }}
+    >
+      <div className="w-full max-w-[520px] px-8 py-10">
+        {/* App icon mark */}
+        <div className="flex justify-center mb-6">
+          <div
+            className="w-16 h-16 rounded-2xl flex items-center justify-center"
+            style={{
+              background: "linear-gradient(135deg, var(--color-ember) 0%, var(--color-gold) 100%)",
+              boxShadow: "0 12px 32px rgba(201, 85, 28, 0.28)",
+            }}
+          >
+            <KindredMark size={32} />
+          </div>
+        </div>
 
-        <div className="space-y-4">
-          <Field label="Backend URL">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="h-eyebrow mb-2" style={{ color: "var(--color-mist)" }}>
+            Step 1 · Connect to Kindred
+          </div>
+          <h1 className="h-display" style={{ fontSize: 28, lineHeight: 1.15 }}>
+            Tell the agent where home is.
+          </h1>
+          <p
+            className="mt-3 mx-auto"
+            style={{
+              fontSize: 13.5,
+              lineHeight: 1.55,
+              color: "var(--color-pine)",
+              maxWidth: 420,
+            }}
+          >
+            Paste your API key from{" "}
+            <code style={{ color: "var(--color-ember)", fontSize: 12 }}>
+              kindredphotos.app → Settings → API Keys
+            </code>
+            . The endpoint defaults to the hosted API.
+          </p>
+        </div>
+
+        {/* Form */}
+        <div className="space-y-5">
+          <Field
+            label="API endpoint"
+            action={
+              baseUrl !== "https://api.kindredphotos.app" && (
+                <button
+                  type="button"
+                  onClick={() => setBaseUrl("https://api.kindredphotos.app")}
+                  className="text-[11px]"
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontWeight: 600,
+                    color: "var(--color-ember)",
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Use default
+                </button>
+              )
+            }
+          >
             <input
               type="url"
               className="input"
-              placeholder="https://api.kindredphotos.app or http://localhost:8000"
+              placeholder="https://api.kindredphotos.app"
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
               autoFocus
@@ -87,17 +136,35 @@ export function Onboarding({ initial, onSaved }: Props) {
           </Field>
 
           <Field
-            label="API Key"
+            label="API key"
             hint={
               initial.api_key_set
-                ? "A key is saved. Leave blank to keep it, or enter a new one to replace it."
-                : "Create one in Kindred under Settings → API Keys (starts with knd_)"
+                ? "A key is saved. Leave blank to keep it, or enter a new one to replace."
+                : "Starts with knd_. Create one in Kindred under Settings → API Keys."
+            }
+            action={
+              apiKey.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowKey((v) => !v)}
+                  className="text-[11px]"
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontWeight: 600,
+                    color: "var(--color-ember)",
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {showKey ? "Hide" : "Show"}
+                </button>
+              )
             }
           >
             <input
-              type="password"
+              type={showKey ? "text" : "password"}
               className="input"
-              placeholder={initial.api_key_set ? "•••••••••••• (saved)" : "knd_..."}
+              placeholder={initial.api_key_set ? "•••••••••• (saved)" : "knd_live_..."}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
             />
@@ -108,47 +175,63 @@ export function Onboarding({ initial, onSaved }: Props) {
               type="number"
               min={1}
               max={10}
-              className="input w-24"
+              className="input"
+              style={{ width: 96 }}
               value={concurrency}
               onChange={(e) => setConcurrency(Number(e.target.value))}
             />
           </Field>
         </div>
 
-        {error && (
-          <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800">
-            {error}
-          </div>
-        )}
-
+        {/* Result strips */}
         {testResult === "ok" && (
-          <div className="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm text-emerald-800">
-            Connection successful.
+          <div className="mt-5">
+            <Alert tone="ok">Connection successful. Ready to back up.</Alert>
           </div>
         )}
-        {testResult === "fail" && (
-          <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
-            Could not reach the backend. Check the URL and your API key.
+        {testResult === "fail" && !error && (
+          <div className="mt-5">
+            <Alert tone="warn">Could not reach the backend. Check the URL and your key.</Alert>
+          </div>
+        )}
+        {error && (
+          <div className="mt-5">
+            <Alert tone="error">{error}</Alert>
           </div>
         )}
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={test}
-            disabled={!canTest || testing}
+        {/* Footer */}
+        <div className="mt-8 flex items-center justify-between">
+          <div
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 10,
+              fontWeight: 600,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              color: "var(--color-mist)",
+            }}
           >
-            {testing ? "Testing…" : "Test connection"}
-          </button>
-          <button
-            type="button"
-            className="btn-primary ml-auto"
-            onClick={() => save(true)}
-            disabled={!baseUrl.trim() || saving || (!apiKey.trim() && !initial.api_key_set)}
-          >
-            {saving ? "Saving…" : "Save and continue"}
-          </button>
+            API key stored in this app's data dir
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={test}
+              disabled={!baseUrl.trim() || (!apiKey.trim() && !initial.api_key_set) || testing}
+            >
+              {testing ? "Testing…" : "Test connection"}
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => save(true)}
+              disabled={!baseUrl.trim() || saving || (!apiKey.trim() && !initial.api_key_set)}
+            >
+              {saving ? "Saving…" : "Save and continue →"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -158,17 +241,40 @@ export function Onboarding({ initial, onSaved }: Props) {
 function Field({
   label,
   hint,
+  action,
   children,
 }: {
   label: string;
   hint?: string;
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <label className="block">
-      <span className="block text-sm font-medium text-ink-700 mb-1">{label}</span>
+      <div className="flex items-center justify-between mb-1.5">
+        <span
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+            color: "var(--color-mist)",
+          }}
+        >
+          {label}
+        </span>
+        {action}
+      </div>
       {children}
-      {hint && <span className="block text-xs text-ink-500 mt-1">{hint}</span>}
+      {hint && (
+        <div
+          className="mt-1.5"
+          style={{ fontSize: 11.5, color: "var(--color-mist)", lineHeight: 1.4 }}
+        >
+          {hint}
+        </div>
+      )}
     </label>
   );
 }

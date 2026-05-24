@@ -1,8 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, events, type Album, type FixMetadataResult, type ScanProgress, type ScanTriggerResponse, type SidecarRescanProgress, type StatusCounts, type UploadEvent } from "../lib/tauri";
+import {
+  api,
+  events,
+  type Album,
+  type FixMetadataResult,
+  type ScanProgress,
+  type ScanTriggerResponse,
+  type SidecarRescanProgress,
+  type StatusCounts,
+  type UploadEvent,
+} from "../lib/tauri";
 import { basename, formatBytes, formatDuration } from "../lib/format";
 import { FailureList } from "./FailureList";
+import { Alert, KindredMark, SectionHeader, StatCard, StatusPill } from "./Primitives";
 
 type Props = {
   onOpenSettings: () => void;
@@ -26,9 +37,20 @@ export function Dashboard({ onOpenSettings }: Props) {
   const [showFailures, setShowFailures] = useState(false);
   const [rate, setRate] = useState<{ bps: number; eta: number }>({ bps: 0, eta: Infinity });
   const ratePoints = useRef<{ t: number; bytes: number }[]>([]);
-  const [scanTrigger, setScanTrigger] = useState<{ state: "idle" | "running" | "done" | "error"; msg?: string }>({ state: "idle" });
-  const [sidecarRescan, setSidecarRescan] = useState<{ state: "idle" | "running" | "done" | "error"; progress?: SidecarRescanProgress; msg?: string }>({ state: "idle" });
-  const [fixMeta, setFixMeta] = useState<{ state: "idle" | "running" | "done" | "error"; result?: FixMetadataResult; msg?: string }>({ state: "idle" });
+  const [scanTrigger, setScanTrigger] = useState<{
+    state: "idle" | "running" | "done" | "error";
+    msg?: string;
+  }>({ state: "idle" });
+  const [sidecarRescan, setSidecarRescan] = useState<{
+    state: "idle" | "running" | "done" | "error";
+    progress?: SidecarRescanProgress;
+    msg?: string;
+  }>({ state: "idle" });
+  const [fixMeta, setFixMeta] = useState<{
+    state: "idle" | "running" | "done" | "error";
+    result?: FixMetadataResult;
+    msg?: string;
+  }>({ state: "idle" });
   const [albums, setAlbums] = useState<Album[] | null>(null);
   const [albumsLoading, setAlbumsLoading] = useState(false);
   const [albumsError, setAlbumsError] = useState<string | null>(null);
@@ -61,13 +83,18 @@ export function Dashboard({ onOpenSettings }: Props) {
         if (!alive) return;
         setCounts(c);
         setRunning(r);
-        updateRate(c.total_bytes_done, c.total_bytes_all - c.total_bytes_done, ratePoints, setRate);
-      } catch (e) {
-        // ignore transient errors
+        updateRate(
+          c.total_bytes_done,
+          c.total_bytes_all - c.total_bytes_done,
+          ratePoints,
+          setRate,
+        );
+      } catch (_e) {
+        // transient
       }
     };
     tick();
-    const i = setInterval(tick, 1000);
+    const i = setInterval(tick, 1500);
     return () => {
       alive = false;
       clearInterval(i);
@@ -76,30 +103,42 @@ export function Dashboard({ onOpenSettings }: Props) {
 
   useEffect(() => {
     const unsubs: Promise<() => void>[] = [];
-    unsubs.push(events.onUploadEvent((e) => {
-      setInFlight((prev) => {
-        if (e.kind === "start") {
-          return [...prev.filter((x) => x.file_id !== e.file_id), e];
-        }
-        return prev.filter((x) => x.file_id !== e.file_id);
-      });
-    }));
+    unsubs.push(
+      events.onUploadEvent((e) => {
+        setInFlight((prev) => {
+          if (e.kind === "start") return [...prev.filter((x) => x.file_id !== e.file_id), e];
+          return prev.filter((x) => x.file_id !== e.file_id);
+        });
+      }),
+    );
     unsubs.push(events.onUploadStarted(() => setRunning(true)));
-    unsubs.push(events.onUploadStopped(() => {
-      setRunning(false);
-      setInFlight([]);
-    }));
+    unsubs.push(
+      events.onUploadStopped(() => {
+        setRunning(false);
+        setInFlight([]);
+      }),
+    );
     unsubs.push(events.onScanProgress((p) => setScanState(p)));
-    unsubs.push(events.onScanComplete((p) => {
-      setScanState(p);
-      setScanning(false);
-    }));
-    unsubs.push(events.onSidecarRescanProgress((p) =>
-      setSidecarRescan((s) => ({ ...s, state: "running", progress: p })),
-    ));
-    unsubs.push(events.onSidecarRescanComplete((p) =>
-      setSidecarRescan({ state: "done", progress: p, msg: `Found ${p.found.toLocaleString()} sidecars across ${p.total.toLocaleString()} pending files.` }),
-    ));
+    unsubs.push(
+      events.onScanComplete((p) => {
+        setScanState(p);
+        setScanning(false);
+      }),
+    );
+    unsubs.push(
+      events.onSidecarRescanProgress((p) =>
+        setSidecarRescan((s) => ({ ...s, state: "running", progress: p })),
+      ),
+    );
+    unsubs.push(
+      events.onSidecarRescanComplete((p) =>
+        setSidecarRescan({
+          state: "done",
+          progress: p,
+          msg: `Found ${p.found.toLocaleString()} sidecars across ${p.total.toLocaleString()} pending files.`,
+        }),
+      ),
+    );
     return () => {
       unsubs.forEach((p) => p.then((fn) => fn()));
     };
@@ -137,7 +176,11 @@ export function Dashboard({ onOpenSettings }: Props) {
   }
 
   async function clearQueue() {
-    if (!confirm("Clear all queued files? Files already uploaded to Flickr stay there; this just resets the local queue.")) {
+    if (
+      !confirm(
+        "Clear all queued files? Files already uploaded to Flickr stay there; this just resets the local queue.",
+      )
+    ) {
       return;
     }
     try {
@@ -154,9 +197,10 @@ export function Dashboard({ onOpenSettings }: Props) {
       const res: ScanTriggerResponse = await api.triggerScan();
       setScanTrigger({
         state: "done",
-        msg: res.count > 0
-          ? `Indexing started for ${res.count.toLocaleString()} photos${res.job_id ? ` (job ${res.job_id.slice(0, 8)})` : ""}.`
-          : res.message || "Indexing started.",
+        msg:
+          res.count > 0
+            ? `Indexing started for ${res.count.toLocaleString()} photos${res.job_id ? ` (job ${res.job_id.slice(0, 8)})` : ""}.`
+            : res.message || "Indexing started.",
       });
     } catch (e) {
       setScanTrigger({ state: "error", msg: String(e) });
@@ -167,7 +211,6 @@ export function Dashboard({ onOpenSettings }: Props) {
     setSidecarRescan({ state: "running" });
     try {
       await api.rescanSidecars();
-      // completion event will set state to "done"
     } catch (e) {
       setSidecarRescan({ state: "error", msg: String(e) });
     }
@@ -188,255 +231,422 @@ export function Dashboard({ onOpenSettings }: Props) {
   }
 
   const total = counts.pending + counts.uploading + counts.done + counts.failed;
-  const doneBytes = counts.total_bytes_done;
-  const totalBytes = counts.total_bytes_all;
-  const pctBytes = totalBytes > 0 ? Math.min(100, (doneBytes / totalBytes) * 100) : 0;
+  const pctBytes =
+    counts.total_bytes_all > 0
+      ? Math.min(100, (counts.total_bytes_done / counts.total_bytes_all) * 100)
+      : 0;
+
+  const statusTone = running ? "ember" : counts.pending > 0 ? "muted" : "forest";
+  const statusLabel = running
+    ? "Uploading"
+    : counts.pending > 0
+      ? "Paused"
+      : counts.done > 0
+        ? "Up to date"
+        : "Ready";
 
   return (
-    <div className="min-h-full p-6 space-y-6 max-w-5xl mx-auto">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">Kindred Uploader</h1>
-          <p className="text-xs text-ink-500">Bulk-upload a folder of photos to Flickr via Kindred.</p>
+    <div className="min-h-full" style={{ background: "var(--color-paper)" }}>
+      {/* Titlebar */}
+      <header
+        className="sticky top-0 z-10 flex items-center justify-between px-5"
+        style={{
+          height: 56,
+          background: "linear-gradient(180deg, var(--color-card), var(--color-paper))",
+          borderBottom: "1px solid var(--line)",
+        }}
+      >
+        <div className="flex items-center gap-2.5">
+          <KindredMark size={18} />
+          <span
+            style={{
+              fontFamily: "var(--font-display)",
+              fontWeight: 700,
+              fontSize: 14.5,
+              color: "var(--color-ash)",
+              letterSpacing: "-0.005em",
+            }}
+          >
+            Kindred Backup
+          </span>
         </div>
-        <button onClick={onOpenSettings} className="btn-ghost">Settings</button>
+        <div className="flex items-center gap-3">
+          <StatusPill tone={statusTone} pulse={running}>
+            {statusLabel}
+          </StatusPill>
+          <button onClick={onOpenSettings} className="btn-ghost">
+            Settings
+          </button>
+        </div>
       </header>
 
-      {error && (
-        <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800">
-          {error}
-        </div>
-      )}
+      <div className="max-w-[1040px] mx-auto px-6 py-7 space-y-6">
+        {error && <Alert tone="error">{error}</Alert>}
 
-      <section className="card">
-        <h2 className="card-title">Source</h2>
+        {/* ── Hero status card ──────────────────────────────────── */}
+        <section className="hero-card p-6 relative">
+          <div className="hero-glow" />
+          <div className="relative">
+            <div className="flex items-start justify-between gap-6">
+              <div className="flex-1 min-w-0">
+                <div className="h-eyebrow">
+                  {running ? "Currently uploading" : counts.pending > 0 ? "Queue" : "All clear"}
+                </div>
+                <div
+                  className="mt-2"
+                  style={{
+                    fontFamily: "var(--font-display)",
+                    fontWeight: 700,
+                    fontSize: 26,
+                    letterSpacing: "-0.01em",
+                    color: "var(--color-ash)",
+                  }}
+                >
+                  {running ? (
+                    <>
+                      Uploading <b style={{ color: "var(--color-ember)" }}>{counts.done.toLocaleString()}</b>{" "}
+                      of {total.toLocaleString()}
+                    </>
+                  ) : counts.pending > 0 ? (
+                    <>
+                      <b style={{ color: "var(--color-ember)" }}>{counts.pending.toLocaleString()}</b> photos
+                      waiting to upload
+                    </>
+                  ) : counts.done > 0 ? (
+                    <>
+                      <b>{counts.done.toLocaleString()}</b> photos backed up
+                    </>
+                  ) : (
+                    "Pick a folder to begin"
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {!running ? (
+                  <button
+                    onClick={startUpload}
+                    disabled={counts.pending === 0}
+                    className="btn-primary"
+                    style={{ fontSize: 13 }}
+                  >
+                    {counts.pending > 0 ? "Start backing up →" : "Nothing queued"}
+                  </button>
+                ) : (
+                  <button onClick={stopUpload} className="btn-secondary">
+                    Stop after in-flight
+                  </button>
+                )}
+              </div>
+            </div>
 
-        <div className="mt-3 flex items-end gap-2 flex-wrap">
-          <label className="flex-1 min-w-[240px]">
-            <span className="block text-xs text-ink-500 mb-1">Add uploaded photos to album</span>
-            <select
-              className="input"
-              value={selectedAlbumId}
-              onChange={(e) => setSelectedAlbumId(e.target.value)}
-              disabled={albumsLoading}
-            >
-              <option value="">— No album (just upload) —</option>
-              {(albums ?? []).map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.title} ({a.photo_count.toLocaleString()})
-                </option>
-              ))}
-            </select>
-          </label>
-          <button onClick={refreshAlbums} disabled={albumsLoading} className="btn-ghost">
-            {albumsLoading ? "Refreshing…" : "Refresh"}
-          </button>
-        </div>
-        {albumsError && (
-          <p className="text-xs text-amber-700 mt-1">
-            Could not load albums: {albumsError}
-          </p>
-        )}
+            {/* Progress bar */}
+            {counts.total_bytes_all > 0 && (
+              <div className="mt-5">
+                <div
+                  className="flex justify-between mb-1.5"
+                  style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--color-mist)" }}
+                >
+                  <span>
+                    {formatBytes(counts.total_bytes_done)} of {formatBytes(counts.total_bytes_all)}
+                  </span>
+                  <span>
+                    {running
+                      ? `${formatBytes(rate.bps)}/s · ETA ${formatDuration(rate.eta)}`
+                      : `${pctBytes.toFixed(1)}% complete`}
+                  </span>
+                </div>
+                <div className="progress-track">
+                  <div className="progress-bar" style={{ width: `${pctBytes}%` }} />
+                </div>
+              </div>
+            )}
 
-        <div className="mt-3 flex items-center gap-2">
-          <button onClick={pickAndScan} disabled={scanning} className="btn-primary">
-            {scanning ? "Scanning…" : "Pick a folder and scan"}
-          </button>
+            {/* Stat strip */}
+            <div className="grid grid-cols-4 gap-3 mt-5">
+              <StatCard
+                label="Done"
+                value={counts.done.toLocaleString()}
+                tone="forest"
+                sub={counts.done > 0 ? `${formatBytes(counts.total_bytes_done)} uploaded` : undefined}
+              />
+              <StatCard label="Pending" value={counts.pending.toLocaleString()} tone="ash" />
+              <StatCard
+                label="In flight"
+                value={counts.uploading.toLocaleString()}
+                tone="ember"
+                sub={running ? "Live" : "Idle"}
+              />
+              <StatCard
+                label="Failed"
+                value={counts.failed.toLocaleString()}
+                tone={counts.failed > 0 ? "rosehip" : "muted"}
+              />
+            </div>
+
+            {/* In-flight list */}
+            {inFlight.length > 0 && (
+              <div className="mt-5">
+                <div className="h-eyebrow mb-2">In flight</div>
+                <div className="space-y-1.5">
+                  {inFlight.slice(0, 6).map((f) => (
+                    <div
+                      key={f.file_id}
+                      className="flex items-center gap-2"
+                      style={{ fontFamily: "var(--font-mono)", fontSize: 11.5 }}
+                    >
+                      <span
+                        className="inline-block w-1.5 h-1.5 rounded-full pulse-dot-ember"
+                        style={{ background: "var(--color-ember)" }}
+                      />
+                      <code
+                        className="truncate"
+                        style={{ color: "var(--color-pine)" }}
+                        title={f.path}
+                      >
+                        {basename(f.path)}
+                      </code>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* ── Source ────────────────────────────────────────────── */}
+        <section className="card-pad space-y-4">
+          <SectionHeader
+            eyebrow="Source"
+            title="Pick a folder to scan"
+            action={
+              <button onClick={pickAndScan} disabled={scanning} className="btn-primary">
+                {scanning ? "Scanning…" : "Pick folder & scan"}
+              </button>
+            }
+          />
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block">
+                <span
+                  className="block mb-1.5"
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: "0.14em",
+                    textTransform: "uppercase",
+                    color: "var(--color-mist)",
+                  }}
+                >
+                  Add uploaded photos to album
+                </span>
+                <select
+                  className="input"
+                  value={selectedAlbumId}
+                  onChange={(e) => setSelectedAlbumId(e.target.value)}
+                  disabled={albumsLoading}
+                >
+                  <option value="">— No album —</option>
+                  {(albums ?? []).map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.title} ({a.photo_count.toLocaleString()})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {albumsError && (
+                <div
+                  className="mt-1.5"
+                  style={{ fontSize: 11, color: "var(--color-rosehip)" }}
+                >
+                  Could not load albums: {albumsError}
+                </div>
+              )}
+            </div>
+            <div className="flex items-end">
+              <button onClick={refreshAlbums} disabled={albumsLoading} className="btn-secondary">
+                {albumsLoading ? "Refreshing…" : "Refresh albums"}
+              </button>
+            </div>
+          </div>
+
           {scanState && (
-            <div className="text-xs text-ink-500 truncate flex-1">
-              {scanning ? "Scanning " : "Last scan: "}
-              <code className="text-ink-700">{scanState.current_dir}</code>
+            <div
+              className="grid grid-cols-4 gap-3 pt-3"
+              style={{ borderTop: "1px solid var(--line)" }}
+            >
+              <StatCard label="Seen" value={scanState.scanned.toLocaleString()} tone="muted" />
+              <StatCard label="Queued" value={scanState.queued.toLocaleString()} tone="ember" />
+              <StatCard label="Skipped" value={scanState.skipped.toLocaleString()} tone="muted" />
+              <StatCard
+                label="With sidecars"
+                value={scanState.sidecars.toLocaleString()}
+                tone={scanState.sidecars > 0 ? "forest" : "muted"}
+              />
             </div>
           )}
-        </div>
-        {scanState && (
-          <div className="mt-3 text-sm text-ink-700 flex gap-4 flex-wrap">
-            <span><b>{scanState.scanned.toLocaleString()}</b> files seen</span>
-            <span><b>{scanState.queued.toLocaleString()}</b> queued</span>
-            <span><b>{scanState.skipped.toLocaleString()}</b> skipped</span>
-            <span><b>{scanState.sidecars.toLocaleString()}</b> with sidecars</span>
-          </div>
-        )}
-        <p className="text-xs text-ink-500 mt-2">
-          Uploads are <b>private</b> by default — not visible to family, friends, or public.
-          Supports JPEG, PNG, GIF, BMP, TIFF, WebP, HEIC, and videos (MP4, MOV, M4V, AVI, WMV, MPEG, 3GP, M2TS, OGG).
-          Max 1 GB per file.
-        </p>
-      </section>
-
-      <section className="card">
-        <div className="flex items-center justify-between">
-          <h2 className="card-title">Queue</h2>
-          <div className="flex gap-2">
-            {!running ? (
-              <button
-                onClick={startUpload}
-                disabled={counts.pending === 0}
-                className="btn-primary"
-              >
-                Start upload
-              </button>
-            ) : (
-              <button onClick={stopUpload} className="btn-secondary">
-                Stop after in-flight
-              </button>
-            )}
-            <button onClick={clearQueue} className="btn-ghost">Clear</button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-4 gap-3 mt-4">
-          <Stat label="Done" value={counts.done.toLocaleString()} tone="ok" />
-          <Stat label="Pending" value={counts.pending.toLocaleString()} />
-          <Stat label="Uploading" value={counts.uploading.toLocaleString()} tone="active" />
-          <Stat label="Failed" value={counts.failed.toLocaleString()} tone={counts.failed > 0 ? "warn" : undefined} />
-        </div>
-
-        <div className="mt-4">
-          <div className="flex justify-between text-xs text-ink-500 mb-1">
-            <span>{formatBytes(doneBytes)} of {formatBytes(totalBytes)}</span>
-            <span>
-              {running ? `${formatBytes(rate.bps)}/s · ETA ${formatDuration(rate.eta)}` : `${total.toLocaleString()} files`}
-            </span>
-          </div>
-          <div className="h-2 bg-ink-200 rounded-full overflow-hidden">
+          {scanState && (
             <div
-              className="h-full bg-emerald-500 transition-all duration-500"
-              style={{ width: `${pctBytes}%` }}
-            />
-          </div>
-        </div>
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 11,
+                color: "var(--color-mist)",
+              }}
+            >
+              {scanning ? "Scanning " : "Last scan: "}
+              <code style={{ color: "var(--color-pine)" }}>{scanState.current_dir}</code>
+            </div>
+          )}
 
-        {inFlight.length > 0 && (
-          <div className="mt-4 space-y-1">
-            <div className="text-xs font-medium text-ink-500">In flight</div>
-            {inFlight.slice(0, 6).map((f) => (
-              <div key={f.file_id} className="text-xs flex items-center gap-2">
-                <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                <code className="truncate text-ink-700">{basename(f.path)}</code>
-              </div>
-            ))}
+          <div
+            style={{ fontSize: 11.5, color: "var(--color-mist)", lineHeight: 1.5 }}
+          >
+            Uploads are <b style={{ color: "var(--color-forest)" }}>private</b> — never visible to
+            family, friends, or public. Supports JPEG, PNG, GIF, BMP, TIFF, WebP, HEIC and most video
+            formats up to 1 GB.
           </div>
-        )}
-      </section>
+        </section>
 
-      <section className="card">
-        <h2 className="card-title">Google Photos Takeout sidecars</h2>
-        <p className="text-xs text-ink-500 mt-1">
-          Each photo from Google Takeout has a sibling <code>.supplemental-metadata.json</code> with
-          the original capture date, GPS, and caption. The scanner pairs them automatically. Use
-          these tools if you scanned before sidecar support was added, or to fix already-uploaded
-          photos that went up without their original dates.
-        </p>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button
-            onClick={runSidecarRescan}
-            disabled={sidecarRescan.state === "running"}
-            className="btn-secondary"
+        {/* ── Google Takeout tools ──────────────────────────────── */}
+        <section className="card-pad space-y-4">
+          <SectionHeader
+            eyebrow="Google Photos Takeout"
+            title="Sidecar metadata tools"
+          />
+          <p
+            style={{ fontSize: 12.5, color: "var(--color-pine)", lineHeight: 1.5 }}
           >
-            {sidecarRescan.state === "running"
-              ? sidecarRescan.progress
-                ? `Scanning ${sidecarRescan.progress.checked.toLocaleString()}/${sidecarRescan.progress.total.toLocaleString()}…`
-                : "Scanning…"
-              : "Rescan sidecars on pending queue"}
-          </button>
-          <button
-            onClick={runFixMetadata}
-            disabled={fixMeta.state === "running" || counts.done === 0}
-            className="btn-secondary"
-          >
-            {fixMeta.state === "running" ? "Applying…" : "Fix dates on already-uploaded photos"}
-          </button>
-        </div>
-        {sidecarRescan.state === "done" && sidecarRescan.msg && (
-          <div className="mt-3 rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm text-emerald-800">
-            {sidecarRescan.msg}
+            Each photo from Google Takeout has a sibling{" "}
+            <code style={{ fontSize: 11, color: "var(--color-ember)" }}>
+              .supplemental-metadata.json
+            </code>{" "}
+            with the original capture date, GPS, and caption. The scanner pairs them automatically
+            on new scans. Use these tools to backfill sidecars on existing queue rows, or to fix
+            dates on photos that were uploaded before sidecar support was added.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={runSidecarRescan}
+              disabled={sidecarRescan.state === "running"}
+              className="btn-secondary"
+            >
+              {sidecarRescan.state === "running"
+                ? sidecarRescan.progress
+                  ? `Scanning ${sidecarRescan.progress.checked.toLocaleString()}/${sidecarRescan.progress.total.toLocaleString()}…`
+                  : "Scanning…"
+                : "Rescan sidecars on pending queue"}
+            </button>
+            <button
+              onClick={runFixMetadata}
+              disabled={fixMeta.state === "running" || counts.done === 0}
+              className="btn-secondary"
+            >
+              {fixMeta.state === "running" ? "Applying…" : "Fix dates on already-uploaded photos"}
+            </button>
           </div>
-        )}
-        {sidecarRescan.state === "error" && (
-          <div className="mt-3 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800">
-            {sidecarRescan.msg}
-          </div>
-        )}
-        {fixMeta.state === "done" && fixMeta.msg && (
-          <div className="mt-3 rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm text-emerald-800">
-            {fixMeta.msg}
-          </div>
-        )}
-        {fixMeta.state === "error" && (
-          <div className="mt-3 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800">
-            {fixMeta.msg}
-          </div>
-        )}
-      </section>
+          {sidecarRescan.state === "done" && sidecarRescan.msg && (
+            <Alert tone="ok">{sidecarRescan.msg}</Alert>
+          )}
+          {sidecarRescan.state === "error" && <Alert tone="error">{sidecarRescan.msg}</Alert>}
+          {fixMeta.state === "done" && fixMeta.msg && <Alert tone="ok">{fixMeta.msg}</Alert>}
+          {fixMeta.state === "error" && <Alert tone="error">{fixMeta.msg}</Alert>}
+        </section>
 
-      <section className="card">
-        <h2 className="card-title">Backend indexing</h2>
-        <p className="text-xs text-ink-500 mt-1">
-          Uploads skip per-photo ML so the bulk run stays fast. After photos are in Flickr,
-          trigger a backend scan to index them into Kindred so they appear on the website.
-        </p>
-        <div className="mt-3 flex items-center gap-2">
+        {/* ── Backend indexing ──────────────────────────────────── */}
+        <section className="card-pad space-y-4">
+          <SectionHeader eyebrow="Backend indexing" title="Make photos searchable on Kindred" />
+          <p style={{ fontSize: 12.5, color: "var(--color-pine)", lineHeight: 1.5 }}>
+            Uploads skip per-photo ML for speed. After photos are in Flickr, trigger a backend scan
+            to index them into Kindred's database so they appear on the website with face
+            recognition + search.
+          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={triggerIndex}
+              disabled={
+                scanTrigger.state === "running" || (counts.done === 0 && counts.pending === 0)
+              }
+              className="btn-secondary"
+            >
+              {scanTrigger.state === "running" ? "Triggering…" : "Trigger backend scan"}
+            </button>
+            {running && counts.pending > 0 && (
+              <span style={{ fontSize: 11.5, color: "var(--color-terra)" }}>
+                Tip: wait until uploads finish so the scan covers everything.
+              </span>
+            )}
+          </div>
+          {scanTrigger.state === "done" && scanTrigger.msg && <Alert tone="ok">{scanTrigger.msg}</Alert>}
+          {scanTrigger.state === "error" && <Alert tone="error">{scanTrigger.msg}</Alert>}
+        </section>
+
+        {/* ── Failures ──────────────────────────────────────────── */}
+        <section className="card-pad space-y-4">
           <button
-            onClick={triggerIndex}
-            disabled={scanTrigger.state === "running" || (counts.done === 0 && counts.pending === 0)}
-            className="btn-secondary"
+            onClick={() => setShowFailures((v) => !v)}
+            className="flex items-center justify-between w-full text-left"
           >
-            {scanTrigger.state === "running" ? "Triggering…" : "Trigger backend scan"}
-          </button>
-          {running && counts.pending > 0 && (
-            <span className="text-xs text-amber-700">
-              Tip: wait until uploads finish so the scan covers everything.
+            <div>
+              <div className="h-eyebrow">Failures</div>
+              <h2
+                className="h-display mt-1"
+                style={{ fontSize: 18, lineHeight: 1.2 }}
+              >
+                {counts.failed.toLocaleString()}{" "}
+                <span style={{ color: "var(--color-mist)", fontWeight: 400 }}>
+                  photo{counts.failed === 1 ? "" : "s"} failed
+                </span>
+              </h2>
+            </div>
+            <span
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 10,
+                color: "var(--color-mist)",
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+              }}
+            >
+              {showFailures ? "Hide" : "Show"}
             </span>
+          </button>
+          {showFailures && <FailureList />}
+        </section>
+
+        <div
+          className="flex items-center justify-between pt-4 pb-2"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            color: "var(--color-muted)",
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+          }}
+        >
+          <span>
+            {total > 0
+              ? `${total.toLocaleString()} files in queue · saved between sessions`
+              : "Queue is empty"}
+          </span>
+          {total > 0 && (
+            <button
+              onClick={clearQueue}
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 10,
+                color: "var(--color-rosehip)",
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                background: "transparent",
+                border: "none",
+              }}
+            >
+              Reset queue
+            </button>
           )}
         </div>
-        {scanTrigger.state === "done" && (
-          <div className="mt-3 rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm text-emerald-800">
-            {scanTrigger.msg}
-          </div>
-        )}
-        {scanTrigger.state === "error" && (
-          <div className="mt-3 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800">
-            {scanTrigger.msg}
-          </div>
-        )}
-      </section>
-
-      <section className="card">
-        <button
-          onClick={() => setShowFailures((v) => !v)}
-          className="card-title w-full text-left flex items-center justify-between"
-        >
-          <span>Failures ({counts.failed.toLocaleString()})</span>
-          <span className="text-xs text-ink-500">{showFailures ? "hide" : "show"}</span>
-        </button>
-        {showFailures && <FailureList />}
-      </section>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: "ok" | "warn" | "active";
-}) {
-  const toneClass =
-    tone === "ok"
-      ? "text-emerald-700"
-      : tone === "warn"
-        ? "text-amber-700"
-        : tone === "active"
-          ? "text-blue-700"
-          : "text-ink-900";
-  return (
-    <div className="rounded-md border border-ink-200 bg-white px-3 py-2">
-      <div className="text-xs text-ink-500">{label}</div>
-      <div className={`text-lg font-semibold ${toneClass}`}>{value}</div>
+      </div>
     </div>
   );
 }
@@ -449,7 +659,6 @@ function updateRate(
 ) {
   const now = Date.now();
   pointsRef.current.push({ t: now, bytes: doneBytes });
-  // keep last 30 seconds
   pointsRef.current = pointsRef.current.filter((p) => now - p.t < 30_000);
   if (pointsRef.current.length < 2) {
     setRate({ bps: 0, eta: Infinity });

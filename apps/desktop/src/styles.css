@@ -1,61 +1,268 @@
 @import "tailwindcss";
 
 @theme {
-  --color-ink-50: #f8fafc;
-  --color-ink-100: #f1f5f9;
-  --color-ink-200: #e2e8f0;
-  --color-ink-300: #cbd5e1;
-  --color-ink-500: #64748b;
-  --color-ink-700: #334155;
-  --color-ink-900: #0f172a;
+  /* Warm parchment palette — see design handoff */
+  --color-ash: #2a201b;        /* primary ink, headlines */
+  --color-paper: #fbf4e7;      /* primary surface (window bg) */
+  --color-canvas: #f7ebd4;     /* secondary surface, sidebar gradient bottom */
+  --color-cream: #f5ead0;      /* sidebar gradient top */
+  --color-card: #fffdf8;       /* card surfaces */
+  --color-ember: #c9551c;      /* primary CTA, focus, active */
+  --color-ember-soft: #f28a4b; /* hover */
+  --color-terra: #a84a1d;      /* warning eyebrows */
+  --color-pine: #6d3c24;       /* secondary text */
+  --color-mist: #7d553f;       /* tertiary text, mono captions */
+  --color-muted: #946f5b;      /* quaternary, paused */
+  --color-gold: #e9b85d;       /* memory glyph, warning bg */
+  --color-forest: #2f4a36;     /* healthy / online */
+  --color-sage: #4a6b4f;       /* healthy hover */
+  --color-rosehip: #9a3416;    /* errors, destructive */
+
+  --font-display: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: "Instrument Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 html, body, #root {
   height: 100%;
   margin: 0;
-  background: var(--color-ink-50);
-  color: var(--color-ink-900);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  font-size: 14px;
+  background: var(--color-paper);
+  color: var(--color-ash);
+  font-family: var(--font-body);
+  font-size: 13.5px;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-button {
-  cursor: pointer;
-}
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+button { cursor: pointer; font-family: inherit; }
+button:disabled { cursor: not-allowed; opacity: 0.45; }
+input { font-family: inherit; }
+code { font-family: var(--font-mono); }
+
+/* line tokens (need rgba so they can't go in @theme color slots) */
+:root {
+  --line: rgba(74, 40, 26, 0.12);
+  --line-dark: rgba(74, 40, 26, 0.20);
+  --line-darker: rgba(74, 40, 26, 0.32);
+  --shadow-card: 0 12px 24px rgba(109, 60, 36, 0.07);
+  --shadow-soft: 0 18px 48px rgba(109, 60, 36, 0.12);
+  --shadow-glow: radial-gradient(circle, rgba(233, 184, 93, 0.27), transparent 70%);
 }
 
-@utility input {
-  @apply w-full rounded-md border border-ink-300 bg-white px-3 py-2 text-sm
-         focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500;
+/* ── Display + body typography ─────────────────────────────────── */
+@utility h-display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--color-ash);
+}
+@utility h-eyebrow {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 10.5px;
+  color: var(--color-mist);
+}
+@utility t-mono {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0;
 }
 
-@utility btn-primary {
-  @apply inline-flex items-center justify-center rounded-md bg-emerald-600 px-3 py-1.5
-         text-sm font-medium text-white hover:bg-emerald-700
-         disabled:hover:bg-emerald-600 transition-colors;
-}
-
-@utility btn-secondary {
-  @apply inline-flex items-center justify-center rounded-md border border-ink-300 bg-white
-         px-3 py-1.5 text-sm font-medium text-ink-700 hover:bg-ink-100 transition-colors;
-}
-
-@utility btn-ghost {
-  @apply inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm
-         font-medium text-ink-700 hover:bg-ink-200 transition-colors;
-}
-
+/* ── Cards & surfaces ──────────────────────────────────────────── */
 @utility card {
-  @apply rounded-lg border border-ink-200 bg-white p-4 shadow-sm;
+  background: var(--color-card);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  box-shadow: var(--shadow-card);
+}
+@utility card-pad {
+  @apply card p-5;
+}
+@utility hero-card {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--color-canvas) 0%, var(--color-card) 60%);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-soft);
+}
+@utility hero-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at 88% -10%,
+    rgba(233, 184, 93, 0.35),
+    transparent 60%
+  );
 }
 
-@utility card-title {
-  @apply text-sm font-semibold text-ink-700 uppercase tracking-wide;
+/* ── Buttons ───────────────────────────────────────────────────── */
+@utility btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12.5px;
+  letter-spacing: -0.005em;
+  padding: 9px 14px;
+  border-radius: 7px;
+  background: var(--color-ember);
+  color: #fffdf8;
+  border: 1px solid var(--color-ember);
+  transition: background 120ms ease, transform 80ms ease;
 }
+@utility btn-primary-hover {
+  background: var(--color-ember-soft);
+}
+@utility btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12.5px;
+  padding: 8px 13px;
+  border-radius: 7px;
+  background: var(--color-card);
+  color: var(--color-ash);
+  border: 1px solid var(--line-dark);
+  transition: background 120ms ease;
+}
+@utility btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12.5px;
+  padding: 8px 12px;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-pine);
+  border: 1px solid transparent;
+  transition: background 120ms ease;
+}
+@utility btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12.5px;
+  padding: 8px 13px;
+  border-radius: 7px;
+  background: var(--color-card);
+  color: var(--color-rosehip);
+  border: 1px solid rgba(154, 52, 22, 0.32);
+}
+
+button.btn-primary:not(:disabled):hover { background: var(--color-ember-soft); }
+button.btn-secondary:not(:disabled):hover { background: var(--color-cream); }
+button.btn-ghost:not(:disabled):hover { background: rgba(201, 85, 28, 0.08); color: var(--color-ember); }
+button.btn-danger:not(:disabled):hover { background: rgba(154, 52, 22, 0.06); }
+
+/* ── Form input ────────────────────────────────────────────────── */
+@utility input {
+  display: block;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--color-ash);
+  background: var(--color-card);
+  border: 1px solid var(--line-dark);
+  border-radius: 8px;
+  padding: 11px 13px;
+  transition: border 120ms ease, box-shadow 120ms ease;
+}
+.input:focus {
+  outline: none;
+  border-color: var(--color-ember);
+  box-shadow: 0 0 0 4px rgba(201, 85, 28, 0.16);
+}
+
+/* ── Pills ─────────────────────────────────────────────────────── */
+@utility pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+@utility pill-forest {
+  background: rgba(47, 74, 54, 0.12);
+  color: var(--color-forest);
+}
+@utility pill-ember {
+  background: rgba(201, 85, 28, 0.12);
+  color: var(--color-ember);
+}
+@utility pill-gold {
+  background: rgba(233, 184, 93, 0.20);
+  color: var(--color-terra);
+}
+@utility pill-rosehip {
+  background: rgba(154, 52, 22, 0.12);
+  color: var(--color-rosehip);
+}
+@utility pill-muted {
+  background: rgba(148, 111, 91, 0.16);
+  color: var(--color-muted);
+}
+
+/* ── Progress bar ──────────────────────────────────────────────── */
+@utility progress-track {
+  height: 8px;
+  background: rgba(74, 40, 26, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+@utility progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-ember), var(--color-gold));
+  border-radius: 999px;
+  transition: width 600ms ease;
+}
+
+/* ── Animations ────────────────────────────────────────────────── */
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(47, 74, 54, 0.45); }
+  50% { box-shadow: 0 0 0 6px rgba(47, 74, 54, 0); }
+}
+@utility pulse-dot {
+  animation: pulse-dot 1.6s infinite;
+}
+@keyframes pulse-dot-ember {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(201, 85, 28, 0.45); }
+  50% { box-shadow: 0 0 0 6px rgba(201, 85, 28, 0); }
+}
+@utility pulse-dot-ember {
+  animation: pulse-dot-ember 1.6s infinite;
+}
+
+::selection {
+  background: rgba(201, 85, 28, 0.22);
+  color: var(--color-ash);
+}
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb {
+  background: rgba(74, 40, 26, 0.22);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(74, 40, 26, 0.35); }
+::-webkit-scrollbar-track { background: transparent; }
+</content>

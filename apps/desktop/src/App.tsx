@@ -27,8 +27,22 @@ function App() {
 
   if (view === "loading" || !settings) {
     return (
-      <div className="min-h-full flex items-center justify-center text-ink-500">
-        Loading…
+      <div
+        className="min-h-full flex items-center justify-center"
+        style={{ background: "var(--color-paper)" }}
+      >
+        <div
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: "0.18em",
+            textTransform: "uppercase",
+            color: "var(--color-mist)",
+          }}
+        >
+          Loading…
+        </div>
       </div>
     );
   }

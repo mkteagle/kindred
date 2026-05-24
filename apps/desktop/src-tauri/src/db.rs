@@ -25,6 +25,14 @@ CREATE TABLE IF NOT EXISTS files (
 );
 CREATE INDEX IF NOT EXISTS idx_files_status ON files(status);
 CREATE INDEX IF NOT EXISTS idx_files_source_root ON files(source_root);
+-- Covering index for the dashboard's status-counts query. Without this,
+-- SELECT status, COUNT(*), SUM(size_bytes) ... GROUP BY status has to read
+-- every row of the files table (size_bytes isn't in idx_files_status), which
+-- pegs the CPU on big queues since the dashboard polls every second.
+CREATE INDEX IF NOT EXISTS idx_files_status_size ON files(status, size_bytes);
+-- Partial index for the sidecar backfill rescan — without it, scanning the
+-- queue to find rows missing sidecars is a full-table scan.
+CREATE INDEX IF NOT EXISTS idx_files_sidecar_null ON files(id) WHERE sidecar_path IS NULL;
 "#;
 
 // Migrations for older DBs that pre-date a column. Each statement runs once;
