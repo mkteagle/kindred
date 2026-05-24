@@ -55,12 +55,20 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if path in AUTH_SKIP_PATHS or path.startswith("/docs"):
             return await call_next(request)
         if path == "/scan/auto":
-            # Optionally extract user for admin auth, but don't require it
+            # Optionally extract user (session OR API key) so admin auth can substitute
+            # for the SCAN_SECRET. Auth is not *required* here — the handler also accepts
+            # the shared SCAN_SECRET query param for cron-style triggers.
             session_token = request.headers.get("X-Session-Token")
             if session_token:
                 user = validate_session(session_token)
                 if user:
                     request.state.user = {**user, "auth_method": "session"}
+            else:
+                key = request.headers.get("X-API-Key") or request.query_params.get("api_key")
+                if key and key.startswith("knd_"):
+                    api_user = validate_api_key(key)
+                    if api_user:
+                        request.state.user = {**api_user, "auth_method": "api_key"}
             return await call_next(request)
 
         # Try session token first (web users) — check header and query param for image endpoints
@@ -2449,7 +2457,23 @@ def _validate_upload_file(file: UploadFile) -> None:
     if ext not in UPLOAD_ALLOWED_EXTENSIONS:
         raise HTTPException(400, f"Unsupported file type: {ext}. Allowed: {', '.join(sorted(UPLOAD_ALLOWED_EXTENSIONS))}")
 
-async def _upload_to_flickr(file_data: bytes, filename: str, title: str, description: str, creds: dict) -> str:
+PRIVACY_FLAGS = {
+    # is_public, is_friend, is_family
+    "private":        ("0", "0", "0"),
+    "family":         ("0", "0", "1"),
+    "friends":        ("0", "1", "0"),
+    "friends_family": ("0", "1", "1"),
+    "public":         ("1", "0", "0"),
+}
+
+async def _upload_to_flickr(
+    file_data: bytes,
+    filename: str,
+    title: str,
+    description: str,
+    creds: dict,
+    privacy: str = "family",
+) -> str:
     """Upload a single file to Flickr using the admin's OAuth credentials. Returns the Flickr photo ID."""
     import hmac
     import hashlib
@@ -2478,13 +2502,15 @@ async def _upload_to_flickr(file_data: bytes, filename: str, title: str, descrip
 
     upload_url = "https://up.flickr.com/services/upload/"
 
+    is_public, is_friend, is_family = PRIVACY_FLAGS.get(privacy, PRIVACY_FLAGS["family"])
+
     # Parameters that go into the OAuth signature (everything EXCEPT the photo binary)
     flickr_params = {
         "title": title,
         "description": description,
-        "is_public": "0",
-        "is_friend": "0",
-        "is_family": "1",
+        "is_public": is_public,
+        "is_friend": is_friend,
+        "is_family": is_family,
     }
 
     # Build OAuth header (POST method for upload)
@@ -2562,13 +2588,24 @@ async def upload_photo(
     photo: UploadFile = File(...),
     title: str = Form(""),
     description: str = Form(""),
+    skip_processing: bool = Query(False),
+    privacy: str = Query("family"),
+    album_id: str | None = Query(None),
     user=Depends(get_current_user),
 ):
     """Upload a photo/video to Flickr via the household's admin credentials.
 
     Any authenticated household member can upload — the admin's Flickr OAuth
     tokens are used so members don't need their own Flickr accounts.
+
+    Query params:
+    - `skip_processing=true` — suppress per-photo ML for bulk runs (then hit /scan/auto)
+    - `privacy` — one of: private, family (default), friends, friends_family, public
+    - `album_id` — if set, photo is added to this Flickr photoset after upload
     """
+    if privacy not in PRIVACY_FLAGS:
+        raise HTTPException(400, f"Invalid privacy '{privacy}'. Must be one of: {', '.join(PRIVACY_FLAGS)}")
+
     _validate_upload_file(photo)
 
     # Read file data and enforce size limit
@@ -2587,14 +2624,22 @@ async def upload_photo(
     if not title:
         title = os.path.splitext(filename)[0]
 
-    photo_id = await _upload_to_flickr(file_data, filename, title, description, creds)
+    photo_id = await _upload_to_flickr(file_data, filename, title, description, creds, privacy=privacy)
 
-    # Trigger async ML processing for images (not videos)
+    # Add to album if requested. Failure here doesn't roll back the upload —
+    # the photo is on Flickr, the album link just didn't take.
+    if album_id:
+        try:
+            await _add_photo_to_album(photo_id, album_id, creds)
+        except Exception as e:
+            print(f"[upload] album add failed for photo {photo_id} → album {album_id}: {e}")
+
+    # Trigger async ML processing for images (not videos), unless caller opted out
     ext = os.path.splitext(filename)[1].lower()
-    if ext not in (".mp4", ".mov"):
+    if not skip_processing and ext not in (".mp4", ".mov"):
         background_tasks.add_task(_process_uploaded_photo, photo_id)
 
-    return {"photo_id": photo_id, "status": "ok"}
+    return {"photo_id": photo_id, "status": "ok", "album_id": album_id}
 
 
 @app.post("/photos/upload-batch")
@@ -3326,6 +3371,89 @@ async def delete_flickr_photos(req: FlickrDeleteRequest, admin=Depends(require_a
                 failed.append({"photo_id": photo_id, "error": str(e)})
 
     return {"deleted": deleted, "failed": failed, "count": len(deleted)}
+
+
+@app.get("/flickr/albums")
+async def list_flickr_albums(user=Depends(get_current_user)):
+    """List the household's Flickr albums (photosets).
+    Returns [{id, title, photo_count, primary_photo_id}].
+    """
+    import urllib.parse
+
+    flickr_creds = get_flickr_credentials()
+    if not FLICKR_API_KEY or not flickr_creds:
+        raise HTTPException(500, "Flickr OAuth not configured")
+
+    flickr_url = "https://api.flickr.com/services/rest"
+    albums: list[dict] = []
+    page = 1
+    async with httpx.AsyncClient(timeout=30) as client:
+        while True:
+            params = {
+                "method": "flickr.photosets.getList",
+                "user_id": flickr_creds["user_id"],
+                "per_page": "500",
+                "page": str(page),
+                "format": "json",
+                "nojsoncallback": "1",
+            }
+            signed = _flickr_oauth_sign(flickr_url, params, flickr_creds)
+            auth_header = "OAuth " + ", ".join(
+                f'{k}="{urllib.parse.quote(str(v), "")}"' for k, v in signed.items()
+            )
+            qs = urllib.parse.urlencode(params)
+            resp = await client.get(f"{flickr_url}?{qs}", headers={"Authorization": auth_header})
+            data = resp.json()
+            if data.get("stat") != "ok":
+                raise HTTPException(502, f"Flickr error: {data.get('message', 'unknown')}")
+            photosets = data.get("photosets", {})
+            for ps in photosets.get("photoset", []):
+                title = ps.get("title", {})
+                title_str = title.get("_content", "") if isinstance(title, dict) else str(title)
+                albums.append({
+                    "id": ps["id"],
+                    "title": title_str,
+                    "photo_count": int(ps.get("photos", 0)),
+                    "primary_photo_id": ps.get("primary"),
+                })
+            if page >= int(photosets.get("pages", 1)):
+                break
+            page += 1
+    return {"albums": albums}
+
+
+async def _add_photo_to_album(photo_id: str, album_id: str, creds: dict) -> None:
+    """Add a single photo to a Flickr album (photoset)."""
+    import urllib.parse
+
+    flickr_url = "https://api.flickr.com/services/rest"
+    params = {
+        "method": "flickr.photosets.addPhoto",
+        "photoset_id": album_id,
+        "photo_id": photo_id,
+        "format": "json",
+        "nojsoncallback": "1",
+    }
+    oauth_params = _flickr_oauth_sign(flickr_url, params, creds, method="POST")
+    auth_header = "OAuth " + ", ".join(
+        f'{k}="{urllib.parse.quote(str(v), "")}"' for k, v in oauth_params.items()
+    )
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            flickr_url,
+            data=params,
+            headers={"Authorization": auth_header},
+        )
+    try:
+        data = resp.json()
+    except Exception:
+        data = {"stat": "ok" if resp.status_code == 200 else "fail"}
+    if data.get("stat") != "ok":
+        # code 3 = "Photo already in set" — treat as success
+        if data.get("code") == 3:
+            return
+        raise HTTPException(502, f"Flickr addPhoto failed: {data.get('message', 'unknown')}")
+
 
 @app.post("/scan/auto")
 async def auto_scan(request: FastAPIRequest, background_tasks: BackgroundTasks, secret: str = ""):
