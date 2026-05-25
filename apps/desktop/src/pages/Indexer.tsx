@@ -134,7 +134,7 @@ export function IndexerPage() {
                   lineHeight: 1.6,
                 }}
               >
-                jpg · jpeg · png · gif · bmp · tif · tiff · webp · heic · heif
+                jpg · jpeg · jfif · png · gif · bmp · tif · tiff · webp · heic · heif · psd
               </div>
             </div>
             <div>

@@ -14,7 +14,8 @@ use crate::sidecar;
 // Flickr rejects DNG/CR2/CR3/NEF/ARW etc.
 const SUPPORTED_EXTENSIONS: &[&str] = &[
     // Images
-    "jpg", "jpeg", "png", "gif", "bmp", "tif", "tiff", "webp", "heic", "heif",
+    "jpg", "jpeg", "jfif", "png", "gif", "bmp", "tif", "tiff", "webp",
+    "heic", "heif", "psd",
     // Videos
     "mp4", "mov", "m4v", "m4p", "avi", "wmv",
     "mpeg", "mpg", "3gp", "m2ts", "ogg", "ogv",

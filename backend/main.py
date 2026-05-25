@@ -2435,6 +2435,7 @@ UPLOAD_ALLOWED_TYPES = {
     # Images
     "image/jpeg", "image/png", "image/gif", "image/heic", "image/heif",
     "image/webp", "image/bmp", "image/tiff",
+    "image/vnd.adobe.photoshop",
     # Videos
     "video/mp4", "video/quicktime", "video/x-m4v",
     "video/x-msvideo", "video/x-ms-wmv",
@@ -2442,9 +2443,9 @@ UPLOAD_ALLOWED_TYPES = {
     "video/ogg",
 }
 UPLOAD_ALLOWED_EXTENSIONS = {
-    # Images (Flickr converts BMP/TIFF/WebP/HEIC to JPEG server-side)
-    ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tif", ".tiff",
-    ".webp", ".heic", ".heif",
+    # Images (Flickr converts BMP/TIFF/WebP/HEIC/PSD to JPEG server-side)
+    ".jpg", ".jpeg", ".jfif", ".png", ".gif", ".bmp", ".tif", ".tiff",
+    ".webp", ".heic", ".heif", ".psd",
     # Videos
     ".mp4", ".mov", ".m4v", ".m4p", ".avi", ".wmv",
     ".mpeg", ".mpg", ".3gp", ".m2ts", ".ogg", ".ogv",
@@ -2454,11 +2455,12 @@ def _content_type_for_filename(filename: str) -> str:
     ext = os.path.splitext(filename)[1].lower()
     mapping = {
         # Images
-        ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".jfif": "image/jpeg",
         ".png": "image/png", ".gif": "image/gif",
         ".heic": "image/heic", ".heif": "image/heif",
         ".webp": "image/webp", ".bmp": "image/bmp",
         ".tif": "image/tiff", ".tiff": "image/tiff",
+        ".psd": "image/vnd.adobe.photoshop",
         # Videos
         ".mp4": "video/mp4", ".mov": "video/quicktime",
         ".m4v": "video/x-m4v", ".m4p": "video/mp4",

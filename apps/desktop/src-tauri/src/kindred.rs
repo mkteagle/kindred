@@ -272,13 +272,14 @@ fn mime_for(filename: &str) -> &'static str {
     let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
     match ext.as_str() {
         // Images
-        "jpg" | "jpeg" => "image/jpeg",
+        "jpg" | "jpeg" | "jfif" => "image/jpeg",
         "png" => "image/png",
         "gif" => "image/gif",
         "bmp" => "image/bmp",
         "tif" | "tiff" => "image/tiff",
         "webp" => "image/webp",
         "heic" | "heif" => "image/heic",
+        "psd" => "image/vnd.adobe.photoshop",
         // Videos
         "mp4" | "m4p" => "video/mp4",
         "mov" => "video/quicktime",
