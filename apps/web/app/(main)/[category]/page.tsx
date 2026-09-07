@@ -1001,7 +1001,9 @@ export default function CategoryPage() {
         {summaryLoading && (
           <div className="cluster-grid">
             {Array.from({ length: 12 }).map((_, i) => (
-              <div key={i} className="skeleton-card" style={{ aspectRatio: "3/4", borderRadius: 8, background: "var(--canvas)", animation: "shimmer 1.4s ease infinite" }} />
+              // Background and animation come from the stylesheet so the
+              // shell's themed rule can win; inline styles cannot be themed.
+              <div key={i} className="skeleton-card" style={{ aspectRatio: "3/4", borderRadius: 8 }} />
             ))}
           </div>
         )}

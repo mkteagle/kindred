@@ -42,15 +42,31 @@ body {
   overflow-x: hidden;
 }
 
+/* The page ground is painted on :root, not on body.
+   The boot script stamps data-theme on <html> before a single byte of body
+   markup exists, so a rule keyed to it is right from the very first paint.
+   The body:has(.kx) rules further down cannot be: :has() has nothing to match
+   until that nested element has streamed in and been parsed, and the browser
+   paints in between -- so it laid down the parchment gradient below and then
+   repainted it near-black. That repaint is the flash of white behind every
+   loading skeleton. */
+:root[data-theme="light"] { color-scheme: light; background: #f6f5f1; }
+:root[data-theme="dark"] { color-scheme: dark; background: #0c0e0c; color: #f1f1ec; }
+
 body:has(.main-app) {
-  background:
-    linear-gradient(90deg, rgba(74, 40, 26, .04) 1px, transparent 1px) 0 0 / 74px 74px,
-    linear-gradient(180deg, #fbf4e7 0%, #f7ebd4 48%, #f3e1c9 100%);
-  color: var(--ash);
   font-family: var(--body);
   font-size: 14px;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Parchment is the un-themed legacy ground. Once a theme is set the shell
+   owns the ground, and painting this first is exactly the flash above. */
+:root:not([data-theme]) body:has(.main-app) {
+  background:
+    linear-gradient(90deg, rgba(74, 40, 26, .04) 1px, transparent 1px) 0 0 / 74px 74px,
+    linear-gradient(180deg, #fbf4e7 0%, #f7ebd4 48%, #f3e1c9 100%);
+  color: var(--ash);
 }
 
 button, input {
@@ -83,6 +99,14 @@ img {
   background: var(--canvas);
   border-radius: 8px;
   animation: shimmer 1.4s ease infinite;
+}
+
+/* Inside the redesigned shell --canvas is aliased to the page ground, which
+   would leave the placeholder invisible. Use the same fill the kx skeletons
+   do, so a legacy grid loading next to a ported one looks like one product. */
+.kx .skeleton-card {
+  background: var(--fill-2);
+  animation: kx-pulse 1.6s ease-in-out infinite;
 }
 
 @keyframes rise {
