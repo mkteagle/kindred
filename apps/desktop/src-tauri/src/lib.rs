@@ -45,7 +45,7 @@ pub fn run() {
         .plugin(tauri_plugin_drag::init())
         .menu(|handle| menu::build(handle))
         .on_menu_event(|app, event| {
-            let id = event.id().0.clone();
+            let id: String = event.id().as_ref().to_string();
             if RUST_HANDLED.contains(&id.as_str()) {
                 let kind = if id == "settings" { "settings" } else { "uploader" };
                 let state = app.state::<AppState>();
