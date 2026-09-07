@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { PhotoTagDialog } from "@/components/photo-tag-dialog";
@@ -91,10 +91,16 @@ function uniquePhotos(items: Detection[]): Detection[] {
 export default function ClusterDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const category = (params.category as string) || "people";
+  // The path is the fallback source of both ids. useParams() has come back
+  // empty here in the production build, and an empty clusterId disables the
+  // queries below -- so the screen sat on its loading state forever without
+  // ever asking for the group. The pathname is always /<category>/<id>.
+  const pathname = usePathname();
+  const segments = pathname.split("/").filter(Boolean);
+  const category = (params.category as string) || segments[0] || "people";
   const copy = COPY[category] ?? COPY.people;
   const backendCat = toBackendCategory(category);
-  const clusterId = (params.clusterId as string) || "";
+  const clusterId = (params.clusterId as string) || segments[1] || "";
   const queryClient = useQueryClient();
   const { openLightbox } = useLightbox();
 
