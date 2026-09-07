@@ -117,16 +117,25 @@ def partition_export(labels):
 
 def load_candidates(conn):
     """Unlabelled clusters in the target database, with a centroid derived
-    from their member detections."""
+    from their member detections.
+
+    Driven from detection_clusters, not clusters. A cluster exists as a grouping
+    the moment the clustering run writes its links; the clusters table is sparse
+    and only gains a row once one is annotated. Starting from clusters would
+    therefore see nothing to match against — on this library, 721 people
+    clusters covering 6,506 faces would all have been invisible.
+    """
     from psycopg2.extras import RealDictCursor
 
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute("""
-            SELECT c.id AS cluster_id, c.category, d.embedding
-            FROM clusters c
-            JOIN detection_clusters dc ON dc.cluster_id = c.id AND dc.category = c.category
+            SELECT dc.cluster_id, dc.category, d.embedding
+            FROM detection_clusters dc
             JOIN detections d ON d.id = dc.detection_id
-            WHERE (c.label IS NULL OR c.label = '') AND d.embedding IS NOT NULL
+            LEFT JOIN clusters c
+                   ON c.id = dc.cluster_id AND c.category = dc.category
+            WHERE d.embedding IS NOT NULL
+              AND (c.label IS NULL OR c.label = '')
         """)
         rows = cur.fetchall()
 
@@ -145,14 +154,24 @@ def load_candidates(conn):
 
 
 def apply_assignments(conn, assignments):
+    """Write the matched names.
+
+    An upsert rather than an update: a freshly clustered group has no clusters
+    row at all until something annotates it, so there is usually nothing to
+    update. The conflict clause still refuses to overwrite a name a person
+    typed themselves.
+    """
     with conn.cursor() as cur:
         for row in assignments:
             cur.execute(
                 """
-                UPDATE clusters SET label = %s, label_source = 'restored'
-                WHERE id = %s AND category = %s AND (label IS NULL OR label = '')
+                INSERT INTO clusters (id, category, label, label_source)
+                VALUES (%s, %s, %s, 'restored')
+                ON CONFLICT (id, category) DO UPDATE
+                   SET label = EXCLUDED.label, label_source = 'restored'
+                 WHERE clusters.label IS NULL OR clusters.label = ''
                 """,
-                (row["label"], row["cluster_id"], row["category"]),
+                (row["cluster_id"], row["category"], row["label"]),
             )
     conn.commit()
 
@@ -166,6 +185,12 @@ def _main(argv=None) -> int:
     parser.add_argument("--database-url", default=os.environ.get("DATABASE_URL", ""))
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD)
     parser.add_argument("--apply", action="store_true", help="Write the matches.")
+    parser.add_argument(
+        "--only", default="",
+        help="Comma-separated labels to apply, ignoring the rest. Lets a single "
+             "match just under the threshold be taken deliberately, without "
+             "lowering the threshold for everything.",
+    )
     args = parser.parse_args(argv)
 
     if not args.database_url:
@@ -184,6 +209,15 @@ def _main(argv=None) -> int:
     try:
         candidates = load_candidates(conn)
         assignments, unmatched, unused = match_labels(with_vectors, candidates, args.threshold)
+
+        wanted = {name.strip().lower() for name in args.only.split(",") if name.strip()}
+        if wanted:
+            skipped = [a for a in assignments if a["label"].lower() not in wanted]
+            assignments = [a for a in assignments if a["label"].lower() in wanted]
+            print(f"--only: applying {len(assignments)}, ignoring {len(skipped)} other matches")
+            for name in sorted(wanted - {a["label"].lower() for a in assignments}):
+                print(f"  WARNING: '{name}' matched nothing at threshold {args.threshold}")
+            print()
 
         print(f"export:      {len(payload['labels'])} labels "
               f"({len(junk)} detector-generated, dropped)")
