@@ -21,9 +21,16 @@ def enqueue(photo_id, source, metadata, privacy):
     root = queue_root() / photo_id
     root.mkdir(exist_ok=True)
     path = root / 'job.json'
+    if path.exists():
+        return
     # Serialize producer/consumer updates across API/importer/worker processes.
     with (root / 'job.lock').open('a+') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            if path.exists():
+                return
+            raise RuntimeError("Video queue entry is being created; retry enqueue")
         if path.exists():
             return
         video_mirror.save(path, dict(photo_id=photo_id, source=str(source), metadata=metadata,
