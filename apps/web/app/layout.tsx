@@ -42,7 +42,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    // The boot scripts in (main)/layout.tsx stamp data-theme and
+    // data-sidebar onto <html> before first paint, so the server markup
+    // cannot match. Without this React reports the mismatch as one it
+    // "won't patch up" and abandons hydration of the tree: the client
+    // component never renders, so every screen sticks on its server-
+    // rendered skeleton and no query ever runs.
+    <html lang="en" suppressHydrationWarning>
       <body>{children}</body>
     </html>
   );
