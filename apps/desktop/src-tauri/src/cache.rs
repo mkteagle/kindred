@@ -503,8 +503,21 @@ impl MediaCache {
 mod tests {
     use super::*;
 
+    /// A directory of this test's own.
+    ///
+    /// Keyed on more than the process id: cargo runs tests as threads inside
+    /// one process, so a pid-only name is shared, and one test's cleanup pulls
+    /// the SQLite file out from under another mid-write — which reads back as
+    /// "attempt to write a readonly database".
     fn temp_cache() -> (MediaCache, PathBuf) {
-        let dir = std::env::temp_dir().join(format!("kindred-cache-test-{}", std::process::id()));
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+        let dir = std::env::temp_dir().join(format!(
+            "kindred-cache-test-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         (MediaCache::open(&dir).unwrap(), dir)

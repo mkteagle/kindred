@@ -13,7 +13,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# protocol-asset must be enabled here as well as in tauri.conf.json:
+# the build script cross-checks the two and refuses to build otherwise.
+# It is what lets convertFileSrc read the offline media cache.
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 # Real OS drag sessions, so dragging a selection out of the grid produces a
