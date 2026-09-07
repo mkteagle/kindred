@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { fmt } from "@/lib/constants";
-import { NavIcon } from "./icons";
+import { NavIcon, SidebarIcon } from "./icons";
 import { useFavorites } from "./favorites";
+import { useKxUi } from "./ui-state";
 import { useLatestSync, useLibraryCounts, useShareCount, useStats, relativeTime } from "./use-library";
 
 /** LIBRARY group — label, route, and where its count comes from. */
@@ -42,6 +43,31 @@ function BrandLockup() {
       <img src="/wordmark.svg" alt="Kindred" className="kx-wordmark" data-mark-theme="light" />
       <img src="/wordmark-light.svg" alt="Kindred" className="kx-wordmark" data-mark-theme="dark" />
     </Link>
+  );
+}
+
+/**
+ * Collapse and expand are the same control in the same place — under the logo
+ * — so whichever state you are in, the way back is where you last left it.
+ * It stays out of the way until the brand area is hovered or something inside
+ * it takes focus: `opacity` alone, never `visibility`, so the button keeps its
+ * place in the tab order and shows itself the moment it is focused.
+ */
+function RailToggle() {
+  const { railCollapsed, toggleRail } = useKxUi();
+  const label = railCollapsed ? "Expand sidebar" : "Collapse sidebar";
+  return (
+    <button
+      type="button"
+      className="kx-railtoggle"
+      onClick={toggleRail}
+      title={label}
+      aria-label={label}
+      aria-expanded={!railCollapsed}
+      aria-controls="kx-sidebar"
+    >
+      <SidebarIcon direction={railCollapsed ? "right" : "left"} />
+    </button>
   );
 }
 
@@ -101,7 +127,12 @@ export function KxSidebar({ open, onNavigate }: { open: boolean; onNavigate: () 
 
   return (
     <aside className={`kx-sidebar ${open ? "is-open" : ""}`} id="kx-sidebar">
-      <BrandLockup />
+      {/* The one part of the rail that survives collapsing. Everything below is
+          hidden with `visibility` so it leaves the tab order with the pixels. */}
+      <div className="kx-brandbar">
+        <BrandLockup />
+        <RailToggle />
+      </div>
 
       <nav className="kx-navgroup" aria-label="Library">
         <span className="kx-eyebrow">Library</span>

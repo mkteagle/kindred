@@ -9546,6 +9546,139 @@ button.kx-avatar { cursor: pointer; }
   background: linear-gradient(90deg, #495645, #cc7f61, #d59851);
 }
 
+/* ── Rail collapse ───────────────────────────────────────────────────────
+   The rail collapses to its logo and back. State lives on <html data-sidebar>
+   — written by the boot script before first paint and by the toggle after —
+   so the collapsed layout is correct on the first frame, before hydration.
+   Desktop only: below 900px the sidebar is a drawer, and the rules that shrink
+   it are fenced behind min-width: 901px so the two never argue. */
+
+.kx-brandbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kx-brandbar .kx-brand { min-width: 0; }
+
+/* The toggle keeps out of the way until you go looking for it: `opacity` only,
+   never `visibility` or `display`, so it stays in the tab order and shows
+   itself the moment it takes focus rather than only under a pointer. */
+.kx-railtoggle {
+  flex: none;
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink-3);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition:
+    opacity .16s var(--ease-rise),
+    transform .16s var(--ease-rise),
+    color .16s ease,
+    border-color .16s ease;
+}
+
+.kx-railtoggle:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+.kx-brandbar:hover .kx-railtoggle,
+.kx-railtoggle:focus-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Tabbing into the rail reveals the toggle before you reach it, so it is never
+   a control you have to know is there. `:focus-visible` rather than
+   `:focus-within` — a mouse click on the toggle should not leave it stuck on
+   screen — and its own rule, so browsers without `:has()` lose only this and
+   keep the rule above. */
+.kx-brandbar:has(:focus-visible) .kx-railtoggle {
+  opacity: 1;
+  transform: none;
+}
+
+@media (min-width: 901px) {
+  .kx-shell { transition: grid-template-columns .28s var(--ease-rise); }
+
+  /* Everything under the brand fades, then leaves the tab order with the
+     pixels — `visibility` flips at the end of its own transition. On the way
+     open the fade waits for the rail to have somewhere to put the words. */
+  .kx-sidebar > *:not(.kx-brandbar) {
+    transition:
+      opacity .18s ease .1s,
+      visibility .18s .1s;
+  }
+
+  :root[data-sidebar="collapsed"] .kx-shell {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  :root[data-sidebar="collapsed"] .kx-sidebar {
+    padding-left: 8px;
+    padding-right: 8px;
+    overflow: hidden;
+  }
+
+  :root[data-sidebar="collapsed"] .kx-sidebar > *:not(.kx-brandbar) {
+    opacity: 0;
+    visibility: hidden;
+    transition-delay: 0s;
+  }
+
+  /* Collapsed, the brand row becomes a column: mark on top, the toggle waiting
+     in a slot beneath it. The slot is always laid out, so the pointer never
+     falls out of the hover target as the button appears. */
+  :root[data-sidebar="collapsed"] .kx-brandbar {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  :root[data-sidebar="collapsed"] .kx-sidebar .kx-brand {
+    justify-content: center;
+    padding: 4px 0;
+  }
+
+  :root[data-sidebar="collapsed"] .kx-sidebar .kx-brand .kx-wordmark { display: none; }
+
+  :root[data-sidebar="collapsed"] .kx-railtoggle {
+    margin-left: 0;
+    transform: translateY(-6px);
+  }
+
+  :root[data-sidebar="collapsed"] .kx-brandbar:hover .kx-railtoggle,
+  :root[data-sidebar="collapsed"] .kx-railtoggle:focus-visible {
+    transform: none;
+  }
+
+  :root[data-sidebar="collapsed"] .kx-brandbar:has(:focus-visible) .kx-railtoggle {
+    transform: none;
+  }
+}
+
+/* The drawer has its own way in and out — the collapse control has no meaning
+   there, and the rail is full width whenever it is on screen. */
+@media (max-width: 900px) {
+  .kx-railtoggle { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kx-shell,
+  .kx-sidebar > *,
+  .kx-railtoggle {
+    transition: none;
+  }
+}
+
 /* ── Topbar ──────────────────────────────────────────────────────────── */
 
 .kx-topbar {
