@@ -7,6 +7,7 @@ import { Button, Spinner } from "./ui";
 import { ConfirmDialog, MergeDialog } from "./dialogs";
 import type { ClusterSummary, ClusterDetail, Detection } from "@/types";
 import { BACKEND, CATEGORIES, fmt, toBackendCategory } from "@/lib/constants";
+import { photoThumb, faceThumb } from "@/lib/photo-url";
 
 const getUniquePhotos = (items: Detection[]): Detection[] => {
   const photoMap = new Map<string, Detection>();
@@ -300,7 +301,7 @@ export const ClusterCard = ({
                     >
                       <img
                         src={
-                          item.chip || item.thumb_url || item.photo_url
+                          faceThumb(item)
                         }
                         alt=""
                         onClick={
@@ -350,7 +351,7 @@ export const ClusterCard = ({
                     title={item.photo_title || "Open photo"}
                   >
                     <img
-                      src={item.thumb_url || item.photo_url}
+                      src={photoThumb(item)}
                       alt={item.photo_title || ""}
                     />
                   </button>

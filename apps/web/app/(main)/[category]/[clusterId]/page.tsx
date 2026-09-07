@@ -11,6 +11,7 @@ import type { ClustersSummaryResponse, ClusterDetail, Detection } from "@/types"
 import { BACKEND, fmt, toBackendCategory } from "@/lib/constants";
 import { useLightbox } from "@/components/photo-lightbox";
 import type { LightboxPhoto } from "@/components/photo-lightbox";
+import { photoThumb, faceThumb } from "@/lib/photo-url";
 
 const getUniquePhotos = (items: Detection[]): Detection[] => {
   const photoMap = new Map<string, Detection>();
@@ -254,7 +255,7 @@ export default function ClusterDetailPage() {
                 }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={avatarDet.chip || avatarDet.thumb_url || avatarDet.photo_url}
+                    src={faceThumb(avatarDet)}
                     alt=""
                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
@@ -478,7 +479,7 @@ function ChipWithMenu({
       style={{ position: "relative" }}
     >
       <img
-        src={item.chip || item.thumb_url || item.photo_url}
+        src={faceThumb(item)}
         alt=""
         onClick={() =>
           window.open(item.flickr_url || item.photo_url, "_blank")
@@ -672,7 +673,7 @@ function PhotoThumb({
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={item.thumb_url || item.photo_url}
+        src={photoThumb(item)}
         alt={item.photo_title || ""}
       />
 
@@ -824,7 +825,7 @@ function SharedPhotos({ clusterId, otherClusterId }: { clusterId: string; otherC
     <div className="clip-results-grid" style={{ marginTop: 8, marginBottom: 12 }}>
       {photos.map((photo) => (
         <button key={photo.photo_id} className="clip-result-card" onClick={() => openLightbox(photo.photo_id, lbPhotos)} style={{ border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
-          <img src={photo.thumb_url || photo.photo_url} alt={photo.photo_title || ""} />
+          <img src={photoThumb(photo)} alt={photo.photo_title || ""} />
         </button>
       ))}
     </div>

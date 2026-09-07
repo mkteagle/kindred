@@ -26,6 +26,7 @@ import { useLightbox } from "@/components/photo-lightbox";
 import type { LightboxPhoto } from "@/components/photo-lightbox";
 import { useUser } from "@/lib/use-user";
 import { useToastContext } from "@/components/notifications";
+import { photoThumb, faceThumb } from "@/lib/photo-url";
 
 const API = "/api";
 
@@ -56,7 +57,7 @@ function UnmatchedFaceCard({
   return (
     <div className="unmatched-card">
       <img
-        src={item.chip || item.thumb_url || item.photo_url}
+        src={faceThumb(item)}
         alt=""
         className="unmatched-chip"
         onClick={() => window.open(item.flickr_url || item.photo_url, "_blank")}
@@ -1309,7 +1310,7 @@ export default function CategoryPage() {
                     className="clip-result-card"
                   >
                     <img
-                      src={result.thumb_url || result.photo_url}
+                      src={photoThumb(result)}
                       alt={result.photo_title || "Search result"}
                     />
                     <div className="clip-result-info">
