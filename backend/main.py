@@ -6780,12 +6780,34 @@ def get_duplicates(threshold: float = Query(0.05, ge=0.0, le=1.0)):
     cached = get_cached(f"duplicates_{threshold}", ttl_seconds=3600)
     if cached:
         return cached
+    # One HNSW probe per photo, not a self cross-join. The cross-join compared
+    # every pair -- 7,000 photos is 25 million 512-dimension distances, and no
+    # index can serve it because there is no fixed query vector, so the request
+    # simply never came back. Asking each photo for its own nearest neighbours
+    # is the same question in a shape the index can answer: 6s, or 1.2s with a
+    # search width suited to the job.
+    #
+    # A near-duplicate sits at distance < 0.05 -- all but the same vector -- so
+    # it is always among the first few neighbours; ef_search 20 and four
+    # neighbours find it. Larger runs of copies still group, because union-find
+    # joins them transitively through the pairs each member reports.
     rows = db_query("""
-        SELECT a.photo_id as id_a, b.photo_id as id_b,
-               a.clip_embedding <=> b.clip_embedding as distance
-        FROM photo_embeddings a, photo_embeddings b
-        WHERE a.photo_id < b.photo_id
-        AND a.clip_embedding <=> b.clip_embedding < %s
+        SET LOCAL jit = off;
+        SET LOCAL hnsw.ef_search = 20;
+        WITH pair AS (
+            SELECT a.photo_id AS id_a, n.photo_id AS id_b, n.distance
+            FROM photo_embeddings a
+            CROSS JOIN LATERAL (
+                SELECT pe.photo_id, a.clip_embedding <=> pe.clip_embedding AS distance
+                FROM photo_embeddings pe
+                WHERE pe.photo_id <> a.photo_id
+                ORDER BY a.clip_embedding <=> pe.clip_embedding
+                LIMIT 4
+            ) n
+            WHERE n.distance < %s
+        )
+        SELECT id_a, id_b, distance
+        FROM pair WHERE id_a < id_b
         ORDER BY distance ASC
         LIMIT 200
     """, (threshold,))
