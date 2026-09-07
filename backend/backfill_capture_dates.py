@@ -229,6 +229,41 @@ def _run(args, main, staged_import, progress_path: Path) -> int:
     after = NIL_UUID
     started = time.monotonic()
     connection = None if args.dry_run else main.get_db()
+
+    # One transaction and one checkpoint save per page, not per photo.
+    #
+    # Committing each row meant a WAL fsync per photo, and journalling the
+    # checkpoint each row meant a second one. On btrfs — where Postgres's data
+    # directory is copy-on-write unless told otherwise — those twenty-odd
+    # thousand fsyncs collapsed into a btrfs-transaction stall with postgres
+    # stuck in uninterruptible wait while the disks sat mostly idle.
+    #
+    # Safe to batch because every write is idempotent: UPDATE_SQL COALESCEs
+    # onto a NULL-guarded row, so replaying a page after a crash is a no-op.
+    # The database is committed before the checkpoint records the page, so the
+    # worst a crash costs is re-reading one page of files.
+    pending_writes: list = []
+    pending_progress: list = []
+
+    def flush() -> None:
+        if args.dry_run:
+            pending_writes.clear()
+            pending_progress.clear()
+            return
+        if pending_writes:
+            # A plain loop inside one transaction. execute_batch would save
+            # round trips, but round trips to a local socket are cheap and the
+            # fsyncs are what hurt — one commit already removes all of them.
+            with connection.cursor() as cursor:
+                for parameters in pending_writes:
+                    cursor.execute(UPDATE_SQL, parameters)
+            connection.commit()
+            pending_writes.clear()
+        if pending_progress:
+            # Record the page only once its rows are durable.
+            staged_import.save_progress(progress_path, progress, pending_progress[-1])
+            pending_progress.clear()
+
     try:
         while True:
             rows = main.db_query(PENDING_SQL, (after, args.batch_size))
@@ -258,7 +293,7 @@ def _run(args, main, staged_import, progress_path: Path) -> int:
                     print(f"[backfill] unresolved {photo_id}: {reason}", flush=True)
                     if capture is None:
                         if not args.dry_run:
-                            staged_import.save_progress(progress_path, progress, photo_id)
+                            pending_progress.append(photo_id)
                         continue
 
                 write = plan(row, capture)
@@ -277,9 +312,7 @@ def _run(args, main, staged_import, progress_path: Path) -> int:
                         tally["located"] += 1
                         location_sources[write["location_source"]] += 1
                     if not args.dry_run:
-                        with connection.cursor() as cursor:
-                            cursor.execute(UPDATE_SQL, update_parameters(write))
-                        connection.commit()
+                        pending_writes.append(update_parameters(write))
 
                 if not args.dry_run:
                     if not capture.error:
@@ -289,7 +322,7 @@ def _run(args, main, staged_import, progress_path: Path) -> int:
                                          if write and write["taken_at"] else None),
                             "source": write["taken_at_source"] if write else None,
                         }
-                    staged_import.save_progress(progress_path, progress, photo_id)
+                    pending_progress.append(photo_id)
 
                 if tally["examined"] % 100 == 0:
                     elapsed = max(time.monotonic() - started, 0.001)
@@ -299,9 +332,17 @@ def _run(args, main, staged_import, progress_path: Path) -> int:
                         f"{tally['examined'] / elapsed:.1f} files/s",
                         flush=True,
                     )
+            # End of a page: make its rows durable, then record the page.
+            flush()
             if args.limit and tally["examined"] >= args.limit:
                 break
     finally:
+        # A partial page still counts — flush before closing so an interrupted
+        # run keeps what it read rather than discarding up to a page of work.
+        try:
+            flush()
+        except Exception as exc:  # pragma: no cover - best effort on the way out
+            print(f"[backfill] could not flush the final page: {exc}", flush=True)
         if connection is not None:
             connection.close()
 

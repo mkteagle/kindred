@@ -314,12 +314,16 @@ class FakeMain:
         self.db = db
         self.PHOTO_STORAGE_ROOT = str(storage_root)
         self.invalidated = []
+        # Kept so a test can count commits: batching them is the difference
+        # between a run that finishes and one that stalls on a CoW filesystem.
+        self.connection = None
 
     def db_query(self, sql, params=None):
         return [dict(row) for row in self.db.execute(sqlite_sql(sql), params or ())]
 
     def get_db(self):
-        return Connection(self.db)
+        self.connection = Connection(self.db)
+        return self.connection
 
     def invalidate_cache(self, prefix=""):
         self.invalidated.append(prefix)
@@ -386,6 +390,41 @@ class FullPassTests(unittest.TestCase):
     def dates(self):
         return {row["id"]: row["taken_at"]
                 for row in self.db.execute("SELECT id, taken_at FROM photos")}
+
+    def test_a_page_costs_one_commit_not_one_per_photo(self):
+        """Committing per row is what wedged this on btrfs.
+
+        Postgres fsyncs its write-ahead log on every commit, and on a
+        copy-on-write filesystem thousands of those collapse into a stalled
+        btrfs transaction — observed live, with postgres in uninterruptible
+        wait while the disks sat mostly idle.
+        """
+        for n in range(6):
+            self.catalog(f"p{n}", f"{n}.jpg", exif="2019:04:12 14:30:00")
+
+        self.assertEqual(self.run_pass(batch_size=100), 0)
+
+        # Six photos, one page, one commit — not six.
+        self.assertEqual(self.main.connection.commits, 1)
+        self.assertEqual(len(self.dates()), 6)
+
+    def test_each_page_commits_once(self):
+        for n in range(6):
+            self.catalog(f"p{n}", f"{n}.jpg", exif="2019:04:12 14:30:00")
+
+        self.assertEqual(self.run_pass(batch_size=2), 0)
+
+        # Three pages of two. The commit count tracks pages, never photos.
+        self.assertEqual(self.main.connection.commits, 3)
+
+    def test_every_photo_is_still_written_when_batched(self):
+        for n in range(5):
+            self.catalog(f"p{n}", f"{n}.jpg", exif="2019:04:12 14:30:00")
+
+        self.run_pass(batch_size=100)
+
+        # Batching must not lose the tail of a page.
+        self.assertEqual(len([d for d in self.dates().values() if d]), 5)
 
     def test_dates_the_library_across_several_pages_and_leaves_a_checkpoint(self):
         self.catalog("p1", "a.jpg", exif="2019:04:12 14:30:00")
