@@ -63,7 +63,7 @@ struct OnboardingView: View {
                     HStack(spacing: 5) {
                         ForEach(0..<pages.count, id: \.self) { i in
                             RoundedRectangle(cornerRadius: KindredTheme.radiusPill)
-                                .fill(i == currentPage ? KindredTheme.ember : Color(hex: 0x4A281A).opacity(0.2))
+                                .fill(i == currentPage ? KindredTheme.ember : KindredTheme.hairlineStrong)
                                 .frame(width: i == currentPage ? 22 : 6, height: 6)
                                 .animation(.easeOut(duration: 0.24), value: currentPage)
                         }

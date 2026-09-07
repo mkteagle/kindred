@@ -318,7 +318,7 @@ struct IntelligenceView: View {
             .padding(.top, 14)
         }
         .padding(18)
-        .background(Color(hex: 0x4A281A).opacity(0.06))
+        .background(KindredTheme.fill)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(
             RoundedRectangle(cornerRadius: 14)
@@ -354,7 +354,7 @@ struct IntelligenceView: View {
             .padding(.vertical, 12)
 
             if !isLast {
-                Divider()
+                Divider().overlay(KindredTheme.hairline)
                     .overlay(KindredTheme.line)
                     .padding(.leading, 14)
             }
@@ -380,7 +380,7 @@ struct IntelligenceView: View {
                         RoundedRectangle(cornerRadius: 7)
                             .fill(cat.binding.wrappedValue && intelligence.enabled
                                   ? KindredTheme.ember.opacity(0.12)
-                                  : Color(hex: 0x4A281A).opacity(0.06))
+                                  : KindredTheme.fill)
                             .frame(width: 30, height: 30)
                             .overlay {
                                 Image(systemName: cat.icon)
@@ -409,7 +409,7 @@ struct IntelligenceView: View {
                     .padding(.vertical, 12)
 
                     if index < categories.count - 1 {
-                        Divider()
+                        Divider().overlay(KindredTheme.hairline)
                             .overlay(KindredTheme.line)
                             .padding(.leading, 14)
                     }
@@ -430,7 +430,7 @@ struct IntelligenceView: View {
                 maintenanceRow(
                     icon: "arrow.triangle.2.circlepath",
                     iconTint: KindredTheme.pine,
-                    iconBg: Color(hex: 0x4A281A).opacity(0.06),
+                    iconBg: KindredTheme.fill,
                     label: "Re-index library",
                     caption: "Will re-run on your server \u{00b7} ~40 min",
                     isLast: false
@@ -439,7 +439,7 @@ struct IntelligenceView: View {
             .contentShape(Rectangle())
             .buttonStyle(.plain)
 
-            Divider()
+            Divider().overlay(KindredTheme.hairline)
                 .overlay(KindredTheme.line)
                 .padding(.leading, 14)
 
@@ -449,7 +449,7 @@ struct IntelligenceView: View {
             } label: {
                 maintenanceRow(
                     icon: "info.circle",
-                    iconTint: Color(hex: 0xA8821F),
+                    iconTint: KindredTheme.amber,
                     iconBg: KindredTheme.gold.opacity(0.18),
                     label: "What is this?",
                     caption: "Plain-English explainer",
@@ -515,7 +515,7 @@ struct IntelligenceView: View {
                     .padding(.vertical, 12)
 
                     if index < items.count - 1 {
-                        Divider()
+                        Divider().overlay(KindredTheme.hairline)
                             .overlay(KindredTheme.line)
                             .padding(.leading, 14)
                     }
@@ -643,7 +643,7 @@ struct IntelligenceExplainerSheet: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(Color(hex: 0x4A281A).opacity(0.04))
+                .background(KindredTheme.fill)
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
                         .stroke(KindredTheme.line, lineWidth: 1)
@@ -652,7 +652,7 @@ struct IntelligenceExplainerSheet: View {
             }
 
             // Footer explanation
-            Divider()
+            Divider().overlay(KindredTheme.hairline)
                 .overlay(KindredTheme.line)
                 .padding(.top, 14)
 
@@ -696,7 +696,7 @@ struct IntelligenceExplainerSheet: View {
                 .padding(.vertical, 10)
 
                 if index < qas.count - 1 {
-                    Divider()
+                    Divider().overlay(KindredTheme.hairline)
                         .overlay(KindredTheme.line)
                 }
             }
@@ -726,7 +726,7 @@ struct IntelligenceOnboardingView: View {
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             RoundedRectangle(cornerRadius: 2)
-                                .fill(Color(hex: 0x4A281A).opacity(0.1))
+                                .fill(KindredTheme.fillStrongest)
                                 .frame(height: 3)
                             RoundedRectangle(cornerRadius: 2)
                                 .fill(KindredTheme.ember)
@@ -753,7 +753,7 @@ struct IntelligenceOnboardingView: View {
                     .overlay {
                         Image(systemName: "sun.max")
                             .font(.system(size: 40, weight: .light))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(KindredTheme.onAccent)
                     }
                     .shadow(color: KindredTheme.ember.opacity(0.28), radius: 20, x: 0, y: 18)
 
@@ -846,7 +846,7 @@ struct IntelligenceOnboardingView: View {
                 .padding(.vertical, 10)
 
                 if index < points.count - 1 {
-                    Divider()
+                    Divider().overlay(KindredTheme.hairline)
                         .overlay(KindredTheme.line)
                 }
             }
@@ -902,7 +902,7 @@ struct PauseIntelligenceSheet: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
         }
-        .background(KindredTheme.paper)
+        .background(KindredTheme.sheet)
     }
 }
 
@@ -954,6 +954,6 @@ struct ReindexSheet: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
         }
-        .background(KindredTheme.paper)
+        .background(KindredTheme.sheet)
     }
 }

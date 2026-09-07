@@ -2,39 +2,41 @@ import SwiftUI
 
 // MARK: - Eyebrow
 
-/// Mono uppercase eyebrow label — the brand's signature micro-label.
+/// Mono uppercase eyebrow — 10pt/600, .18em tracking, terracotta.
+/// The handoff makes this *required* above every section title.
 struct KindredEyebrow: View {
     let text: String
-    var color: Color = KindredTheme.ember
+    var color: Color = KindredTheme.accent
     var isPill: Bool = false
 
     var body: some View {
         Text(text.uppercased())
             .font(.kindredEyebrow)
-            .tracking(1.8) // .18em
+            .tracking(1.8) // .18em at 10pt
             .foregroundStyle(color)
             .if(isPill) { view in
                 view
                     .padding(.horizontal, 11)
-                    .padding(.vertical, 8)
-                    .background(KindredTheme.gold.opacity(0.11))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: KindredTheme.radiusPill)
-                            .stroke(KindredTheme.ember.opacity(0.18), lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusPill))
+                    .padding(.vertical, 6)
+                    .background(KindredTheme.accent.opacity(0.16))
+                    .clipShape(Capsule())
             }
+            .accessibilityAddTraits(.isHeader)
     }
 }
 
 // MARK: - Buttons
 
 enum KindredButtonStyle {
-    case primary    // ember bg, white text
-    case dark       // ash bg, paper text
-    case ghost      // transparent, line border, ash text
-    case danger     // rosehip tint
-    case forest     // forest bg, white text
+    /// Terracotta fill, on-accent ink. The single primary.
+    case primary
+    /// Solid ink-on-fill. Used where a second solid is unavoidable.
+    case dark
+    /// Transparent with a hairline border.
+    case ghost
+    /// Destructive: danger fill + border + text.
+    case danger
+    case forest
 }
 
 struct KindredButton: View {
@@ -59,12 +61,12 @@ struct KindredButton: View {
                         .font(.system(size: isSmall ? 12 : 14, weight: .semibold))
                 }
                 Text(title)
-                    .font(isSmall ? .body(12, weight: .bold) : .kindredButtonSM)
+                    .font(isSmall ? .kindredButtonSM : .kindredButton)
             }
             .foregroundStyle(foregroundColor)
             .frame(maxWidth: isFullWidth ? .infinity : nil)
-            .frame(height: isSmall ? 34 : 48)
-            .padding(.horizontal, isSmall ? 11 : 15)
+            .frame(minHeight: isSmall ? 34 : 46)
+            .padding(.horizontal, isSmall ? 13 : 18)
             .background(backgroundColor)
             .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusSM))
             .overlay(
@@ -73,30 +75,32 @@ struct KindredButton: View {
             )
         }
         .disabled(isLoading)
+        .accessibilityLabel(title)
     }
 
     private var backgroundColor: Color {
         switch style {
-        case .primary: return KindredTheme.ember
-        case .dark: return KindredTheme.ash
+        case .primary: return KindredTheme.accent
+        case .dark: return KindredTheme.fillStrongest
         case .ghost: return .clear
-        case .danger: return KindredTheme.rosehip.opacity(0.1)
-        case .forest: return KindredTheme.forest
+        case .danger: return KindredTheme.dangerFill
+        case .forest: return KindredTheme.forestGreen
         }
     }
 
     private var foregroundColor: Color {
         switch style {
-        case .primary, .dark, .forest: return .white
-        case .ghost: return KindredTheme.ash
-        case .danger: return KindredTheme.rosehip
+        // Brand rule: ink on terracotta is #14150f, never white.
+        case .primary: return KindredTheme.onAccent
+        case .dark, .ghost, .forest: return KindredTheme.ink
+        case .danger: return KindredTheme.dangerText
         }
     }
 
     private var borderColor: Color {
         switch style {
-        case .ghost: return KindredTheme.lineDark
-        case .danger: return KindredTheme.rosehip.opacity(0.24)
+        case .ghost: return KindredTheme.hairlineStrong
+        case .danger: return KindredTheme.dangerBorder
         default: return .clear
         }
     }
@@ -111,7 +115,7 @@ struct KindredButton: View {
 struct KindredAvatar: View {
     let url: String?
     var size: CGFloat = 64
-    var borderWidth: CGFloat = 2
+    var borderWidth: CGFloat = 0
 
     var body: some View {
         Group {
@@ -132,8 +136,9 @@ struct KindredAvatar: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .overlay(Circle().stroke(.white, lineWidth: borderWidth))
-        .shadow(color: KindredTheme.cardShadow, radius: 7, x: 0, y: 6)
+        .overlay(
+            Circle().stroke(KindredTheme.hairlineStrong, lineWidth: borderWidth)
+        )
     }
 
     private var placeholderCircle: some View {
@@ -141,12 +146,12 @@ struct KindredAvatar: View {
             .overlay {
                 Image(systemName: "person.fill")
                     .font(.system(size: size * 0.35))
-                    .foregroundStyle(.white.opacity(0.8))
+                    .foregroundStyle(KindredTheme.ink.opacity(0.75))
             }
     }
 }
 
-/// Initials avatar (for household card)
+/// Initials avatar — forest → terracotta gradient, per the Settings profile card.
 struct KindredInitialsAvatar: View {
     let initials: String
     var size: CGFloat = 44
@@ -155,16 +160,19 @@ struct KindredInitialsAvatar: View {
         ZStack {
             KindredTheme.avatarGradient
             Text(initials)
-                .font(.display(size * 0.36, weight: .bold))
-                .foregroundStyle(.white)
+                .font(.display(size * 0.4, weight: .semibold, relativeTo: .headline))
+                .foregroundStyle(KindredTheme.ink)
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
+        .accessibilityHidden(true)
     }
 }
 
 // MARK: - Chip Filter
 
+/// Horizontal capsule chip. Active is a terracotta fill with on-accent ink;
+/// inactive is a hairline outline over the ground.
 struct KindredChip: View {
     let label: String
     var count: Int? = nil
@@ -173,47 +181,72 @@ struct KindredChip: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 7) {
+            HStack(spacing: 6) {
                 Text(label)
-                    .font(.body(13, weight: .bold))
+                    .font(.body(12, weight: isActive ? .bold : .semibold, relativeTo: .footnote))
                 if let count {
                     Text("\(count)")
                         .font(.mono(10))
-                        .padding(.horizontal, 6)
-                        .frame(minWidth: 20, minHeight: 18)
-                        .background(
-                            isActive
-                                ? KindredTheme.paper.opacity(0.18)
-                                : KindredTheme.forest.opacity(0.1)
-                        )
-                        .foregroundStyle(isActive ? KindredTheme.gold : KindredTheme.pine)
-                        .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusPill))
+                        .foregroundStyle(isActive ? KindredTheme.onAccent.opacity(0.7) : KindredTheme.inkMeta)
                 }
             }
-            .padding(.horizontal, 13)
-            .padding(.vertical, 8)
-            .foregroundStyle(isActive ? KindredTheme.paper : KindredTheme.pine)
-            .background(isActive ? KindredTheme.ash : KindredTheme.card)
-            .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusSM))
+            .lineLimit(1)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .foregroundStyle(isActive ? KindredTheme.onAccent : KindredTheme.inkSecondary)
+            .background(isActive ? KindredTheme.accent : Color.clear)
+            .clipShape(Capsule())
             .overlay(
-                RoundedRectangle(cornerRadius: KindredTheme.radiusSM)
-                    .stroke(isActive ? KindredTheme.ash : KindredTheme.line, lineWidth: 1)
+                Capsule().stroke(
+                    isActive ? Color.clear : Color(hex: 0xF1F1EC, alpha: 0.14),
+                    lineWidth: 1
+                )
             )
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(count.map { "\(label), \($0)" } ?? label)
+        .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+/// A scrolling row of chips with the screen gutter applied to its content.
+struct KindredChipRow<Item: Hashable>: View {
+    let items: [Item]
+    let label: (Item) -> String
+    var count: (Item) -> Int? = { _ in nil }
+    @Binding var selection: Item
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 7) {
+                ForEach(items, id: \.self) { item in
+                    KindredChip(
+                        label: label(item),
+                        count: count(item),
+                        isActive: item == selection
+                    ) {
+                        withAnimation(KindredTheme.ease(0.2)) { selection = item }
+                    }
+                }
+            }
+            .padding(.horizontal, KindredTheme.gutter)
+        }
+        .scrollClipDisabled()
     }
 }
 
 // MARK: - Tab Bar
 
+/// Frosted tab bar with the capsule pill behind the active item.
+/// `rgba(12,14,12,.86)` + blur, 1px top hairline, padding 10/14/22.
 struct KindredTabBar: View {
     @Binding var selectedTab: Int
 
-    // Thin-stroke outlined icons matching the design spec
-    private let tabs: [(id: Int, label: String, iconDefault: String, iconActive: String)] = [
-        (0, "Home", "house", "house.fill"),
-        (1, "Library", "square.grid.2x2", "square.grid.2x2.fill"),
-        (2, "Search", "magnifyingglass", "magnifyingglass"),
-        (3, "Settings", "slider.horizontal.3", "slider.horizontal.3"),
+    private let tabs: [(id: Int, label: String, icon: String)] = [
+        (0, "Home", "house"),
+        (1, "Library", "square.grid.2x2"),
+        (2, "Search", "magnifyingglass"),
+        (3, "Settings", "gearshape"),
     ]
 
     var body: some View {
@@ -221,44 +254,40 @@ struct KindredTabBar: View {
             ForEach(tabs, id: \.id) { tab in
                 let isActive = selectedTab == tab.id
                 Button {
-                    withAnimation(.easeOut(duration: 0.16)) {
-                        selectedTab = tab.id
-                    }
+                    withAnimation(KindredTheme.ease(0.16)) { selectedTab = tab.id }
                 } label: {
                     VStack(spacing: 3) {
-                        Image(systemName: isActive ? tab.iconActive : tab.iconDefault)
-                            .font(.system(size: 18, weight: isActive ? .semibold : .light))
-                            .frame(height: 22)
+                        Image(systemName: tab.icon)
+                            .font(.system(size: 22, weight: isActive ? .semibold : .medium))
+                            .frame(height: 24)
                         Text(tab.label)
-                            .font(.body(10, weight: isActive ? .bold : .medium))
-                            .tracking(0.2)
+                            .font(.body(10, weight: isActive ? .bold : .medium, relativeTo: .caption2))
                     }
-                    .foregroundStyle(isActive ? KindredTheme.ember : KindredTheme.mist)
+                    .foregroundStyle(isActive ? KindredTheme.accent : KindredTheme.inkMeta)
                     .padding(.vertical, 6)
                     .padding(.horizontal, 14)
                     .background(
-                        isActive
-                            ? KindredTheme.ember.opacity(0.13)
-                            : Color.clear
+                        isActive ? KindredTheme.accent.opacity(0.16) : Color.clear,
+                        in: Capsule()
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusPill))
                     .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(tab.label)
+                .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
             }
         }
         .padding(.horizontal, 14)
-        .padding(.top, 8)
-        .padding(.bottom, 0)
+        .padding(.top, 10)
         .background(
             Rectangle()
                 .fill(.ultraThinMaterial)
-                .overlay(
-                    KindredTheme.paper.opacity(0.65)
-                )
+                .overlay(KindredTheme.chrome)
                 .overlay(alignment: .top) {
                     Rectangle()
-                        .fill(KindredTheme.line)
-                        .frame(height: 0.5)
+                        .fill(KindredTheme.hairline)
+                        .frame(height: 1)
                 }
                 .ignoresSafeArea(.all, edges: .bottom)
         )
@@ -267,54 +296,55 @@ struct KindredTabBar: View {
 
 // MARK: - App Bar (top bar for Home)
 
+/// The inverse lockup — mark plus wordmark, no plate behind it — and a bell.
 struct KindredAppBar: View {
     var unreadCount: Int = 0
     var onBellTap: (() -> Void)? = nil
 
     var body: some View {
-        HStack {
-            HStack(spacing: 8) {
-                Image("KindredLogo")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 28, height: 28)
-                    .clipShape(RoundedRectangle(cornerRadius: 7))
-                Text("Kindred")
-                    .font(.kindredTitle)
-                    .foregroundStyle(KindredTheme.ash)
-            }
+        HStack(spacing: 9) {
+            Image("KindredLogo")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 21, height: 21)
+                .accessibilityHidden(true)
+            Text("kindred")
+                .font(.display(18, weight: .semibold, relativeTo: .headline))
+                .foregroundStyle(KindredTheme.ink)
+                .accessibilityAddTraits(.isHeader)
+
             Spacer()
+
             Button {
                 onBellTap?()
             } label: {
                 ZStack(alignment: .topTrailing) {
                     Circle()
-                        .fill(KindredTheme.card)
+                        .stroke(Color(hex: 0xF1F1EC, alpha: 0.14), lineWidth: 1)
                         .frame(width: 34, height: 34)
-                        .overlay(
-                            Circle().stroke(KindredTheme.line, lineWidth: 1)
-                        )
                         .overlay {
                             Image(systemName: "bell")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(KindredTheme.pine)
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(KindredTheme.inkSecondary)
                         }
 
-                    // Unread badge
                     if unreadCount > 0 {
                         Text(unreadCount > 9 ? "9+" : "\(unreadCount)")
-                            .font(.mono(8, weight: .bold))
-                            .foregroundStyle(.white)
+                            .font(.mono(8, weight: .semibold))
+                            .foregroundStyle(KindredTheme.onAccent)
                             .frame(minWidth: 16, minHeight: 16)
-                            .background(KindredTheme.ember)
-                            .clipShape(Capsule())
+                            .background(KindredTheme.accent, in: Capsule())
                             .offset(x: 4, y: -4)
                     }
                 }
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(
+                unreadCount > 0 ? "Notifications, \(unreadCount) unread" : "Notifications"
+            )
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 4)
+        .padding(.horizontal, KindredTheme.gutter)
+        .padding(.vertical, 6)
     }
 }
 
@@ -326,62 +356,100 @@ struct KindredSectionHeader: View {
     var trailingText: String? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .lastTextBaseline) {
-                KindredEyebrow(text: eyebrow)
-                Spacer()
+        VStack(alignment: .leading, spacing: 6) {
+            KindredEyebrow(text: eyebrow)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(title)
+                    .font(.kindredH2)
+                    .foregroundStyle(KindredTheme.ink)
                 if let trailing = trailingText {
+                    Spacer()
                     Text(trailing)
                         .font(.kindredMeta)
-                        .foregroundStyle(KindredTheme.pine)
+                        .foregroundStyle(KindredTheme.inkMeta)
                 }
             }
-            Text(title)
-                .font(.kindredH2)
-                .foregroundStyle(KindredTheme.ash)
         }
     }
 }
 
 // MARK: - Page Header
 
+/// Large title under a mono eyebrow — the standard screen opening.
 struct KindredPageHeader: View {
     var eyebrow: String? = nil
     let title: String
-    var eyebrowColor: Color = KindredTheme.ember
+    var eyebrowColor: Color = KindredTheme.accent
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 7) {
             if let eyebrow {
                 KindredEyebrow(text: eyebrow, color: eyebrowColor)
             }
             Text(title)
                 .font(.kindredH1)
-                .foregroundStyle(KindredTheme.ash)
-                .lineSpacing(-2)
+                .tracking(-0.3) // -.01em
+                .foregroundStyle(KindredTheme.ink)
+                .accessibilityAddTraits(.isHeader)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .padding(.bottom, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, KindredTheme.gutter)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
     }
 }
 
-// MARK: - Skeleton Card (redesigned)
+// MARK: - Day header
+
+/// "Sat 14 June · Campfire at the lake · Select".
+/// The place label is only ever a member-named event or a reverse-geocoded
+/// EXIF place — never invented, per the handoff's known gaps.
+struct KindredDayHeader: View {
+    let title: String
+    var place: String?
+    var trailing: String?
+    var trailingAction: (() -> Void)?
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+                .font(.kindredDayTitle)
+                .foregroundStyle(KindredTheme.ink)
+                .accessibilityAddTraits(.isHeader)
+            if let place, !place.isEmpty {
+                Text(place)
+                    .font(.kindredMeta)
+                    .foregroundStyle(KindredTheme.inkMeta)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            if let trailing, let trailingAction {
+                Button(trailing, action: trailingAction)
+                    .font(.kindredMeta)
+                    .foregroundStyle(KindredTheme.accent)
+            }
+        }
+        .padding(.horizontal, KindredTheme.gutter)
+        .padding(.bottom, 8)
+    }
+}
+
+// MARK: - Skeleton Card
 
 struct SkeletonCard: View {
     @State private var shimmer = false
 
     var body: some View {
         RoundedRectangle(cornerRadius: KindredTheme.cardRadius)
-            .fill(KindredTheme.canvas)
+            .fill(KindredTheme.tile)
             .overlay {
                 RoundedRectangle(cornerRadius: KindredTheme.cardRadius)
                     .fill(
                         LinearGradient(
                             colors: [
-                                KindredTheme.paper,
-                                KindredTheme.canvas,
-                                KindredTheme.paper,
+                                KindredTheme.tile,
+                                KindredTheme.fillStrong,
+                                KindredTheme.tile,
                             ],
                             startPoint: .leading,
                             endPoint: .trailing
@@ -395,44 +463,44 @@ struct SkeletonCard: View {
             }
             .clipped()
             .onAppear { shimmer = true }
+            .accessibilityHidden(true)
     }
 }
 
 // MARK: - Stat Card
 
+/// 8px stat card: Space Grotesk number over a mono label.
 struct KindredStatCard: View {
     let value: String
     let label: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 3) {
             Text(value)
-                .font(.display(18, weight: .bold))
-                .foregroundStyle(KindredTheme.ash)
-            Text(label.uppercased())
-                .font(.kindredMicro)
-                .tracking(1)
-                .foregroundStyle(KindredTheme.mist)
+                .font(.display(22, weight: .semibold, relativeTo: .title2))
+                .foregroundStyle(KindredTheme.ink)
+            Text(label)
+                .font(.kindredMeta)
+                .foregroundStyle(KindredTheme.inkMeta)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(KindredTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusSM))
-        .overlay(
-            RoundedRectangle(cornerRadius: KindredTheme.radiusSM)
-                .stroke(KindredTheme.line, lineWidth: 1)
-        )
+        .padding(.horizontal, 14)
+        .padding(.vertical, 13)
+        .kindredCardStyle()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(value) \(label)")
     }
 }
 
-// MARK: - Toggle (forest green style)
+// MARK: - Toggle
 
 struct KindredToggle: View {
     @Binding var isOn: Bool
+    var label: String = ""
 
     var body: some View {
-        Toggle("", isOn: $isOn)
-            .tint(KindredTheme.forest)
+        Toggle(label, isOn: $isOn)
+            .tint(KindredTheme.accent)
             .labelsHidden()
     }
 }
@@ -445,38 +513,83 @@ struct KindredSettingsRow<Trailing: View>: View {
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
-        HStack {
+        HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.kindredLabel)
-                    .foregroundStyle(KindredTheme.ash)
+                    .foregroundStyle(KindredTheme.ink)
                 if let subtitle {
                     Text(subtitle)
                         .font(.kindredMeta)
-                        .foregroundStyle(KindredTheme.mist)
+                        .foregroundStyle(KindredTheme.inkMeta)
                 }
             }
             Spacer()
             trailing()
         }
-        .padding(14)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .contentShape(Rectangle())
     }
 }
 
-// MARK: - Photo Count Badge
+// MARK: - On-photo badges
+
+/// `rgba(12,14,12,.76)` pill, mono 9–10pt — cover badges and on-photo chips.
+struct KindredPhotoBadge: View {
+    let text: String
+    var systemImage: String? = nil
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: 7, weight: .bold))
+            }
+            Text(text)
+                .font(.kindredMicro)
+        }
+        .foregroundStyle(KindredTheme.ink)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(KindredTheme.onPhotoChip, in: Capsule())
+    }
+}
 
 struct PhotoCountBadge: View {
     let count: Int
 
     var body: some View {
-        Text("\(count) photos")
-            .font(.mono(9, weight: .semibold))
-            .foregroundStyle(KindredTheme.paper)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .background(Color.black.opacity(0.76))
-            .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusPill))
+        KindredPhotoBadge(text: "\(count) photos")
+    }
+}
+
+// MARK: - Face circle
+
+/// A 1:1 circular face that fills whatever width the grid gives it.
+/// `KindredAvatar` takes a fixed point size; the People grid is fluid.
+struct FaceCircle: View {
+    let url: String?
+
+    var body: some View {
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                if let url, DemoDataProvider.isDemoURL(url) {
+                    DemoThumbnailView(urlString: url, cornerRadius: 0)
+                } else if let url, let parsed = URL(string: url) {
+                    AsyncImage(url: parsed) { phase in
+                        switch phase {
+                        case .success(let image): image.resizable().scaledToFill()
+                        default: KindredTheme.avatarGradient
+                        }
+                    }
+                } else {
+                    KindredTheme.avatarGradient
+                }
+            }
+            .clipShape(Circle())
+            .accessibilityHidden(true)
     }
 }
 

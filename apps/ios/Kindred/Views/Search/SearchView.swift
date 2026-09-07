@@ -1,201 +1,276 @@
 import SwiftUI
 
+/// Screen 06 — Search. One field, scope chips, the people the query matched as
+/// pills, a mono result count, and a three-up grid with match badges.
 struct SearchView: View {
-    @State private var viewModel = SearchViewModel()
-    @State private var selectedPhoto: PhotoGridItem?
+
+    enum Scope: String, CaseIterable, Identifiable {
+        case all = "All"
+        case thisYear = "Taken this year"
+        case videos = "Videos"
+        var id: String { rawValue }
+    }
+
+    @State private var query = ""
+    @State private var scope: Scope = .all
+    @State private var results: [SearchHit] = []
+    @State private var isSearching = false
+    @State private var hasSearched = false
+    @State private var error: String?
+    @State private var scrollOffset: CGFloat = 0
+    @State private var viewing: LibraryPhoto?
+    @State private var activePerson: String?
+    @State private var searchTask: Task<Void, Never>?
+    @FocusState private var fieldFocused: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    private var isIPad: Bool { horizontalSizeClass == .regular }
+    private var columns: [GridItem] {
+        let count = horizontalSizeClass == .regular ? 5 : 3
+        return Array(repeating: GridItem(.flexible(), spacing: KindredTheme.tileGap), count: count)
+    }
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Page header
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        KindredEyebrow(text: "Search")
-                        Text("What are you looking for?")
-                            .font(.kindredH2)
-                            .foregroundStyle(KindredTheme.ash)
+            ScrollView(showsIndicators: false) {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    Color.clear.frame(height: 0).readsScrollOffset(in: "search")
+
+                    CollapsingTitleHeader(
+                        eyebrow: "Find anything", title: "Search", offset: scrollOffset
+                    )
+
+                    searchField
+                        .padding(.horizontal, KindredTheme.gutter)
+
+                    KindredChipRow(items: Scope.allCases, label: { $0.rawValue }, selection: $scope)
+                        .padding(.top, 12)
+
+                    if !peoplePills.isEmpty {
+                        peoplePillRow
+                            .padding(.top, 14)
                     }
-                    Spacer()
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 10)
-                .padding(.bottom, 4)
 
-                // Search input
-                searchInput
+                    if hasSearched {
+                        Text(resultCountLine)
+                            .font(.kindredMeta)
+                            .foregroundStyle(KindredTheme.inkMeta)
+                            .padding(.horizontal, KindredTheme.gutter)
+                            .padding(.top, 14)
+                            .padding(.bottom, 8)
+                    }
 
-                // Content
-                if viewModel.isSearching {
-                    Spacer()
-                    ProgressView()
-                        .tint(KindredTheme.ember)
-                    Spacer()
-                } else if viewModel.hasSearched && viewModel.results.isEmpty {
-                    ContentUnavailableView.search(text: viewModel.query)
-                } else if !viewModel.results.isEmpty {
-                    searchResults
-                } else {
-                    defaultBrowseContent
+                    if isSearching {
+                        ProgressView()
+                            .tint(KindredTheme.accent)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 40)
+                    } else if hasSearched && visibleResults.isEmpty {
+                        emptyState
+                    } else {
+                        resultGrid
+                    }
+
+                    Color.clear.frame(height: 100)
                 }
             }
-            .kindredPaperBackground()
+            .coordinateSpace(name: "search")
+            .onPreferenceChange(ScrollOffsetKey.self) { scrollOffset = $0 }
+            .background(KindredTheme.bg.ignoresSafeArea())
             .navigationBarHidden(true)
-            .sheet(item: $selectedPhoto) { item in
-                FullScreenPhotoView(item: item)
-            }
-            .onChange(of: viewModel.query) {
-                viewModel.search()
+            .fullScreenCover(item: $viewing) { photo in
+                PhotoViewerView(photos: visibleResults.map(\.asLibraryPhoto), initial: photo)
             }
         }
+        .onChange(of: query) { _, _ in scheduleSearch() }
+        .onChange(of: scope) { _, _ in scheduleSearch(immediate: true) }
     }
 
-    // MARK: - Search Input
+    // MARK: - Field
 
-    private var searchInput: some View {
-        HStack(spacing: 10) {
+    private var searchField: some View {
+        HStack(spacing: 9) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(KindredTheme.mist)
+                .foregroundStyle(KindredTheme.accent)
+                .accessibilityHidden(true)
 
-            TextField("People, places, or things…", text: $viewModel.query)
-                .font(.kindredBody)
-                .textFieldStyle(.plain)
+            TextField("Search your library", text: $query)
+                .font(.display(16, weight: .medium, relativeTo: .body))
+                .foregroundStyle(KindredTheme.ink)
+                .tint(KindredTheme.accent)
                 .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
                 .submitLabel(.search)
-                .onSubmit { viewModel.search() }
+                .focused($fieldFocused)
+                .onSubmit { scheduleSearch(immediate: true) }
+                .accessibilityLabel("Search your library")
 
-            if !viewModel.query.isEmpty {
+            if !query.isEmpty {
                 Button {
-                    viewModel.query = ""
-                    viewModel.results = []
-                    viewModel.hasSearched = false
+                    query = ""
+                    results = []
+                    hasSearched = false
+                    activePerson = nil
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(KindredTheme.mist)
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(KindredTheme.bg)
+                        .frame(width: 17, height: 17)
+                        .background(Color(hex: 0xF1F1EC, alpha: 0.2), in: Circle())
                 }
-            } else {
-                Text("VOICE")
-                    .font(.kindredMicro)
-                    .tracking(1.4)
-                    .foregroundStyle(KindredTheme.pine)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
             }
         }
-        .padding(.horizontal, 14)
-        .frame(height: 46)
-        .background(KindredTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusSM))
-        .overlay(
-            RoundedRectangle(cornerRadius: KindredTheme.radiusSM)
-                .stroke(KindredTheme.lineDark, lineWidth: 1)
-        )
-        .shadow(color: Color(hex: 0x11161B).opacity(0.06), radius: 11, x: 0, y: 10)
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
+        .padding(.horizontal, 12)
+        .frame(minHeight: 40)
+        .background(KindredTheme.fillStrong)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
-    // MARK: - Search Results
+    // MARK: - People pills
 
-    private var searchResults: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                // People matches
-                let personResults = viewModel.results.filter { $0.match_type == "person" }
-                let uniqueClusters = uniqueMatchedClusters(from: personResults)
+    /// The names the backend matched, in its own ranking. Tapping one narrows
+    /// the grid to that person.
+    private var peoplePills: [(id: String, name: String)] {
+        var seen = Set<String>()
+        var pills: [(String, String)] = []
+        for hit in results {
+            guard let id = hit.match_cluster_id, let name = hit.match_name,
+                  !seen.contains(id) else { continue }
+            seen.insert(id)
+            pills.append((id, name))
+        }
+        return pills
+    }
 
-                if !uniqueClusters.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        KindredEyebrow(text: "People")
-                            .padding(.horizontal, 20)
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 12) {
-                                ForEach(uniqueClusters, id: \.clusterId) { match in
-                                    matchedPersonCard(
-                                        match: match,
-                                        photoCount: personResults.filter { $0.match_cluster_id == match.clusterId }.count
-                                    )
-                                }
-                            }
-                            .padding(.horizontal, 20)
+    private var peoplePillRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(peoplePills, id: \.id) { pill in
+                    let isActive = activePerson == pill.id
+                    Button {
+                        activePerson = isActive ? nil : pill.id
+                    } label: {
+                        HStack(spacing: 7) {
+                            KindredAvatar(url: nil, size: 22)
+                            Text(pill.name)
+                                .font(.body(12, weight: .semibold, relativeTo: .footnote))
                         }
+                        .padding(.leading, 5)
+                        .padding(.trailing, 11)
+                        .padding(.vertical, 5)
+                        .foregroundStyle(isActive ? KindredTheme.onAccent : KindredTheme.ink)
+                        .background(isActive ? KindredTheme.accent : Color.clear, in: Capsule())
+                        .overlay(
+                            Capsule().stroke(
+                                isActive ? .clear : Color(hex: 0xF1F1EC, alpha: 0.14), lineWidth: 1
+                            )
+                        )
                     }
-                }
-
-                // Photo results grid
-                let items = viewModel.results.map { PhotoGridItem(from: $0) }
-                if !items.isEmpty {
-                    KindredEyebrow(text: "\(items.count) results")
-                        .padding(.horizontal, 20)
-
-                    PhotoGridView(photoURLs: items, columns: isIPad ? 4 : 2) { item in
-                        selectedPhoto = item
-                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(pill.name)
+                    .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
                 }
             }
-            .padding(.top, 16)
-            .padding(.bottom, isIPad ? 32 : 110)
+            .padding(.horizontal, KindredTheme.gutter)
         }
+        .scrollClipDisabled()
     }
 
-    // MARK: - Default Browse Content (empty state)
+    // MARK: - Results
 
-    private var defaultBrowseContent: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 44, weight: .light))
-                .foregroundStyle(KindredTheme.pine.opacity(0.4))
-            Text("Search your photos")
+    private var visibleResults: [SearchHit] {
+        guard let activePerson else { return results }
+        return results.filter { $0.match_cluster_id == activePerson }
+    }
+
+    private var resultCountLine: String {
+        let count = visibleResults.count
+        let noun = count == 1 ? "result" : "results"
+        return query.isEmpty ? "\(count) \(noun)" : "\(count) \(noun) · best match first"
+    }
+
+    private var resultGrid: some View {
+        LazyVGrid(columns: columns, spacing: KindredTheme.tileGap) {
+            ForEach(visibleResults) { hit in
+                SquarePhotoTile(photo: hit.asLibraryPhoto, matchPercent: hit.matchPercent)
+                    .onTapGesture { viewing = hit.asLibraryPhoto }
+            }
+        }
+        .padding(.horizontal, KindredTheme.tileGap)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Text("Nothing matched.")
                 .font(.kindredH3)
-                .foregroundStyle(KindredTheme.ash)
-            Text("Try names, places, or things\u{2026}")
+                .foregroundStyle(KindredTheme.ink)
+            Text("Try a name, a place, or what you remember being in the picture.")
                 .font(.kindredBody)
-                .foregroundStyle(KindredTheme.mist)
-            Spacer()
+                .foregroundStyle(KindredTheme.inkBody)
+                .multilineTextAlignment(.center)
+            if let error {
+                Text(error)
+                    .font(.kindredCaption)
+                    .foregroundStyle(KindredTheme.dangerText)
+            }
         }
         .frame(maxWidth: .infinity)
+        .padding(.horizontal, 40)
+        .padding(.top, 60)
     }
 
-    // MARK: - Matched Person Card
+    // MARK: - Querying
 
-    struct MatchedCluster {
-        let clusterId: String
-        let name: String
-        let category: String
-        let thumbURL: String?
-    }
-
-    private func uniqueMatchedClusters(from results: [SearchResult]) -> [MatchedCluster] {
-        var seen = Set<String>()
-        var clusters: [MatchedCluster] = []
-        for r in results {
-            guard let cid = r.match_cluster_id, !seen.contains(cid) else { continue }
-            seen.insert(cid)
-            clusters.append(MatchedCluster(
-                clusterId: cid,
-                name: r.match_name ?? "Unknown",
-                category: r.match_category ?? "people",
-                thumbURL: r.thumb_url
-            ))
+    private func scheduleSearch(immediate: Bool = false) {
+        searchTask?.cancel()
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        // An empty query with a scope set is still a valid filtered browse.
+        guard !trimmed.isEmpty || scope != .all else {
+            results = []
+            hasSearched = false
+            return
         }
-        return clusters
+        searchTask = Task {
+            if !immediate {
+                try? await Task.sleep(for: .milliseconds(280))
+                guard !Task.isCancelled else { return }
+            }
+            await run(trimmed)
+        }
     }
 
-    private func matchedPersonCard(match: MatchedCluster, photoCount: Int) -> some View {
-        VStack(spacing: 6) {
-            KindredAvatar(url: match.thumbURL, size: 56)
-            Text(match.name)
-                .font(.display(12, weight: .bold))
-                .foregroundStyle(KindredTheme.ash)
-                .lineLimit(1)
-            Text("\(photoCount) photos")
-                .font(.kindredMicro)
-                .foregroundStyle(KindredTheme.mist)
+    private func run(_ trimmed: String) async {
+        isSearching = true
+        hasSearched = true
+        error = nil
+        defer { isSearching = false }
+
+        if DemoDataProvider.shared.isActive {
+            results = DemoDataProvider.shared.searchHits(query: trimmed)
+            return
         }
-        .frame(width: 72)
+
+        do {
+            let response = try await APIClient.shared.searchLibrary(
+                query: trimmed,
+                media: scope == .videos ? .video : .all,
+                dateFrom: scope == .thisYear ? SearchView.startOfYear : nil,
+                limit: 120
+            )
+            guard !Task.isCancelled else { return }
+            results = response.results
+            if let activePerson, !results.contains(where: { $0.match_cluster_id == activePerson }) {
+                self.activePerson = nil
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+            results = []
+            self.error = error.localizedDescription
+        }
+    }
+
+    private static var startOfYear: String {
+        String(format: "%04d-01-01", Calendar.current.component(.year, from: Date()))
     }
 }

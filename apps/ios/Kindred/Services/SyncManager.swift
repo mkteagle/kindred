@@ -21,13 +21,30 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
     private(set) var autoSyncEnabled = false
     private(set) var lastRunSucceeded = true
 
+    /// "Only on Wi-Fi" from Settings. Defaults on: a household library is
+    /// mostly originals, and uploading those over cellular unasked is rude.
+    private(set) var wifiOnly = true
+
     private let lastSyncKey = "kindred_last_successful_sync_date"
     private let autoSyncKey = "kindred_auto_sync_enabled"
+    private let wifiOnlyKey = "kindred_wifi_only_uploads"
 
     override private init() {
         super.init()
         lastSyncDate = UserDefaults.standard.object(forKey: lastSyncKey) as? Date
         autoSyncEnabled = UserDefaults.standard.bool(forKey: autoSyncKey)
+        wifiOnly = UserDefaults.standard.object(forKey: wifiOnlyKey) as? Bool ?? true
+    }
+
+    func setWiFiOnly(_ enabled: Bool) {
+        wifiOnly = enabled
+        UserDefaults.standard.set(enabled, forKey: wifiOnlyKey)
+    }
+
+    /// Checked before a transfer starts rather than being baked into the
+    /// background session, which cannot be reconfigured once it exists.
+    var canUploadNow: Bool {
+        !wifiOnly || NetworkReachability.shared.isUnmetered
     }
 
     func configure() {

@@ -35,6 +35,8 @@ struct KindredApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .preferredColorScheme(.dark)
+                .tint(KindredTheme.accent)
                 .onOpenURL { url in
                     guard url.scheme?.lowercased() == "kindred" else { return }
                     Task { @MainActor in
@@ -49,39 +51,49 @@ struct KindredApp: App {
     }
 
     private func configureAppearance() {
-        let warmBg = UIColor(KindredTheme.paper)
+        // Dark first, everywhere. The redesign has no light theme on mobile,
+        // so the whole UIKit layer is pinned rather than following the system.
+        let ground = UIColor(KindredTheme.bg)
 
         let tabAppearance = UITabBarAppearance()
         tabAppearance.configureWithOpaqueBackground()
-        tabAppearance.backgroundColor = warmBg
+        tabAppearance.backgroundColor = ground
         UITabBar.appearance().standardAppearance = tabAppearance
         UITabBar.appearance().scrollEdgeAppearance = tabAppearance
-        // Hide system tab bar — we use our own KindredTabBar
+        // The system tab bar is replaced by KindredTabBar (frosted, capsule pill).
         UITabBar.appearance().isHidden = true
 
+        // Transparent nav bars so the large title collapses over the content,
+        // per the platform stance in IOS.md.
         let navAppearance = UINavigationBarAppearance()
-        navAppearance.configureWithOpaqueBackground()
-        navAppearance.backgroundColor = warmBg
+        navAppearance.configureWithTransparentBackground()
+        navAppearance.backgroundColor = .clear
         navAppearance.shadowColor = .clear
-        // Use Space Grotesk for nav titles
-        if let boldDesc = UIFontDescriptor(name: "SpaceGrotesk-Bold", size: 34).withSymbolicTraits(.traitBold) {
+        if let large = UIFont(name: "SpaceGrotesk-Bold", size: 30) {
             navAppearance.largeTitleTextAttributes = [
-                .font: UIFont(descriptor: boldDesc, size: 34),
-                .foregroundColor: UIColor(KindredTheme.ash),
+                .font: large,
+                .foregroundColor: UIColor(KindredTheme.ink),
+                .kern: -0.3,
             ]
         }
-        if let titleDesc = UIFontDescriptor(name: "SpaceGrotesk-Bold", size: 17).withSymbolicTraits(.traitBold) {
+        if let inline = UIFont(name: "SpaceGrotesk-SemiBold", size: 17) {
             navAppearance.titleTextAttributes = [
-                .font: UIFont(descriptor: titleDesc, size: 17),
-                .foregroundColor: UIColor(KindredTheme.ash),
+                .font: inline,
+                .foregroundColor: UIColor(KindredTheme.ink),
             ]
         }
-        UINavigationBar.appearance().standardAppearance = navAppearance
-        UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
-        UINavigationBar.appearance().compactAppearance = navAppearance
-        UINavigationBar.appearance().tintColor = UIColor(KindredTheme.ember)
 
-        UITableView.appearance().backgroundColor = warmBg
+        let scrolled = navAppearance.copy() as! UINavigationBarAppearance
+        scrolled.configureWithDefaultBackground()
+        scrolled.backgroundColor = UIColor(KindredTheme.chrome)
+        scrolled.shadowColor = UIColor(KindredTheme.hairline)
+
+        UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
+        UINavigationBar.appearance().standardAppearance = scrolled
+        UINavigationBar.appearance().compactAppearance = scrolled
+        UINavigationBar.appearance().tintColor = UIColor(KindredTheme.accent)
+
+        UITableView.appearance().backgroundColor = ground
     }
 }
 

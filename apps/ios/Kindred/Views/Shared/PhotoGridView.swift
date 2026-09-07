@@ -71,6 +71,22 @@ struct PhotoGridItem: Identifiable {
     let title: String?
 }
 
+extension PhotoGridItem {
+    /// Bridge to the redesigned viewer, which works in catalog rows rather
+    /// than in the grid item the older screens pass around.
+    var asLibraryPhoto: LibraryPhoto {
+        LibraryPhoto(
+            photo_id: id,
+            photo_title: title,
+            date_taken: nil,
+            media_kind: .photo,
+            duration_seconds: nil,
+            flickr_url: flickrURL,
+            thumb_url: thumbURL ?? photoURL
+        )
+    }
+}
+
 // MARK: - Convenience Initializers
 
 extension PhotoGridItem {
