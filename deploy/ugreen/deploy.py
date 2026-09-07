@@ -14,13 +14,21 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RUNTIME = Path('/volume1/docker/Files/kindred/deploy/ugreen')
-SERVICES = ('api', 'web', 'library-worker')
+SERVICES = ('api', 'web', 'library-worker', 'video-worker')
 
 
 def run(*args, capture=False, cwd=None):
     result = subprocess.run([str(a) for a in args], cwd=cwd, check=True,
                             text=True, stdout=subprocess.PIPE if capture else None)
     return result.stdout.strip() if capture else None
+
+
+def restore(target, runtime, active):
+    extras = sorted(set(active['services']) - set(target['services']))
+    if extras:
+        compose(Path(active['config']), runtime, 'stop', *extras)
+    compose(Path(target['config']), runtime, 'up', '-d', '--no-deps', '--no-build',
+            '--force-recreate', '--wait', '--wait-timeout', '300', *target['services'])
 
 
 def write_json(path, value):
@@ -101,8 +109,8 @@ def main():
             target = json.loads(previous.read_text())
             config = Path(target['config'])
             services = target['services']
-            compose(config, runtime, 'up', '-d', '--no-deps', '--no-build', '--force-recreate',
-                    '--wait', '--wait-timeout', '300', *services)
+            active = json.loads(current.read_text()) if current.exists() else target
+            restore(target, runtime, active)
             if target.get('revision'):
                 verify(config, runtime, target['revision'], services)
             old = json.loads(current.read_text()) if current.exists() else None
@@ -133,7 +141,7 @@ def main():
                                  release, runtime / 'data', revision))
         compose(config, runtime, 'config', '--quiet')
         services = list(SERVICES)
-        build_services = sorted({'api' if service == 'library-worker' else service for service in services})
+        build_services = sorted({'api' if service in ('library-worker', 'video-worker') else service for service in services})
         print(f'Building Git commit {revision}', flush=True)
         compose(config, runtime, 'build', *build_services)
         if current.exists():
@@ -144,7 +152,9 @@ def main():
             if not legacy.exists():
                 raise RuntimeError('Existing NAS Compose file is required for first-deployment rollback')
             shutil.copy2(legacy, legacy_snapshot)
-            previous = {'revision': None, 'config': str(legacy_snapshot), 'services': services}
+            legacy_services = compose(legacy_snapshot, runtime, 'config', '--services', capture=True).splitlines()
+            previous = {'revision': None, 'config': str(legacy_snapshot),
+                        'services': [service for service in services if service in legacy_services]}
         write_json(state_dir / 'previous.json', previous)
         # Builds finish before any running service is touched. Never run `down`,
         # remove volumes, restart the database, or operate on another project.
@@ -154,8 +164,7 @@ def main():
             image_ids = verify(config, runtime, revision, services)
         except Exception:
             print('Verification failed; restoring the previous application containers.', flush=True)
-            compose(Path(previous['config']), runtime, 'up', '-d', '--no-deps', '--no-build',
-                    '--force-recreate', '--wait', '--wait-timeout', '300', *services)
+            restore(previous, runtime, {'config': str(config), 'services': services})
             raise
         record = {'revision': revision, 'config': str(config), 'services': services,
                   'image_ids': image_ids, 'deployed_at': dt.datetime.now(dt.timezone.utc).isoformat()}

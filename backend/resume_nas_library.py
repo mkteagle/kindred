@@ -107,6 +107,16 @@ async def mirror(relative: str, receipt: dict, source_root: Path, privacy: str) 
     if source is None or not source.exists():
         raise FileNotFoundError(relative)
     metadata = staged_import.read_metadata(source_root / relative)
+    if source.suffix.lower() in staged_import.VIDEO_EXTENSIONS:
+        import video_queue
+        # Queue the managed durable original, never a transient upload or export.
+        original = managed_original(photo_id)
+        if original is None:
+            raise FileNotFoundError(f"Managed video original missing: {photo_id}")
+        video_queue.enqueue(photo_id, original, metadata, privacy)
+        main._queue_flickr_replication(photo_id)
+        receipt["flickr_status"] = "queued"
+        return False
     job_id = main._queue_flickr_replication(photo_id)
     main._set_replication_status(job_id, "running")
     try:

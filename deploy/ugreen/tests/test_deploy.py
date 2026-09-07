@@ -37,3 +37,11 @@ class DeployTests(unittest.TestCase):
              patch.object(deploy, 'run', return_value='[{"Config":{"Labels":{"org.opencontainers.image.revision":"' + 'a'*40 + '"}}}]'):
             with self.assertRaisesRegex(RuntimeError, 'health is unhealthy'):
                 deploy.verify(Path('/config'), Path('/runtime'), 'a' * 40, ['web'])
+
+    def test_rollback_stops_new_worker_absent_from_previous_release(self):
+        previous = {'config': '/old', 'services': ['api', 'web', 'library-worker']}
+        current = {'config': '/new', 'services': [*previous['services'], 'video-worker']}
+        with patch.object(deploy, 'compose') as compose:
+            deploy.restore(previous, Path('/runtime'), current)
+        self.assertEqual(compose.call_args_list[0].args[2:], ('stop', 'video-worker'))
+        self.assertNotIn('video-worker', compose.call_args_list[1].args)

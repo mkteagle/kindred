@@ -88,6 +88,38 @@ services:
       - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/model-cache:/app/cache
     networks: [kindred-internal]
 
+  video-worker:
+    image: kindred-api:${KINDRED_REVISION:?Set KINDRED_REVISION}
+    restart: unless-stopped
+    command: ["python", "-u", "/app/video_queue.py"]
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kindred}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-kindred}
+      PYTHONUNBUFFERED: "1"
+      XDG_CACHE_HOME: /app/cache
+      PHOTO_STORAGE_ROOT: /data/photos/originals
+      API_KEY: ${API_KEY:?Set API_KEY in .env}
+      SCAN_SECRET: ${SCAN_SECRET:?Set SCAN_SECRET in .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://kindredphotos.app,https://nas.kindredphotos.app}
+      FLICKR_API_KEY: ${FLICKR_API_KEY:-}
+      FLICKR_SECRET: ${FLICKR_SECRET:-}
+      FLICKR_OAUTH_TOKEN: ${FLICKR_OAUTH_TOKEN:-}
+      FLICKR_OAUTH_SECRET: ${FLICKR_OAUTH_SECRET:-}
+      FLICKR_USER_ID: ${FLICKR_USER_ID:-}
+      APP_REVIEW_USERNAME: ${APP_REVIEW_USERNAME:-}
+      APP_REVIEW_PASSWORD: ${APP_REVIEW_PASSWORD:-}
+      PYTHONPATH: /app
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    volumes:
+      - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/backend:/app/data
+      - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/photos:/data/photos
+      - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/model-cache:/app/cache
+    networks: [kindred-internal]
+
   web:
     image: kindred-web:${KINDRED_REVISION}
     build:
