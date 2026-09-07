@@ -235,8 +235,20 @@ export const library = {
 
   albums: () => desktop.apiGet<{ albums: Album[] }>("/albums").then((r) => r.albums ?? []),
 
-  addToAlbum: (albumRef: string, photoIds: string[]) =>
-    desktop.apiSend<unknown>("POST", `/albums/${albumRef}/photos`, { photo_ids: photoIds }),
+  /**
+   * The endpoint refuses more than 500 photos at once, and ⌘A on a day with a
+   * thousand in it is an ordinary thing to do — so this batches rather than
+   * failing. Sequential on purpose: each addition projects the photo onto the
+   * NAS symlink tree and the Flickr photoset.
+   */
+  addToAlbum: async (albumRef: string, photoIds: string[]) => {
+    const BATCH = 500;
+    for (let at = 0; at < photoIds.length; at += BATCH) {
+      await desktop.apiSend<unknown>("POST", `/albums/${albumRef}/photos`, {
+        photo_ids: photoIds.slice(at, at + BATCH),
+      });
+    }
+  },
 
   shares: () => desktop.apiGet<{ shares: Share[] }>("/shares").then((r) => r.shares ?? []),
 
