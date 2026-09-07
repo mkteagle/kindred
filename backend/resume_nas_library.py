@@ -149,20 +149,35 @@ async def _run(args: argparse.Namespace) -> int:
     receipts = progress["completed"]
 
     recovered = 0
+    verified_receipts = set()
     for number, (relative, receipt) in enumerate(receipts.items(), 1):
         if reconcile(relative, receipt, source_root):
             recovered += 1
+            verified_receipts.add(relative)
         if number % 100 == 0:
             print(f"[resume] checkpoint verified={number:,}/{len(receipts):,}", flush=True)
     main.invalidate_cache("timeline")
     print(f"[resume] reconciled {recovered:,} completed files into the active catalog", flush=True)
 
+    # Read available mirrors once. Completed files need neither a second
+    # reconciliation nor a full checkpoint rewrite on every restart.
+    available_mirrors = {str(row["photo_id"]): row["provider_key"] for row in main.db_query(
+        "SELECT photo_id, provider_key FROM photo_copies WHERE provider='flickr' AND status='available'"
+    )}
     mirrored = 0
     analyzed = 0
     failures = 0
     started = time.monotonic()
     for index, source in enumerate(staged_import.iter_media(source_root), start=1):
         relative = source.relative_to(source_root).as_posix()
+        previous = receipts.get(relative, {})
+        if (args.defer_analysis and relative in verified_receipts
+                and relative not in progress["failed"]
+                and previous.get("flickr_photo_id")
+                and available_mirrors.get(previous.get("kindred_photo_id")) == previous["flickr_photo_id"]):
+            if index % 1000 == 0:
+                print(f"[resume] scanned={index:,} already mirrored; catalog={len(receipts):,}", flush=True)
+            continue
         try:
             if relative not in receipts:
                 # Catalog the durable NAS original first. A Flickr outage or an
@@ -175,7 +190,8 @@ async def _run(args: argparse.Namespace) -> int:
                 staged_import.save_progress(progress_path, progress)
             else:
                 receipt = receipts[relative]
-                reconcile(relative, receipt, source_root)
+                if relative not in verified_receipts:
+                    reconcile(relative, receipt, source_root)
             if await mirror(relative, receipt, source_root, args.privacy):
                 mirrored += 1
             flickr_id = receipt.get("flickr_photo_id") or main._existing_flickr_copy(
