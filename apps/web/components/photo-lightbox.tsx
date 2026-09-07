@@ -202,6 +202,8 @@ function PhotoLightboxOverlay({
   const [dragging, setDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const [imageAttempt, setImageAttempt] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
@@ -245,6 +247,8 @@ function PhotoLightboxOverlay({
     setZoom(1);
     setPanOffset({ x: 0, y: 0 });
     setImageLoaded(false);
+    setImageError(false);
+    setImageAttempt(0);
     setMoreOpen(false);
     setShareOpen(false);
     setCopySuccess(false);
@@ -605,10 +609,11 @@ function PhotoLightboxOverlay({
         {/* Full image */}
         <img
           ref={imageRef}
-          src={imageUrl}
+          src={`${imageUrl}&retry=${imageAttempt}`}
           alt={currentPhoto?.photo_title || ""}
           className={`lb-main-image ${imageLoaded ? "is-loaded" : ""}`}
           onLoad={() => setImageLoaded(true)}
+          onError={() => setImageError(true)}
           onClick={handleImageClick}
           draggable={false}
           style={{
@@ -618,12 +623,15 @@ function PhotoLightboxOverlay({
         />
 
         {/* Loading caption */}
-        {!imageLoaded && (
+        {!imageLoaded && !imageError && (
           <div className="lb-loading-caption">
             <span className="lb-loading-dot" />
             Loading full resolution...
           </div>
         )}
+        {imageError && <div className="lb-loading-caption" role="alert">
+          Could not load this photo. <button onClick={() => { setImageError(false); setImageAttempt(n => n + 1); }}>Retry</button>
+        </div>}
 
         {/* Zoom indicator */}
         {zoom > 1 && (

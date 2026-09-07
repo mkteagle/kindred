@@ -4,7 +4,7 @@ Kindred backend — FastAPI + PostgreSQL/pgvector
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List
 import numpy as np
@@ -14,6 +14,7 @@ import httpx
 import asyncio
 import base64
 import os
+from pathlib import Path
 
 import secrets
 import bcrypt
@@ -22,6 +23,8 @@ import psycopg2
 from psycopg2.extras import RealDictCursor, execute_values
 from pgvector.psycopg2 import register_vector
 from datetime import datetime, timedelta, timezone
+from db_migrations import apply_migrations
+from storage import LocalStorageProvider
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 FLICKR_API_KEY = os.environ.get("FLICKR_API_KEY", "")
@@ -31,6 +34,8 @@ FLICKR_OAUTH_SECRET = os.environ.get("FLICKR_OAUTH_SECRET", "")
 FLICKR_USER_ID = os.environ.get("FLICKR_USER_ID", "")
 SCAN_SECRET = os.environ.get("SCAN_SECRET", "")
 API_KEY = os.environ.get("API_KEY", "")
+PHOTO_STORAGE_ROOT = os.environ.get("PHOTO_STORAGE_ROOT", "")
+PUBLIC_API_URL = os.environ.get("PUBLIC_API_URL", "https://api.kindredphotos.app").rstrip("/")
 
 app = FastAPI(title="Kindred API")
 CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "").split(",") if os.environ.get("CORS_ORIGINS") else [
@@ -116,6 +121,9 @@ def require_admin(request: FastAPIRequest):
 def create_new_tables():
     """Create tables for new features if they don't exist yet."""
     try:
+        applied = apply_migrations(DATABASE_URL)
+        if applied:
+            print(f"Applied database migrations: {', '.join(applied)}")
         conn = psycopg2.connect(DATABASE_URL)
         with conn.cursor() as cur:
             cur.execute("""
@@ -2508,30 +2516,38 @@ async def _upload_to_flickr(
     import urllib.parse
 
     ext = os.path.splitext(filename)[1].lower()
+    converted_heic = False
 
-    # Convert HEIC/HEIF to JPEG — Flickr doesn't accept HEIC.
-    # Loads the image into memory for PIL conversion, then writes to a new
-    # JPEG file alongside the original. The original temp file is replaced.
+    # Convert HEIC/HEIF to a temporary high-quality JPEG for Flickr while
+    # retaining the untouched HEIC as Kindred's durable NAS original.
     if ext in (".heic", ".heif"):
         try:
             from PIL import Image
-            try:
-                from pillow_heif import register_heif_opener
-                register_heif_opener()
-            except ImportError:
-                pass
-            img = Image.open(file_path)
+            from PIL import ImageOps
+            from pillow_heif import register_heif_opener
+
+            register_heif_opener()
             jpeg_path = file_path + ".jpg"
-            img.convert("RGB").save(jpeg_path, format="JPEG", quality=92)
-            try:
-                os.unlink(file_path)
-            except FileNotFoundError:
-                pass
+            with Image.open(file_path) as source:
+                image = ImageOps.exif_transpose(source).convert("RGB")
+                save_options = {
+                    "format": "JPEG",
+                    "quality": 94,
+                    "subsampling": 0,
+                    "optimize": True,
+                }
+                exif = source.getexif()
+                if exif:
+                    save_options["exif"] = exif.tobytes()
+                if source.info.get("icc_profile"):
+                    save_options["icc_profile"] = source.info["icc_profile"]
+                image.save(jpeg_path, **save_options)
             file_path = jpeg_path
             filename = os.path.splitext(filename)[0] + ".jpg"
+            converted_heic = True
             print(f"[upload] Converted HEIC to JPEG: {os.path.getsize(file_path)} bytes")
         except Exception as e:
-            print(f"[upload] HEIC conversion failed: {e}, uploading as-is")
+            raise RuntimeError(f"HEIC-to-JPEG conversion failed for {filename}: {e}") from e
 
     upload_url = "https://up.flickr.com/services/upload/"
     is_public, is_friend, is_family = PRIVACY_FLAGS.get(privacy, PRIVACY_FLAGS["family"])
@@ -2577,7 +2593,12 @@ async def _upload_to_flickr(
     # the file in chunks, so a 1GB video doesn't get buffered into memory.
     # Long timeout because video uploads from a home network can take a while.
     with open(file_path, "rb") as f:
-        files = {"photo": (filename, f, content_type)}
+        # httpx can derive a stale multipart Content-Length from a converted
+        # file on some mounted NAS filesystems. Converted JPEGs are modest in
+        # size, so freeze those bytes before constructing the request. Original
+        # videos and other large media remain streamed from disk.
+        upload_body = f.read() if converted_heic else f
+        files = {"photo": (filename, upload_body, content_type)}
         async with httpx.AsyncClient(timeout=3600) as client:
             resp = await client.post(
                 upload_url,
@@ -4108,45 +4129,162 @@ async def backfill_metadata(background_tasks: BackgroundTasks, admin=Depends(req
     return {"job_id": job_id}
 
 
+@app.get("/library/counts")
+def get_library_counts(user=Depends(get_current_user)):
+    from library_api import counts
+    return counts(db_query)
+
+
+@app.get("/library/photos")
+def get_library_photos(sort: str = "newest", offset: int = Query(0, ge=0),
+                       limit: int = Query(48, ge=1, le=100), user=Depends(get_current_user)):
+    from library_api import gallery
+    return gallery(db_query, sort, offset, limit)
+
+
 @app.get("/timeline")
-def get_timeline():
-    """Return photos grouped by month/year from photo_metadata."""
-    cached = get_cached("timeline", ttl_seconds=3600)
-    if cached:
-        return cached
+def get_timeline(request: FastAPIRequest):
+    """Return every durable library photo, even before ML analysis runs."""
     rows = db_query("""
-        SELECT pm.photo_id, pm.date_taken,
-               d.thumb_url, d.flickr_url, d.photo_title, d.photo_url
-        FROM photo_metadata pm
-        JOIN LATERAL (
-            SELECT DISTINCT ON (photo_id) thumb_url, flickr_url, photo_title, photo_url
-            FROM detections WHERE photo_id = pm.photo_id LIMIT 1
-        ) d ON true
-        WHERE pm.date_taken IS NOT NULL
-        ORDER BY pm.date_taken DESC
+        SELECT p.id::text AS photo_id,
+               COALESCE(p.taken_at, p.created_at) AS date_taken,
+               COALESCE(NULLIF(p.title, ''), p.original_filename, '') AS photo_title,
+               flickr.remote_url AS flickr_url,
+               detections.thumb_url AS analyzed_thumb_url,
+               nas.provider_key AS nas_provider_key
+        FROM photos p
+        LEFT JOIN photo_copies nas
+          ON nas.photo_id = p.id AND nas.provider = 'nas' AND nas.status = 'available'
+        LEFT JOIN photo_copies flickr
+          ON flickr.photo_id = p.id AND flickr.provider = 'flickr' AND flickr.status = 'available'
+        LEFT JOIN LATERAL (
+            SELECT d.thumb_url
+            FROM detections d
+            WHERE d.photo_id IN (p.id::text, p.legacy_photo_id, flickr.provider_key)
+            LIMIT 1
+        ) detections ON true
+        WHERE (nas.photo_id IS NOT NULL OR flickr.photo_id IS NOT NULL)
+          AND (p.media_type IS NULL OR p.media_type LIKE 'image/%')
+        ORDER BY COALESCE(p.taken_at, p.created_at) DESC
     """)
 
+    session_token = request.headers.get("X-Session-Token")
+    auth_query = f"&session_token={session_token}" if session_token else ""
+
     months_dict: dict[str, list[dict]] = {}
+    indexed_photo_ids: set[str] = set()
     for r in rows:
+        indexed_photo_ids.add(r["photo_id"])
         dt = r["date_taken"]
         month_key = dt.strftime("%Y-%m") if hasattr(dt, "strftime") else str(dt)[:7]
         months_dict.setdefault(month_key, [])
+        local_thumb = (
+            f"{PUBLIC_API_URL}/photos/{r['photo_id']}/local?variant=thumb{auth_query}"
+            if r.get("nas_provider_key") else None
+        )
         months_dict[month_key].append({
             "photo_id": r["photo_id"],
-            "thumb_url": r["thumb_url"],
+            "thumb_url": r.get("analyzed_thumb_url") or local_thumb,
             "flickr_url": r["flickr_url"] or "",
             "photo_title": r["photo_title"] or "",
-            "photo_url": r["photo_url"] or "",
             "date_taken": str(r["date_taken"]),
         })
+
+    # Originals are the durable source of truth. Keep the library usable when
+    # its database index is stale or temporarily points at a fresh database.
+    # This bounded layout excludes import staging and other arbitrary files.
+    if PHOTO_STORAGE_ROOT:
+        storage_root = Path(PHOTO_STORAGE_ROOT)
+        for source in storage_root.glob("??/*/original.*"):
+            photo_id = source.parent.name
+            if photo_id in indexed_photo_ids:
+                continue
+            try:
+                uuid.UUID(photo_id)
+                modified = datetime.fromtimestamp(source.stat().st_mtime, tz=timezone.utc)
+            except (ValueError, OSError):
+                continue
+            month_key = modified.strftime("%Y-%m")
+            months_dict.setdefault(month_key, []).append({
+                "photo_id": photo_id,
+                "thumb_url": f"{PUBLIC_API_URL}/photos/{photo_id}/local?variant=thumb{auth_query}",
+                "flickr_url": "",
+                "photo_title": source.stem,
+                "date_taken": modified.isoformat(),
+            })
 
     months = [
         {"month": m, "count": len(photos), "photos": photos}
         for m, photos in sorted(months_dict.items(), reverse=True)
     ]
-    result = {"months": months}
-    set_cached("timeline", result)
-    return result
+    return {"months": months}
+
+
+@app.get("/photos/{photo_id}/local")
+def get_local_photo(photo_id: str, variant: str = "original", user=Depends(get_current_user)):
+    """Serve a NAS original or an on-demand cached thumbnail."""
+    if variant not in ("original", "thumb", "preview"):
+        raise HTTPException(400, "variant must be original, thumb, or preview")
+    if not PHOTO_STORAGE_ROOT:
+        raise HTTPException(503, "NAS photo storage is not configured")
+
+    rows = db_query(
+        """
+        SELECT pc.provider_key, p.original_filename, p.media_type
+        FROM photos p
+        JOIN photo_copies pc ON pc.photo_id = p.id
+        WHERE p.id = %s AND pc.provider = 'nas' AND pc.status = 'available'
+        """,
+        (photo_id,),
+    )
+    row = rows[0] if rows else None
+    provider = LocalStorageProvider(PHOTO_STORAGE_ROOT)
+    source = provider.resolve_local_path(row["provider_key"]) if row else None
+    if source is None:
+        try:
+            stable_id = str(uuid.UUID(photo_id))
+        except ValueError:
+            raise HTTPException(404, "NAS photo not found")
+        matches = list(Path(PHOTO_STORAGE_ROOT).glob(f"{stable_id[:2]}/{stable_id}/original.*"))
+        source = matches[0] if len(matches) == 1 else None
+    if source is None:
+        raise HTTPException(404, "NAS original is missing")
+
+    response_path = source
+    original_filename = row.get("original_filename") if row else None
+    media_type = (row.get("media_type") if row else None) or _content_type_for_filename(original_filename or source.name)
+    if variant in ("thumb", "preview") and media_type.startswith("image/"):
+        thumbnail_dir = Path("/app/data/thumbnails")
+        thumbnail_dir.mkdir(parents=True, exist_ok=True)
+        thumbnail = thumbnail_dir / f"{photo_id}{'-preview' if variant == 'preview' else ''}.jpg"
+        if not thumbnail.exists():
+            from PIL import Image, ImageOps
+            if source.suffix.lower() in (".heic", ".heif"):
+                from pillow_heif import register_heif_opener
+                register_heif_opener()
+            temporary = thumbnail.with_name(f"{thumbnail.stem}.{uuid.uuid4().hex}.tmp.jpg")
+            try:
+                with Image.open(source) as original:
+                    image = ImageOps.exif_transpose(original)
+                    edge = 2048 if variant == "preview" else 512
+                    image.thumbnail((edge, edge))
+                    image.convert("RGB").save(temporary, "JPEG", quality=90 if variant == "preview" else 82)
+                os.replace(temporary, thumbnail)
+            except Exception as exc:
+                raise HTTPException(422, "This photo could not be decoded") from exc
+            finally:
+                temporary.unlink(missing_ok=True)
+        if thumbnail.exists():
+            response_path = thumbnail
+            media_type = "image/jpeg"
+
+    return FileResponse(
+        response_path,
+        media_type=media_type,
+        filename=original_filename or source.name,
+        content_disposition_type="inline",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 @app.get("/locations")
@@ -4196,8 +4334,16 @@ def get_locations():
 @app.get("/photos/{photo_id}/metadata")
 def get_photo_metadata(photo_id: str):
     """Return full metadata for a single photo."""
-    rows = db_query("SELECT * FROM photo_metadata WHERE photo_id = %s", (photo_id,))
+    catalog = _catalog_photo(photo_id)
+    identities = [photo_id]
+    if catalog:
+        identities += [v for v in (catalog.get('legacy_photo_id'), catalog.get('flickr_id')) if v]
+    rows = db_query("SELECT * FROM photo_metadata WHERE photo_id = ANY(%s) LIMIT 1", (identities,))
     if not rows:
+        if catalog:
+            return {'photo_id': photo_id, 'date_taken': catalog.get('taken_at'),
+                    'latitude': catalog.get('latitude'), 'longitude': catalog.get('longitude'),
+                    'description': catalog.get('description', ''), 'tags': []}
         raise HTTPException(404, "Metadata not found for this photo")
     row = dict(rows[0])
     # Convert datetime fields to strings for JSON serialization
@@ -4205,6 +4351,17 @@ def get_photo_metadata(photo_id: str):
         if row.get(key) is not None:
             row[key] = str(row[key])
     return row
+
+
+def _catalog_photo(photo_id: str):
+    rows = db_query("""SELECT p.*, n.provider_key AS nas_key, f.provider_key AS flickr_id,
+        f.remote_url AS flickr_url
+        FROM photos p
+        LEFT JOIN photo_copies n ON n.photo_id=p.id AND n.provider='nas' AND n.status='available'
+        LEFT JOIN photo_copies f ON f.photo_id=p.id AND f.provider='flickr' AND f.status='available'
+        WHERE p.id::text=%s OR p.legacy_photo_id=%s OR f.provider_key=%s LIMIT 1
+    """, (photo_id, photo_id, photo_id))
+    return dict(rows[0]) if rows else None
 
 
 @app.get("/photos/{photo_id}/image")
@@ -4216,6 +4373,22 @@ async def proxy_photo_image(photo_id: str, size: str = "b", user=Depends(get_cur
     Default 'b' (1024px) is good for viewing. Use 'o' for original quality.
     """
     import urllib.parse
+
+    catalog = _catalog_photo(photo_id)
+    if catalog and catalog.get('nas_key'):
+        try:
+            return await asyncio.to_thread(
+                get_local_photo, str(catalog['id']),
+                'original' if size == 'o' else ('thumb' if size in ('s', 'q', 't', 'm', 'n') else 'preview'),
+                user,
+            )
+        except HTTPException as exc:
+            if exc.status_code not in (404, 422) or not catalog.get('flickr_id'):
+                raise
+    if catalog:
+        photo_id = catalog.get('flickr_id') or catalog.get('legacy_photo_id')
+        if not photo_id:
+            raise HTTPException(404, 'No available photo copy')
 
     flickr_creds = get_flickr_credentials()
     if not FLICKR_API_KEY or not flickr_creds:
@@ -4292,21 +4465,28 @@ async def proxy_photo_image(photo_id: str, size: str = "b", user=Depends(get_cur
 @app.get("/photos/{photo_id}/detections")
 def get_photo_detections(photo_id: str):
     """Return all detections for a photo with their cluster assignments."""
+    catalog = _catalog_photo(photo_id)
+    identities = [photo_id]
+    if catalog:
+        identities += [v for v in (str(catalog['id']), catalog.get('legacy_photo_id'), catalog.get('flickr_id')) if v]
     rows = db_query("""
         SELECT d.id, d.category, d.subtype, d.bbox, d.det_score, d.chip,
                dc.cluster_id, c.label as cluster_label
         FROM detections d
         LEFT JOIN detection_clusters dc ON dc.detection_id = d.id
         LEFT JOIN clusters c ON c.id = dc.cluster_id AND c.category = dc.category
-        WHERE d.photo_id = %s
+        WHERE d.photo_id = ANY(%s)
         ORDER BY d.det_score DESC
-    """, (photo_id,))
+    """, (identities,))
     # Also get photo info from any detection
     photo_info = db_query("""
         SELECT photo_url, thumb_url, flickr_url, photo_title, owner
-        FROM detections WHERE photo_id = %s LIMIT 1
-    """, (photo_id,))
+        FROM detections WHERE photo_id = ANY(%s) LIMIT 1
+    """, (identities,))
     photo = dict(photo_info[0]) if photo_info else {}
+    if catalog:
+        photo['photo_title'] = catalog.get('title') or catalog.get('original_filename') or 'Untitled'
+        photo['flickr_url'] = catalog.get('flickr_url') or ''
     return {
         "photo_id": photo_id,
         "photo_url": photo.get("photo_url", ""),

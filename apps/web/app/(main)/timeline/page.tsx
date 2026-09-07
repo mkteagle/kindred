@@ -7,6 +7,7 @@ import type { TimelineResponse, TimelineMonth } from "@/types";
 import { BACKEND, fmt } from "@/lib/constants";
 import { useLightbox } from "@/components/photo-lightbox";
 import type { LightboxPhoto } from "@/components/photo-lightbox";
+import { LibraryCounts } from "@/components/library-counts";
 
 function formatMonth(monthStr: string): string {
   const [year, month] = monthStr.split("-");
@@ -145,6 +146,7 @@ export default function TimelinePage() {
   return (
     <div className="app-shell">
       <main className="page">
+        <LibraryCounts />
         <div className="content-head" style={{ marginBottom: 16 }}>
           <div>
             <h2>Timeline</h2>

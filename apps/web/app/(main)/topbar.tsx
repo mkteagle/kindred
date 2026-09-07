@@ -174,6 +174,9 @@ export function Topbar() {
               })}
 
               {/* Timeline — promoted to top level */}
+              <Link href="/gallery" className={`nb-link ${pathname === "/gallery" ? "is-active" : ""}`}>
+                Gallery
+              </Link>
               <Link href="/timeline" className={`nb-link ${pathname === "/timeline" ? "is-active" : ""}`}>
                 Timeline
               </Link>

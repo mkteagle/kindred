@@ -107,6 +107,9 @@ export default function PhotoDetailPage() {
   // Image sizing
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+  const [imageError, setImageError] = useState(false);
+  const [imageAttempt, setImageAttempt] = useState(0);
+  useEffect(() => { setImageError(false); setImageAttempt(0); }, [photoId]);
   const [natSize, setNatSize] = useState<{ w: number; h: number } | null>(null);
 
   // Selection
@@ -590,9 +593,10 @@ export default function PhotoDetailPage() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               ref={imgRef}
-              src={`${BACKEND}/photos/${photoId}/image?size=h`}
+              src={`${BACKEND}/photos/${photoId}/image?size=h&retry=${imageAttempt}`}
               alt={data.photo_title || ""}
               onLoad={handleImageLoad}
+              onError={() => setImageError(true)}
               draggable={false}
               style={{
                 display: "block",
@@ -600,6 +604,7 @@ export default function PhotoDetailPage() {
                 height: "auto",
               }}
             />
+            {imageError && <p role="alert">Could not load this photo. <button onClick={() => { setImageError(false); setImageAttempt(n => n + 1); }}>Retry</button></p>}
 
             {/* Detection overlays */}
             {natSize &&
