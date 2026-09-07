@@ -38,8 +38,8 @@ def gallery(query, sort, offset, limit):
         COALESCE(NULLIF(p.title,''),p.original_filename,'Untitled') AS photo_title,
         COALESCE(p.taken_at,p.created_at) AS date_taken,
         f.remote_url AS flickr_url
-        {JOINS} WHERE {AVAILABLE} AND {IMAGE}
-        ORDER BY {SORTS[sort]} LIMIT %s OFFSET %s""", (limit + 1, offset))
+        {JOINS} WHERE {AVAILABLE} AND (p.media_type IS NULL OR p.media_type LIKE %s)
+        ORDER BY {SORTS[sort]} LIMIT %s OFFSET %s""", ('image/%', limit + 1, offset))
     has_more = len(rows) > limit
     return {'photos': [dict(row) for row in rows[:limit]],
             'next_offset': offset + limit if has_more else None}

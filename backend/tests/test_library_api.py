@@ -61,6 +61,14 @@ class CatalogTests(unittest.TestCase):
         with self.assertRaises(HTTPException):
             gallery(self.query, 'id; DROP TABLE photos', 0, 48)
 
+    def test_gallery_parameterizes_like_pattern_for_psycopg(self):
+        query = Mock(return_value=[])
+        gallery(query, 'newest', 0, 48)
+        sql, params = query.call_args.args
+        self.assertNotIn("LIKE 'image/%'", sql)
+        self.assertEqual(sql.count('%s'), len(params))
+        self.assertEqual(params, ('image/%', 49, 0))
+
 
 class ImageIdentityTests(unittest.TestCase):
     def test_heic_preview_is_jpeg_and_preserves_original(self):
