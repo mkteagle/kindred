@@ -10349,3 +10349,146 @@ button.kx-avatar { cursor: pointer; }
 @media (max-width: 900px) {
   .kx-overlay { padding: 24px 16px; }
 }
+
+/* ── Settings ────────────────────────────────────────────────────────── */
+
+.kx-title.settings {
+  font-size: 40px;
+  line-height: .98;
+  margin-bottom: 28px;
+}
+
+.kx-profilecard {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px;
+  margin-bottom: 26px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--fill-1);
+}
+
+.kx-profilecard-name {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.kx-profilecard-name strong {
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.kx-card {
+  margin-bottom: 18px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--fill-1);
+}
+
+.kx-cardhead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 16px;
+}
+
+.kx-cardhead h2 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.kx-cardhead-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kx-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.kx-row-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.kx-row-info strong {
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.kx-row-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kx-code {
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: var(--fill-2);
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.kx-statuspill {
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(143, 160, 133, .18);
+  color: var(--sage-ink);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.kx-input.wide { width: 260px; }
+
+.kx-note {
+  margin: 0 16px 14px;
+  font-size: 13px;
+  color: var(--ink-4);
+}
+
+.kx-note.error { color: var(--danger-ink); }
+.kx-note.success { color: var(--sage-ink); }
+
+.kx-reveal {
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: var(--fill-1);
+}
+
+.kx-reveal code {
+  display: block;
+  margin: 8px 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--fill-2);
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .kx-row { flex-wrap: wrap; }
+  .kx-row-actions { margin-left: 0; }
+  .kx-input.wide { width: 100%; }
+}

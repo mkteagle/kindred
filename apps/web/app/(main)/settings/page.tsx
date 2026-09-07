@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Spinner } from "@/components/ui";
 import { AvatarEditor } from "@/components/avatar-editor";
-import { BACKEND } from "@/lib/constants";
+import { BACKEND, fmt } from "@/lib/constants";
+import { useLibraryCounts } from "@/components/kx/use-library";
 
 interface HouseholdUser {
   id: string;
@@ -37,13 +38,30 @@ interface ResendStatus {
   key_preview: string | null;
 }
 
+const JOINED = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric" });
+
+/** "expires in 6 days" — how the design writes an invite's remaining life. */
+function expiresIn(iso: string): string {
+  const days = Math.round((new Date(iso).getTime() - Date.now()) / 86_400_000);
+  if (Number.isNaN(days)) return "expiry unknown";
+  if (days < 0) return "expired";
+  if (days === 0) return "expires today";
+  return `expires in ${days} day${days === 1 ? "" : "s"}`;
+}
+
+function lastUsed(iso: string | null): string {
+  if (!iso) return "never used";
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "never used" : `last used ${date.toLocaleDateString()}`;
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const [users, setUsers] = useState<HouseholdUser[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState<{ userId: string; role: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ userId: string; role: string; username: string } | null>(null);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [generatingKey, setGeneratingKey] = useState(false);
@@ -66,20 +84,24 @@ export default function SettingsPage() {
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailSendResult, setEmailSendResult] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  const { data: counts } = useLibraryCounts();
+
   useEffect(() => {
     Promise.all([
       fetch("/api/auth/me").then((r) => r.json()),
       fetch(`${BACKEND}/users`).then((r) => r.json()),
       fetch(`${BACKEND}/invites`).then((r) => r.json()),
       fetch(`${BACKEND}/api-keys`).then((r) => r.json()),
-      fetch(`${BACKEND}/settings/integrations/resend`).then((r) => r.ok ? r.json() : { configured: false, key_preview: null }),
+      fetch(`${BACKEND}/settings/integrations/resend`).then((r) =>
+        r.ok ? r.json() : { configured: false, key_preview: null },
+      ),
     ])
       .then(([me, usersData, invitesData, keysData, resendData]) => {
         if (!me.loggedIn || me.role !== "admin") {
           router.push("/");
           return;
         }
-        setCurrentUser({ userId: me.userId, role: me.role });
+        setCurrentUser({ userId: me.userId, role: me.role, username: me.username });
         setDisplayName(me.display_name || me.username || "");
         setAvatarUrl(me.avatar_url || null);
         setUsers(usersData.users || []);
@@ -91,13 +113,29 @@ export default function SettingsPage() {
       .finally(() => setLoading(false));
   }, [router]);
 
+  const joined = useMemo(() => {
+    const self = users.find((u) => u.id === currentUser?.userId);
+    if (!self?.created_at) return null;
+    const date = new Date(self.created_at);
+    return Number.isNaN(date.getTime()) ? null : JOINED.format(date);
+  }, [users, currentUser]);
+
   const createInvite = async () => {
     setCreating(true);
     try {
       const resp = await fetch(`${BACKEND}/invites`, { method: "POST" });
       const data = await resp.json();
       if (resp.ok) {
-        setInvites((prev) => [{ id: data.id || "", code: data.code, role: "member", expires_at: data.expires_at, created_at: new Date().toISOString() }, ...prev]);
+        setInvites((prev) => [
+          {
+            id: data.id || "",
+            code: data.code,
+            role: "member",
+            expires_at: data.expires_at,
+            created_at: new Date().toISOString(),
+          },
+          ...prev,
+        ]);
       }
     } finally {
       setCreating(false);
@@ -117,23 +155,21 @@ export default function SettingsPage() {
 
   const toggleRole = async (id: string, currentRole: string) => {
     const newRole = currentRole === "admin" ? "member" : "admin";
-    const msg = newRole === "admin"
-      ? "Promote this member to admin? They'll be able to manage the household, run scans, and configure integrations."
-      : "Demote this admin to member? They'll lose access to admin tools.";
+    const msg =
+      newRole === "admin"
+        ? "Promote this member to admin? They'll be able to manage the household, run scans, and configure integrations."
+        : "Demote this admin to member? They'll lose access to admin tools.";
     if (!window.confirm(msg)) return;
     const resp = await fetch(`${BACKEND}/users/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role: newRole }),
     });
-    if (resp.ok) {
-      setUsers((prev) => prev.map((u) => u.id === id ? { ...u, role: newRole } : u));
-    }
+    if (resp.ok) setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, role: newRole } : u)));
   };
 
   const copyInviteLink = (code: string) => {
-    const link = `${window.location.origin}/join/${code}`;
-    navigator.clipboard.writeText(link);
+    navigator.clipboard.writeText(`${window.location.origin}/join/${code}`);
     setCopied(code);
     setTimeout(() => setCopied(null), 2000);
   };
@@ -178,11 +214,12 @@ export default function SettingsPage() {
     setTimeout(() => setKeyCopied(false), 2000);
   };
 
-  // ── Resend integration ────────────────────────────────────────────
+  /* ── Resend integration ──────────────────────────────────────────── */
+
   const validateResendKey = (key: string): string | null => {
     const trimmed = key.trim();
     if (!trimmed) return "API key cannot be empty.";
-    if (!trimmed.startsWith("re_")) return "Resend keys start with \"re_\" — this doesn't look right.";
+    if (!trimmed.startsWith("re_")) return 'Resend keys start with "re_" — this doesn\'t look right.';
     if (trimmed.length < 20) return "This key looks too short. Resend keys are typically 30+ characters.";
     if (trimmed.length > 100) return "This key looks too long. Check that you haven't pasted extra characters.";
     if (/\s/.test(trimmed)) return "API keys shouldn't contain spaces.";
@@ -207,7 +244,7 @@ export default function SettingsPage() {
       if (resp.ok) {
         setResendStatus({ configured: true, key_preview: data.key_preview });
         setResendKeyInput("");
-        setResendSaveMsg({ type: "success", text: "Resend API key saved successfully." });
+        setResendSaveMsg({ type: "success", text: "Resend API key saved." });
       } else {
         setResendSaveMsg({ type: "error", text: data.detail || "Failed to save key." });
       }
@@ -229,7 +266,8 @@ export default function SettingsPage() {
     }
   };
 
-  // ── Email invite ──────────────────────────────────────────────────
+  /* ── Email invite ────────────────────────────────────────────────── */
+
   const sendEmailInvite = async () => {
     if (!inviteEmail.trim()) return;
     setSendingEmail(true);
@@ -241,21 +279,25 @@ export default function SettingsPage() {
         body: JSON.stringify({ email: inviteEmail.trim(), name: inviteName.trim() || null }),
       });
       const data = await resp.json();
+      const created: Invite = {
+        id: "",
+        code: data.code,
+        role: "member",
+        expires_at: data.expires_at,
+        created_at: new Date().toISOString(),
+      };
       if (resp.ok && data.email_sent) {
         setEmailSendResult({ type: "success", text: `Invite sent to ${data.email}` });
-        setInvites((prev) => [
-          { id: "", code: data.code, role: "member", expires_at: data.expires_at, created_at: new Date().toISOString() },
-          ...prev,
-        ]);
+        setInvites((prev) => [created, ...prev]);
         setInviteEmail("");
         setInviteName("");
         setTimeout(() => setEmailInviteOpen(false), 2000);
-      } else if (resp.ok && !data.email_sent) {
-        setEmailSendResult({ type: "error", text: `Invite created (${data.code}) but email failed: ${data.email_error || "Unknown error"}` });
-        setInvites((prev) => [
-          { id: "", code: data.code, role: "member", expires_at: data.expires_at, created_at: new Date().toISOString() },
-          ...prev,
-        ]);
+      } else if (resp.ok) {
+        setEmailSendResult({
+          type: "error",
+          text: `Invite created (${data.code}) but email failed: ${data.email_error || "Unknown error"}`,
+        });
+        setInvites((prev) => [created, ...prev]);
       } else {
         setEmailSendResult({ type: "error", text: data.detail || "Failed to send invite." });
       }
@@ -267,56 +309,61 @@ export default function SettingsPage() {
   };
 
   if (loading) {
-    return <div className="settings-page"><div style={{display:"flex",flexDirection:"column",gap:16,padding:24}}>{Array.from({length:4}).map((_,i)=>(<div key={i} className="skeleton-card" style={{height:80,borderRadius:12}}/>))}</div></div>;
+    return (
+      <main className="kx-page narrow">
+        <p className="kx-status" role="status">
+          Loading your settings…
+        </p>
+      </main>
+    );
   }
 
   return (
-    <div className="settings-page">
-      {/* Revealed API key banner */}
+    <main className="kx-page narrow">
+      <span className="kx-eyebrow">Settings</span>
+      <h1 className="kx-title settings">Your household.</h1>
+
       {revealedKey && (
-        <div className="settings-key-reveal">
-          <div className="settings-key-reveal-header">
-            <strong>Your new API key</strong>
-            <button className="settings-key-dismiss" onClick={() => setRevealedKey(null)}>&times;</button>
-          </div>
-          <p className="settings-key-warning">Copy this key now — it will not be shown again.</p>
-          <div className="settings-key-value">
-            <code>{revealedKey}</code>
-            <button className="settings-copy" onClick={() => copyApiKey(revealedKey)}>
-              {keyCopied ? "Copied!" : "Copy"}
+        <div className="kx-reveal">
+          <strong>Your new API key</strong>
+          <p className="kx-lede" style={{ margin: "6px 0 0" }}>
+            Copy it now — it will not be shown again.
+          </p>
+          <code>{revealedKey}</code>
+          <div className="kx-row-actions" style={{ marginLeft: 0 }}>
+            <button className="kx-button" onClick={() => copyApiKey(revealedKey)}>
+              {keyCopied ? "Copied" : "Copy"}
+            </button>
+            <button className="kx-button" onClick={() => setRevealedKey(null)}>
+              Dismiss
             </button>
           </div>
-          <p className="settings-key-hint">
-            Add this to your backend <code>.env</code> file as <code>API_KEY</code>, or use it in the iOS app settings.
-          </p>
         </div>
       )}
 
-      {/* Profile avatar section */}
-      <div className="settings-profile">
-        <div className="settings-profile-avatar" onClick={() => setAvatarEditorOpen(true)}>
-          {avatarUrl ? (
+      <div className="kx-profilecard">
+        {avatarUrl ? (
+          <span className="kx-avatar xl">
             <img
-              src={`${BACKEND}${avatarUrl}?t=${Date.now()}`}
-              alt={displayName}
-              className="settings-profile-avatar-img"
+              src={`${BACKEND}${avatarUrl}`}
+              alt=""
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
             />
-          ) : (
-            <div className="settings-profile-initials" style={{ background: "linear-gradient(135deg, #c9551c, #e9b85d)" }}>
-              {(displayName || "?").charAt(0).toUpperCase()}
-            </div>
-          )}
-          <div className="settings-profile-avatar-overlay">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
-              <circle cx="12" cy="13" r="4"/>
-            </svg>
-          </div>
-        </div>
-        <div className="settings-profile-info">
-          <h2>{displayName}</h2>
-          <span>Click your photo to change it</span>
-        </div>
+          </span>
+        ) : (
+          <span className="kx-avatar xl">{(displayName || "?").charAt(0).toUpperCase()}</span>
+        )}
+        <span className="kx-profilecard-name">
+          <strong>{displayName}</strong>
+          <span className="kx-mono">
+            @{currentUser?.username}
+            {currentUser?.role ? ` · ${currentUser.role}` : ""}
+            {joined ? ` · joined ${joined}` : ""}
+          </span>
+        </span>
+        <button className="kx-button" style={{ marginLeft: "auto" }} onClick={() => setAvatarEditorOpen(true)}>
+          Edit profile
+        </button>
       </div>
 
       {avatarEditorOpen && (
@@ -328,236 +375,229 @@ export default function SettingsPage() {
         />
       )}
 
-      <div className="settings-section">
-        <div className="settings-header">
-          <h2>Household Members</h2>
-          <span className="settings-count">{users.length}</span>
-        </div>
-        <div className="settings-list">
-          {users.map((u) => (
-            <div key={u.id} className="settings-row">
-              {u.avatar_url ? (
-                <img
-                  src={`${BACKEND}${u.avatar_url}`}
-                  alt={u.display_name}
-                  className="settings-avatar"
-                  style={{ objectFit: "cover" }}
-                />
-              ) : (
-                <div className="settings-avatar">
-                  {(u.display_name || u.username).charAt(0).toUpperCase()}
-                </div>
-              )}
-              <div className="settings-info">
-                <strong>{u.display_name}</strong>
-                <span>@{u.username} &middot; {u.role}</span>
-              </div>
-              {u.id !== currentUser?.userId && (
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    className="settings-copy"
-                    onClick={() => toggleRole(u.id, u.role)}
-                    title={u.role === "admin" ? "Demote to member" : "Promote to admin"}
-                  >
-                    {u.role === "admin" ? "Demote" : "Make admin"}
-                  </button>
-                  <button className="settings-remove" onClick={() => removeUser(u.id)}>
-                    Remove
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="settings-section">
-        <div className="settings-header">
-          <h2>API Keys</h2>
-          <button className="button primary" onClick={generateApiKey} disabled={generatingKey} style={{ fontSize: 13, minHeight: 36 }}>
-            {generatingKey ? "Generating..." : "Generate new key"}
-          </button>
-        </div>
-        {apiKeys.length === 0 ? (
-          <p className="settings-empty">No API keys. Generate one to connect mobile apps or external tools.</p>
-        ) : (
-          <div className="settings-list">
-            {apiKeys.map((k) => (
-              <div key={k.id} className="settings-row">
-                <div className="settings-code">{k.key_prefix}...&bull;&bull;&bull;&bull;</div>
-                <div className="settings-info">
-                  <strong>{k.name}</strong>
-                  <span>
-                    Created {k.created_at ? new Date(k.created_at).toLocaleDateString() : "\u2014"}
-                    {k.last_used_at && ` \u00b7 Last used ${new Date(k.last_used_at).toLocaleDateString()}`}
-                  </span>
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button className="settings-copy" onClick={() => rollApiKey(k.id)}>
-                    Roll
-                  </button>
-                  <button className="settings-remove" onClick={() => deleteApiKey(k.id)}>
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* ── Integrations ─────────────────────────────────────────────── */}
-      <div className="settings-section" id="integrations">
-        <div className="settings-header">
-          <h2>Integrations</h2>
-        </div>
-
-        <div className="integration-card">
-          <div className="integration-card-header">
-            <div className="integration-card-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                <polyline points="22,6 12,13 2,6"/>
-              </svg>
-            </div>
-            <div className="integration-card-title">
-              <strong>Resend Email</strong>
-              <span className={`integration-status ${resendStatus.configured ? "configured" : ""}`}>
-                {resendStatus.configured ? "Configured" : "Not configured"}
-              </span>
-            </div>
-          </div>
-
-          <p className="integration-card-desc">
-            Connect Resend to send branded invite emails directly from Kindred. Self-hosted instances configure this through the UI instead of environment variables.
-          </p>
-
-          {resendStatus.configured && resendStatus.key_preview && (
-            <div className="integration-key-preview">
-              <span className="integration-key-mask">{resendStatus.key_preview}</span>
-              <button className="settings-remove" onClick={removeResendKey} style={{ marginLeft: "auto" }}>
-                Remove
-              </button>
-            </div>
-          )}
-
-          <div className="integration-key-form">
-            <input
-              type="password"
-              className="integration-key-input"
-              placeholder={resendStatus.configured ? "Paste new key to replace..." : "Paste your Resend API key (re_...)"}
-              value={resendKeyInput}
-              onChange={(e) => setResendKeyInput(e.target.value)}
-              autoComplete="off"
-            />
+      <section className="kx-card">
+        <div className="kx-cardhead">
+          <h2>Household members</h2>
+          <span className="kx-mono">{fmt.format(users.length)}</span>
+          <div className="kx-cardhead-actions">
             <button
-              className="button primary"
-              onClick={saveResendKey}
-              disabled={savingResend || !resendKeyInput.trim()}
-              style={{ fontSize: 13, minHeight: 36, flexShrink: 0 }}
-            >
-              {savingResend ? "Saving..." : "Save"}
-            </button>
-          </div>
-
-          {resendSaveMsg && (
-            <p className={`integration-msg ${resendSaveMsg.type}`}>{resendSaveMsg.text}</p>
-          )}
-        </div>
-      </div>
-
-      {/* ── Invite Codes ─────────────────────────────────────────────── */}
-      <div className="settings-section">
-        <div className="settings-header">
-          <h2>Invite Codes</h2>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              className="button primary"
+              className="kx-button"
               onClick={() => {
                 if (!resendStatus.configured) {
-                  // Scroll to integrations section
-                  document.getElementById("integrations")?.scrollIntoView({ behavior: "smooth" });
-                  setResendSaveMsg({ type: "error", text: "Add your Resend API key above to enable email invites." });
+                  document.getElementById("kx-integrations")?.scrollIntoView({ behavior: "smooth" });
+                  setResendSaveMsg({ type: "error", text: "Add your Resend API key to send email invites." });
                   return;
                 }
                 setEmailInviteOpen(true);
                 setEmailSendResult(null);
               }}
-              style={{ fontSize: 13, minHeight: 36 }}
             >
-              Invite by email
-            </button>
-            <button className="button primary" onClick={createInvite} disabled={creating} style={{ fontSize: 13, minHeight: 36 }}>
-              {creating ? "Creating..." : "Create invite"}
+              Invite someone
             </button>
           </div>
         </div>
 
-        {/* Email invite modal */}
         {emailInviteOpen && (
-          <div className="email-invite-form">
-            <div className="email-invite-form-header">
-              <strong>Send email invite</strong>
-              <button className="settings-key-dismiss" onClick={() => { setEmailInviteOpen(false); setEmailSendResult(null); }}>&times;</button>
+          <div className="kx-row" style={{ flexWrap: "wrap" }}>
+            <input
+              type="email"
+              className="kx-input"
+              placeholder="Email address"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              autoComplete="off"
+            />
+            <input
+              type="text"
+              className="kx-input"
+              placeholder="Name (optional)"
+              value={inviteName}
+              onChange={(e) => setInviteName(e.target.value)}
+              autoComplete="off"
+            />
+            <div className="kx-row-actions">
+              <button
+                className="kx-button primary"
+                onClick={sendEmailInvite}
+                disabled={sendingEmail || !inviteEmail.trim()}
+              >
+                {sendingEmail ? "Sending…" : "Send invite"}
+              </button>
+              <button className="kx-button" onClick={() => setEmailInviteOpen(false)}>
+                Cancel
+              </button>
             </div>
-            <p className="email-invite-form-desc">
-              Enter a recipient email and we will send them a branded invite with a join link.
-            </p>
-            <div className="email-invite-fields">
-              <input
-                type="email"
-                className="integration-key-input"
-                placeholder="Email address"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                autoComplete="off"
-              />
-              <input
-                type="text"
-                className="integration-key-input"
-                placeholder="Name (optional)"
-                value={inviteName}
-                onChange={(e) => setInviteName(e.target.value)}
-                autoComplete="off"
-              />
-            </div>
-            <button
-              className="button primary"
-              onClick={sendEmailInvite}
-              disabled={sendingEmail || !inviteEmail.trim()}
-              style={{ fontSize: 13, minHeight: 36, width: "100%", marginTop: 12 }}
-            >
-              {sendingEmail ? "Sending..." : "Send invite"}
-            </button>
             {emailSendResult && (
-              <p className={`integration-msg ${emailSendResult.type}`}>{emailSendResult.text}</p>
+              <p className={`kx-note ${emailSendResult.type}`} style={{ margin: 0, width: "100%" }}>
+                {emailSendResult.text}
+              </p>
             )}
           </div>
         )}
 
-        {invites.length === 0 && !emailInviteOpen ? (
-          <p className="settings-empty">No active invites. Create one to invite family members.</p>
-        ) : (
-          <div className="settings-list">
-            {invites.map((inv) => (
-              <div key={inv.id || inv.code} className="settings-row">
-                <div className="settings-code">{inv.code}</div>
-                <div className="settings-info">
-                  <span>Expires {new Date(inv.expires_at).toLocaleDateString()}</span>
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button className="settings-copy" onClick={() => copyInviteLink(inv.code)}>
-                    {copied === inv.code ? "Copied!" : "Copy link"}
-                  </button>
-                  <button className="settings-remove" onClick={() => revokeInvite(inv.id)}>
-                    Revoke
-                  </button>
-                </div>
-              </div>
-            ))}
+        {users.map((member) => (
+          <div key={member.id} className="kx-row">
+            {member.avatar_url ? (
+              <span className="kx-avatar">
+                <img
+                  src={`${BACKEND}${member.avatar_url}`}
+                  alt=""
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              </span>
+            ) : (
+              <span className="kx-avatar">{(member.display_name || member.username).charAt(0).toUpperCase()}</span>
+            )}
+            <span className="kx-row-info">
+              <strong>{member.display_name || member.username}</strong>
+              <span className="kx-mono">{member.role}</span>
+            </span>
+            {member.id === currentUser?.userId ? (
+              <span className="kx-mono kx-row-actions">you</span>
+            ) : (
+              <span className="kx-row-actions">
+                <button className="kx-button compact" onClick={() => toggleRole(member.id, member.role)}>
+                  {member.role === "admin" ? "Demote" : "Make admin"}
+                </button>
+                <button className="kx-button danger" onClick={() => removeUser(member.id)}>
+                  Remove
+                </button>
+              </span>
+            )}
           </div>
+        ))}
+      </section>
+
+      <section className="kx-card">
+        <div className="kx-cardhead">
+          <h2>API keys</h2>
+          <div className="kx-cardhead-actions">
+            <button className="kx-button" onClick={generateApiKey} disabled={generatingKey}>
+              {generatingKey ? "Generating…" : "Generate key"}
+            </button>
+          </div>
+        </div>
+        {apiKeys.length === 0 ? (
+          <div className="kx-row">
+            <span className="kx-mono">No keys yet. Generate one to connect the mobile app.</span>
+          </div>
+        ) : (
+          apiKeys.map((key) => (
+            <div key={key.id} className="kx-row">
+              <code className="kx-code">{key.key_prefix}…••••</code>
+              <span className="kx-mono">
+                {key.name} · {lastUsed(key.last_used_at)}
+              </span>
+              <span className="kx-row-actions">
+                <button className="kx-button compact" onClick={() => rollApiKey(key.id)}>
+                  Roll
+                </button>
+                <button className="kx-button danger" onClick={() => deleteApiKey(key.id)}>
+                  Delete
+                </button>
+              </span>
+            </div>
+          ))
         )}
-      </div>
-    </div>
+      </section>
+
+      <section className="kx-card">
+        <div className="kx-cardhead">
+          <h2>Invite codes</h2>
+          <div className="kx-cardhead-actions">
+            <button className="kx-button" onClick={createInvite} disabled={creating}>
+              {creating ? "Creating…" : "New code"}
+            </button>
+          </div>
+        </div>
+        {invites.length === 0 ? (
+          <div className="kx-row">
+            <span className="kx-mono">No live invites.</span>
+          </div>
+        ) : (
+          invites.map((invite) => (
+            <div key={invite.id || invite.code} className="kx-row">
+              <code className="kx-code">{invite.code}</code>
+              <span className="kx-mono">
+                {invite.role} · {expiresIn(invite.expires_at)}
+              </span>
+              <span className="kx-row-actions">
+                <button className="kx-button compact" onClick={() => copyInviteLink(invite.code)}>
+                  {copied === invite.code ? "Copied" : "Copy link"}
+                </button>
+                <button className="kx-button danger" onClick={() => revokeInvite(invite.id)}>
+                  Revoke
+                </button>
+              </span>
+            </div>
+          ))
+        )}
+      </section>
+
+      <section className="kx-card" id="kx-integrations">
+        <div className="kx-cardhead">
+          <h2>Integrations</h2>
+        </div>
+
+        <div className="kx-row">
+          <span className="kx-row-info">
+            <strong>Flickr</strong>
+            <span className="kx-mono">
+              {counts?.on_flickr
+                ? `connected · ${fmt.format(counts.on_flickr)} photos mirrored`
+                : "mirrors your originals"}
+            </span>
+          </span>
+          <span className="kx-row-actions">
+            {counts?.on_flickr ? <span className="kx-statuspill">Active</span> : null}
+          </span>
+        </div>
+
+        <div className="kx-row">
+          <span className="kx-row-info">
+            <strong>Resend</strong>
+            <span className="kx-mono">
+              {resendStatus.configured
+                ? `configured · ${resendStatus.key_preview ?? "key saved"}`
+                : "sends invite emails"}
+            </span>
+          </span>
+          <span className="kx-row-actions">
+            <input
+              type="password"
+              className="kx-input wide"
+              placeholder={
+                resendStatus.configured ? "Paste a new key to replace it" : "Paste your Resend API key (re_…)"
+              }
+              value={resendKeyInput}
+              onChange={(e) => setResendKeyInput(e.target.value)}
+              autoComplete="off"
+              aria-label="Resend API key"
+            />
+            <button className="kx-button" onClick={saveResendKey} disabled={savingResend || !resendKeyInput.trim()}>
+              {savingResend ? "Saving…" : "Save"}
+            </button>
+            {resendStatus.configured && (
+              <button className="kx-button danger" onClick={removeResendKey}>
+                Remove
+              </button>
+            )}
+          </span>
+        </div>
+        {resendSaveMsg && <p className={`kx-note ${resendSaveMsg.type}`}>{resendSaveMsg.text}</p>}
+
+        <div className="kx-row">
+          <span className="kx-row-info">
+            <strong>Notifications</strong>
+            <span className="kx-mono">new people, finished scans, shares</span>
+          </span>
+          <span className="kx-row-actions">
+            <Link href="/settings/notifications" className="kx-button">
+              Manage
+            </Link>
+          </span>
+        </div>
+      </section>
+    </main>
   );
 }
