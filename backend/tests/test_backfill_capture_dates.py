@@ -241,6 +241,203 @@ class ExamineTests(unittest.TestCase):
         self.assertIsNone(capture.taken_at)
 
 
+class Cursor:
+    """Just enough of psycopg2's cursor for the backfill's single statement."""
+
+    def __init__(self, connection):
+        self.connection = connection
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exception):
+        return False
+
+    def execute(self, sql, params=()):
+        self.connection.execute(sqlite_sql(sql), params)
+
+
+class Connection:
+    def __init__(self, db):
+        self.db = db
+        self.commits = 0
+        self.closed = False
+
+    def cursor(self):
+        return Cursor(self.db)
+
+    def commit(self):
+        self.commits += 1
+
+    def close(self):
+        self.closed = True
+
+
+class FakeMain:
+    """The three things the backfill asks of main, over a real SQLite catalog."""
+
+    LocalStorageProvider = LocalStorageProvider
+
+    def __init__(self, db, storage_root):
+        self.db = db
+        self.PHOTO_STORAGE_ROOT = str(storage_root)
+        self.invalidated = []
+
+    def db_query(self, sql, params=None):
+        return [dict(row) for row in self.db.execute(sqlite_sql(sql), params or ())]
+
+    def get_db(self):
+        return Connection(self.db)
+
+    def invalidate_cache(self, prefix=""):
+        self.invalidated.append(prefix)
+
+
+@unittest.skipUnless(HAS_PILLOW, "Pillow is required to write EXIF fixtures")
+class FullPassTests(unittest.TestCase):
+    """The loop itself: paging, the checkpoint, --limit and --dry-run."""
+
+    def setUp(self):
+        import staged_import
+
+        self.staged_import = staged_import
+        self.directory = tempfile.TemporaryDirectory()
+        self.root = Path(self.directory.name)
+        self.addCleanup(self.directory.cleanup)
+        self.progress = self.root / "backfill.json"
+        self.provider = LocalStorageProvider(self.root / "library")
+
+        self.db = sqlite3.connect(":memory:")
+        self.db.row_factory = sqlite3.Row
+        self.db.executescript("""
+            CREATE TABLE photos (id TEXT PRIMARY KEY, original_filename TEXT,
+                media_type TEXT, taken_at TEXT, latitude REAL, longitude REAL,
+                updated_at TEXT);
+            CREATE TABLE photo_copies (photo_id TEXT, provider TEXT, status TEXT,
+                provider_key TEXT);
+        """)
+        self.addCleanup(self.db.close)
+        self.main = FakeMain(self.db, self.root / "library")
+
+    def store(self, photo_id, name, *, exif=None, corrupt=False):
+        """Put (or replace) one original in the managed NAS layout."""
+        source = self.root / name
+        if corrupt:
+            source.write_bytes(b"not an image")
+        else:
+            image = Image.new("RGB", (4, 4))
+            tags = image.getexif()
+            if exif:
+                tags.get_ifd(0x8769)[0x9003] = exif
+            image.save(source, exif=tags)
+        return self.provider.store_file(str(uuid.UUID(int=int(photo_id[1:]))), source, name)
+
+    def catalog(self, photo_id, name, *, exif=None, taken_at=None, corrupt=False):
+        stored = self.store(photo_id, name, exif=exif, corrupt=corrupt)
+        self.db.execute("INSERT INTO photos VALUES (?,?,?,?,NULL,NULL,'2024')",
+                        (photo_id, name, "image/jpeg", taken_at))
+        self.db.execute("INSERT INTO photo_copies VALUES (?,'nas','available',?)",
+                        (photo_id, stored.provider_key))
+
+    def args(self, **overrides):
+        import argparse
+        base = dict(dry_run=False, progress=str(self.progress), import_source=None,
+                    import_progress=str(self.root / "import.json"), batch_size=2,
+                    limit=None, recheck=False, no_filename_dates=False)
+        base.update(overrides)
+        return argparse.Namespace(**base)
+
+    def run_pass(self, **overrides):
+        from backfill_capture_dates import _run
+        return _run(self.args(**overrides), self.main, self.staged_import, self.progress)
+
+    def dates(self):
+        return {row["id"]: row["taken_at"]
+                for row in self.db.execute("SELECT id, taken_at FROM photos")}
+
+    def test_dates_the_library_across_several_pages_and_leaves_a_checkpoint(self):
+        self.catalog("p1", "a.jpg", exif="2019:04:12 14:30:00")
+        self.catalog("p2", "IMG_20200105_090000.jpg")
+        self.catalog("p3", "DSC00019.jpg")
+        self.catalog("p4", "b.jpg", exif="2021:07:15 08:00:00",
+                     taken_at="1999-01-01T00:00:00+00:00")
+
+        self.assertEqual(self.run_pass(), 0)
+
+        dates = self.dates()
+        self.assertEqual(dates["p1"], "2019-04-12 14:30:00+00:00")
+        self.assertEqual(dates["p2"], "2020-01-05 09:00:00+00:00")
+        self.assertIsNone(dates["p3"])
+        # Already dated, and 2021 EXIF must not displace it.
+        self.assertEqual(dates["p4"], "1999-01-01T00:00:00+00:00")
+        self.assertEqual(self.main.invalidated, ["timeline"])
+
+        checkpoint = self.staged_import.load_progress(self.progress)
+        # p4 was examined too — it was still missing its coordinates.
+        self.assertEqual(set(checkpoint["completed"]), {"p1", "p2", "p3", "p4"})
+
+    def test_a_second_run_re_reads_nothing_and_changes_nothing(self):
+        self.catalog("p1", "a.jpg", exif="2019:04:12 14:30:00")
+        self.catalog("p3", "DSC00019.jpg")
+        self.run_pass()
+        before = self.dates()
+
+        # Rewriting the original with a different date proves the file is not
+        # opened again: the checkpoint says this row was already examined.
+        self.store("p3", "DSC00019.jpg", exif="2001:01:01 00:00:00")
+        self.run_pass()
+
+        self.assertEqual(self.dates(), before)
+
+    def test_recheck_re_examines_rows_an_earlier_pass_found_nothing_for(self):
+        self.catalog("p3", "DSC00019.jpg")
+        self.run_pass()
+        self.store("p3", "DSC00019.jpg", exif="2001:01:01 00:00:00")
+
+        self.run_pass(recheck=True)
+
+        self.assertEqual(self.dates()["p3"], "2001-01-01 00:00:00+00:00")
+
+    def test_dry_run_writes_neither_the_catalog_nor_the_checkpoint(self):
+        self.catalog("p1", "a.jpg", exif="2019:04:12 14:30:00")
+        self.assertEqual(self.run_pass(dry_run=True), 0)
+        self.assertIsNone(self.dates()["p1"])
+        self.assertFalse(self.progress.exists())
+        self.assertEqual(self.main.invalidated, [])
+
+    def test_limit_stops_the_pass_and_the_next_run_carries_on(self):
+        self.catalog("p1", "a.jpg", exif="2019:04:12 14:30:00")
+        self.catalog("p2", "b.jpg", exif="2020:01:05 09:00:00")
+        self.catalog("p3", "c.jpg", exif="2021:07:15 08:00:00")
+
+        self.run_pass(limit=1)
+        self.assertEqual(sum(date is not None for date in self.dates().values()), 1)
+
+        self.run_pass()
+        self.assertEqual(sum(date is not None for date in self.dates().values()), 3)
+
+    def test_an_unreadable_file_is_counted_and_retried_rather_than_fatal(self):
+        self.catalog("p1", "broken.jpg", corrupt=True)
+        self.catalog("p2", "b.jpg", exif="2020:01:05 09:00:00")
+
+        self.assertEqual(self.run_pass(), 1)
+
+        # The rest of the library was still dated.
+        self.assertEqual(self.dates()["p2"], "2020-01-05 09:00:00+00:00")
+        checkpoint = self.staged_import.load_progress(self.progress)
+        self.assertIn("p1", checkpoint["failed"])
+        self.assertNotIn("p1", checkpoint["completed"])
+
+    def test_a_missing_nas_original_is_counted_and_never_fatal(self):
+        self.catalog("p1", "a.jpg", exif="2019:04:12 14:30:00")
+        self.db.execute("UPDATE photo_copies SET provider_key='zz/gone/original.jpg'"
+                        " WHERE photo_id='p1'")
+        self.catalog("p2", "b.jpg", exif="2020:01:05 09:00:00")
+
+        self.assertEqual(self.run_pass(), 1)
+        self.assertEqual(self.dates()["p2"], "2020-01-05 09:00:00+00:00")
+
+
 class SummaryTests(unittest.TestCase):
     def test_reports_every_outcome_including_the_ones_that_found_nothing(self):
         report = describe(
