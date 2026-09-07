@@ -67,6 +67,9 @@ AUTH_SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/app-config",
 # the token, its liveness and its scope themselves, and must stay reachable
 # without a session or API key. Nothing else may be added to this prefix.
 PUBLIC_SHARE_PREFIX = "/public/shares/"
+# Device pairing: the phone presents a one-time code instead of a session,
+# because it has none yet. The handler validates and rate-limits it.
+PUBLIC_PAIRING_PATH = "/public/pairing/claim"
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: FastAPIRequest, call_next):
@@ -74,6 +77,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         # Skip auth for public endpoints
         if path in AUTH_SKIP_PATHS or path.startswith("/docs"):
+            return await call_next(request)
+        if path == PUBLIC_PAIRING_PATH:
             return await call_next(request)
         if path.startswith(PUBLIC_SHARE_PREFIX):
             # Deliberately anonymous. A share token grants exactly its own
@@ -476,6 +481,17 @@ class ResumableUploadRequest(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     album_id: str | None = None
+
+class PairingCodeRequest(BaseModel):
+    # Defaults to PUBLIC_API_URL; overridable so a household can pair against a
+    # LAN address rather than its public tunnel.
+    server_url: str | None = None
+
+
+class PairingClaimRequest(BaseModel):
+    code: str
+    device_name: str | None = None
+
 
 class ShareCreateRequest(BaseModel):
     subject_type: str
@@ -5347,6 +5363,167 @@ def _record_share_view(share_id) -> None:
         )
     except Exception as exc:
         print(f"[shares] could not record view for {share_id}: {exc}")
+
+
+# ── Device pairing ───────────────────────────────────────────────────────────
+# A phone joining a self-hosted household has to learn two things: where the
+# server is, and who it is. Typing a tunnel URL and a password on a touchscreen
+# is the worst part of installing Kindred, so the web UI mints a short code and
+# the phone reads both from it.
+#
+# Claiming is necessarily unauthenticated — the phone has no credentials yet —
+# so the code itself is the credential: hashed at rest, single-use, ten minutes
+# old at most, and rate-limited per address.
+
+PAIRING_CLAIM_WINDOW_SECONDS = 300
+PAIRING_CLAIM_MAX_ATTEMPTS = 10
+_pairing_attempts: dict[str, list[float]] = {}
+
+
+def _pairing_rate_limited(client_ip: str) -> bool:
+    """Crude in-process throttle on claim attempts.
+
+    An 8-character code from a 31-letter alphabet is about 8.5e11 values, so
+    guessing is hopeless anyway; this exists to stop a loop from burning CPU
+    and filling logs, not as the security boundary.
+    """
+    import time as _time
+
+    now = _time.time()
+    recent = [t for t in _pairing_attempts.get(client_ip, [])
+              if now - t < PAIRING_CLAIM_WINDOW_SECONDS]
+    recent.append(now)
+    _pairing_attempts[client_ip] = recent
+    if len(_pairing_attempts) > 4096:  # bound the map; oldest buckets go first
+        for key in sorted(_pairing_attempts, key=lambda k: _pairing_attempts[k][-1])[:1024]:
+            _pairing_attempts.pop(key, None)
+    return len(recent) > PAIRING_CLAIM_MAX_ATTEMPTS
+
+
+@app.post("/pairing/codes")
+def create_pairing_code(body: PairingCodeRequest, user=Depends(get_current_user)):
+    """Mint a pairing code for the signed-in account.
+
+    The code is returned once, in the clear, because it exists to be shown on
+    screen. Only its hash is stored.
+    """
+    import pairing
+
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(403, "A household account is required to pair a device")
+
+    # Retire this account's other open codes: one screen, one code.
+    db_query(
+        """
+        UPDATE pairing_codes SET expires_at = now()
+        WHERE user_id = %s AND claimed_at IS NULL AND expires_at > now()
+        """,
+        (user_id,), fetch=False,
+    )
+
+    server_url = (body.server_url or PUBLIC_API_URL).rstrip("/")
+    code, code_hash = pairing.mint_code()
+    rows = db_query(
+        """
+        INSERT INTO pairing_codes (code_hash, user_id, server_url, expires_at)
+        VALUES (%s, %s, %s, %s)
+        RETURNING id, expires_at
+        """,
+        (code_hash, user_id, server_url, pairing.expiry()),
+    )
+    return {
+        "id": str(rows[0]["id"]),
+        **pairing.pairing_payload(code, server_url),
+        "expires_at": rows[0]["expires_at"].isoformat(),
+    }
+
+
+@app.get("/pairing/codes/{code_id}")
+def pairing_code_status(code_id: str, user=Depends(get_current_user)):
+    """Has the phone picked it up yet? Polled by the page showing the QR."""
+    import pairing
+
+    try:
+        code_id = str(uuid.UUID(code_id))
+    except ValueError:
+        raise HTTPException(400, "Invalid pairing code id")
+    rows = db_query(
+        "SELECT * FROM pairing_codes WHERE id = %s AND user_id = %s",
+        (code_id, user.get("user_id")),
+    )
+    if not rows:
+        raise HTTPException(404, "Pairing code not found")
+    row = rows[0]
+    return {
+        "claimed": bool(row["claimed_at"]),
+        "device_name": row["device_name"],
+        "expires_in_seconds": pairing.seconds_remaining(row["expires_at"]),
+    }
+
+
+@app.post("/public/pairing/claim")
+def claim_pairing_code(body: PairingClaimRequest, request: FastAPIRequest):
+    """Exchange a pairing code for a session. Called by the phone, unauthenticated.
+
+    On success the device holds an ordinary session — the same thing it would
+    have got from typing a password, without anyone having typed one.
+    """
+    import pairing
+
+    client_ip = (request.client.host if request.client else "unknown")
+    if _pairing_rate_limited(client_ip):
+        raise HTTPException(429, "Too many attempts; wait a few minutes")
+
+    code = pairing.normalise(body.code or "")
+    if len(code) != pairing.CODE_LENGTH:
+        raise HTTPException(404, "That code is not valid")
+
+    conn = get_db()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Locked so two phones cannot claim one code simultaneously.
+            cur.execute(
+                "SELECT * FROM pairing_codes WHERE code_hash = %s FOR UPDATE",
+                (pairing.hash_code(code),),
+            )
+            row = cur.fetchone()
+            try:
+                pairing.check_claimable(dict(row) if row else None)
+            except pairing.PairingError as exc:
+                raise HTTPException(exc.status, exc.reason)
+
+            cur.execute(
+                """
+                UPDATE pairing_codes
+                SET claimed_at = now(), claimed_ip = %s, device_name = %s
+                WHERE id = %s
+                """,
+                (client_ip, (body.device_name or "").strip()[:120] or None, row["id"]),
+            )
+            cur.execute("SELECT * FROM users WHERE id = %s", (row["user_id"],))
+            account = cur.fetchone()
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    if not account:
+        raise HTTPException(404, "That code is not valid")
+
+    session = create_session(str(account["id"]))
+    return {
+        "server_url": row["server_url"] or PUBLIC_API_URL,
+        # create_session already returns expires_at as an ISO string.
+        "session": session,
+        "user": {
+            "id": str(account["id"]),
+            "username": account.get("username"),
+            "role": account.get("role"),
+        },
+    }
 
 
 @app.post("/scan/auto")
