@@ -108,6 +108,9 @@ export function ReviewWindow({ params }: { params: ReviewParams }) {
   const mergeInto = useCallback(
     (target: NamedCluster) => {
       if (!current) return;
+      // Folding one group into another moves every face in it. Cheap to ask,
+      // and a misclick on a chip is easy to make.
+      if (!confirm(`Merge these ${current.det_count} faces into ${target.label}?`)) return;
       void run(() => library.mergeClusters(category, current.id, target.id));
     },
     [current, category, run],
@@ -115,6 +118,16 @@ export function ReviewWindow({ params }: { params: ReviewParams }) {
 
   const notAPerson = useCallback(() => {
     if (!current) return;
+    // This is the one genuinely destructive action in the window: the server
+    // deletes the detections and remembers the average face so similar ones are
+    // rejected in future.
+    if (
+      !confirm(
+        `Discard this group of ${current.det_count} faces? Kindred will stop suggesting faces like it.`,
+      )
+    ) {
+      return;
+    }
     void run(() => library.dismissCluster(category, current.id));
   }, [current, category, run]);
 
