@@ -27,8 +27,12 @@ class UploadPathsTests(unittest.TestCase):
     def namespace(self):
         return dict(Path=Path, os=os, VIDEO_EXTENSIONS={'.mov', '.mp4'},
                     PHOTO_STORAGE_ROOT='/archive', UPLOAD_MAX_SIZE=1024**3,
+                    # _store_nas_original hands back the capture date and GPS it
+                    # read out of the file, which the caller prefers over
+                    # whatever the client claimed.
                     _store_nas_original=Mock(return_value=dict(kindred_photo_id='stable',
-                        provider_key='videos/original.mov', sha256='checksum', deduplicated=False)),
+                        provider_key='videos/original.mov', sha256='checksum', deduplicated=False,
+                        taken_at_unix=None, taken_at_source=None, latitude=None, longitude=None)),
                     _existing_flickr_copy=Mock(return_value=None), _queue_video=Mock(),
                     _upload_to_flickr=AsyncMock(), _queue_flickr_replication=Mock(),
                     _set_replication_status=Mock(), _record_flickr_copy=Mock(),
@@ -72,6 +76,60 @@ class UploadPathsTests(unittest.TestCase):
         ns['_upload_to_flickr'].assert_not_called()
         ns['_queue_video'].assert_called_once()
         self.assertFalse(Path(ns['_store_nas_original'].call_args.args[0]).exists())
+
+    def test_capture_metadata_prefers_the_file_over_the_client(self):
+        """The client is a fallback for the capture date, never the source."""
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest('Pillow is required to write an EXIF fixture')
+        ns = functions({'_resolve_capture_metadata'}, dict(Path=Path, print=print))
+        resolve = ns['_resolve_capture_metadata']
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dated = root / 'IMG_0001.jpg'
+            image = Image.new('RGB', (4, 4))
+            exif = image.getexif()
+            exif.get_ifd(0x8769)[0x9003] = '2019:04:12 14:30:00'
+            exif.get_ifd(0x8825).update({1: 'N', 2: (40.0, 0.0, 0.0),
+                                         3: 'W', 4: (73.0, 0.0, 0.0)})
+            image.save(dated, exif=exif)
+
+            # 1 January 2024, which the EXIF must beat.
+            taken_at, latitude, longitude, source = resolve(
+                str(dated), 'IMG_0001.jpg', 'image/jpeg', 1704067200, 10.0, 10.0)
+            self.assertEqual(taken_at.strftime('%Y-%m-%d %H:%M'), '2019-04-12 14:30')
+            self.assertEqual(source, 'exif:DateTimeOriginal')
+            self.assertAlmostEqual(latitude, 40.0)
+            self.assertAlmostEqual(longitude, -73.0)
+
+            bare = root / 'DSC00019.jpg'
+            Image.new('RGB', (4, 4)).save(bare)
+            taken_at, _, _, source = resolve(
+                str(bare), 'DSC00019.jpg', 'image/jpeg', 1704067200, None, None)
+            self.assertEqual(taken_at.strftime('%Y-%m-%d'), '2024-01-01')
+            self.assertEqual(source, 'client')
+
+            # A client date no camera could have produced is dropped, and the
+            # filename is the last thing left to ask.
+            taken_at, _, _, source = resolve(
+                str(bare), 'IMG_20190412_143000.jpg', 'image/jpeg', 0, None, None)
+            self.assertEqual(source, 'filename')
+            self.assertEqual(taken_at.strftime('%Y-%m-%d %H:%M'), '2019-04-12 14:30')
+
+            taken_at, latitude, longitude, source = resolve(
+                str(bare), 'DSC00019.jpg', 'image/jpeg', None, 0.0, 0.0)
+            self.assertIsNone(taken_at)
+            self.assertIsNone(source)
+            self.assertIsNone(latitude)
+
+    def test_capture_metadata_survives_a_file_it_cannot_read(self):
+        ns = functions({'_resolve_capture_metadata'}, dict(Path=Path, print=print))
+        taken_at, latitude, _, source = ns['_resolve_capture_metadata'](
+            '/does/not/exist.jpg', 'holiday.jpg', 'image/jpeg', 1555079400, 40.1, -111.7)
+        self.assertEqual(source, 'client')
+        self.assertEqual(taken_at.strftime('%Y-%m-%d'), '2019-04-12')
+        self.assertAlmostEqual(latitude, 40.1)
 
     def test_video_original_limit_is_independent_of_flickr_limit(self):
         ns = functions({'_original_upload_limit'}, self.namespace())
