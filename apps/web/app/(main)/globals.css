@@ -9011,3 +9011,717 @@ dialog::backdrop { background: rgba(18, 18, 24, .6); backdrop-filter: blur(6px);
 }
 .pair-done h3 { margin: 0 0 8px; color: var(--pine); }
 .pair-done p { margin: 0 0 16px; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Kindred redesign — tokens
+   ────────────────────────────────────────────────────────────────────────
+   The redesign lives under a single `.kx` root (the app shell). Scoping the
+   token set there rather than on :root keeps the legacy parchment screens
+   that have not been reworked yet from inheriting a half-applied palette,
+   and lets the auth screens (which sit outside the shell) stay as they are.
+
+   Light is the default declaration; the dark set is layered on top when
+   <html data-theme="dark">, which is what the topbar toggle writes.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.kx {
+  /* Brand palette — from the new logo. Theme independent. */
+  --brand-forest: #495645;
+  --brand-wordmark: #3d493a;
+  --accent: #cc7f61;
+  --amber: #d59851;
+  --sage: #8fa085;
+  --sage-ink: #a8bb9c;
+  --on-accent: #14150f;
+  --danger-line: rgba(183, 62, 87, .35);
+  --danger-fill: rgba(183, 62, 87, .12);
+  --danger-ink: #e08095;
+  --focus: #d59851;
+
+  /* Scrims — theme independent, they always sit over photography */
+  --scrim-dialog: rgba(10, 11, 10, .62);
+  --scrim-viewer: rgba(8, 9, 8, .94);
+  --scrim-badge: rgba(12, 14, 12, .76);
+  --scrim-chip: rgba(12, 14, 12, .55);
+
+  /* Shadows and motion */
+  --shadow-popover: 0 24px 60px rgba(0, 0, 0, .45);
+  --shadow-dialog: 0 40px 100px rgba(0, 0, 0, .5);
+  --shadow-image: 0 40px 120px rgba(0, 0, 0, .6);
+  --ease-rise: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Grid controls — the topbar zoom writes --tile, tight/loose writes --gap */
+  --tile: 190px;
+  --gap: 4px;
+
+  /* Light theme */
+  --bg: #f6f5f1;
+  --bg-blur: rgba(246, 245, 241, .84);
+  --bg-96: rgba(246, 245, 241, .96);
+  --bg-70: rgba(246, 245, 241, .72);
+  --ink: #23281f;
+  --ink-2: #454d40;
+  --ink-3: #5d6457;
+  --ink-4: #545c4e;
+  --line: rgba(35, 40, 31, .1);
+  --line-b: rgba(35, 40, 31, .12);
+  --line-2: rgba(35, 40, 31, .14);
+  --line-3: rgba(35, 40, 31, .16);
+  --line-4: rgba(35, 40, 31, .2);
+  --line-5: rgba(35, 40, 31, .24);
+  --fill-1: rgba(35, 40, 31, .04);
+  --fill-2: rgba(35, 40, 31, .07);
+  --fill-3: rgba(35, 40, 31, .1);
+  --fill-4: rgba(35, 40, 31, .08);
+  --tile-bg: #e5e3db;
+  --panel-2: rgba(252, 251, 248, .94);
+  --panel: #f6f5f1;
+  /* Opaque card ground — the legacy aliases below need a solid colour */
+  --surface: #fcfbf8;
+}
+
+:root[data-theme="dark"] .kx {
+  --bg: #0c0e0c;
+  --bg-blur: rgba(12, 14, 12, .82);
+  --bg-96: rgba(12, 14, 12, .96);
+  --bg-70: rgba(12, 14, 12, .7);
+  --ink: #f1f1ec;
+  --ink-2: #cfd0c9;
+  --ink-3: #9ba095;
+  --ink-4: #b6b8b0;
+  --line: rgba(241, 241, 236, .08);
+  --line-b: rgba(241, 241, 236, .09);
+  --line-2: rgba(241, 241, 236, .12);
+  --line-3: rgba(241, 241, 236, .14);
+  --line-4: rgba(241, 241, 236, .16);
+  --line-5: rgba(241, 241, 236, .2);
+  --fill-1: rgba(241, 241, 236, .05);
+  --fill-2: rgba(241, 241, 236, .07);
+  --fill-3: rgba(241, 241, 236, .11);
+  --fill-4: rgba(241, 241, 236, .1);
+  --tile-bg: #191c18;
+  --panel-2: rgba(20, 23, 20, .92);
+  --panel: transparent;
+  --surface: #141712;
+}
+
+/* Legacy aliases. Screens that have not been redesigned yet still reference
+   the parchment token names; remapping them here means they follow the new
+   chrome instead of dropping cream cards onto a near-black page. Remove an
+   alias as each screen is ported. */
+.kx {
+  --paper: var(--bg);
+  --canvas: var(--bg);
+  --canvas-deep: var(--bg);
+  --card: var(--surface);
+  --ash: var(--ink);
+  --ash-2: var(--ink);
+  --mist: var(--ink-3);
+  --muted: var(--ink-3);
+  --line-dark: var(--line-3);
+  --ember: var(--accent);
+  --ember-soft: var(--amber);
+  --pine: var(--accent);
+  --pine-bright: var(--accent);
+  --terracotta: var(--accent);
+  --gold: var(--amber);
+  --gold-soft: var(--amber);
+  --forest: var(--brand-forest);
+  --rosehip: var(--danger-ink);
+  --shadow: var(--shadow-popover);
+  --shadow-soft: var(--shadow-popover);
+}
+
+/* Scoped with :has so the docs tree, which shares the root layout, keeps its
+   own light form controls and scrollbars. */
+:root[data-theme="dark"]:has(.kx) { color-scheme: dark; }
+
+/* The shell paints the page ground; the legacy parchment gradient further up
+   is keyed to `.main-app`, and this rule follows it in source order. */
+body:has(.kx) {
+  background: #f6f5f1;
+  color: #23281f;
+}
+:root[data-theme="dark"] body:has(.kx) {
+  background: #0c0e0c;
+  color: #f1f1ec;
+}
+
+@keyframes kx-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Redesign base ───────────────────────────────────────────────────── */
+
+.kx {
+  min-height: 100vh;
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 14px;
+}
+
+.kx ::selection {
+  background: rgba(204, 127, 97, .35);
+}
+
+/* Every interactive element in the shell gets the same visible focus ring.
+   The prototype had none; this is the addition the handoff asks for. */
+.kx :is(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+/* ── Redesign primitives ─────────────────────────────────────────────── */
+
+.kx-eyebrow {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.kx-eyebrow.quiet {
+  font-size: 10px;
+  color: var(--ink-3);
+}
+
+.kx-title {
+  margin: 10px 0 8px;
+  font-family: var(--display);
+  font-size: 44px;
+  font-weight: 700;
+  line-height: .95;
+  letter-spacing: -.02em;
+  color: var(--ink);
+}
+
+.kx-lede {
+  margin: 0;
+  max-width: 52ch;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-4);
+  text-wrap: pretty;
+}
+
+.kx-mono {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--ink-3);
+}
+
+.kx-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 13px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.kx-chip {
+  padding: 7px 13px;
+  border: 1px solid var(--line-3);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kx-chip:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.kx-chip.is-active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+}
+
+.kx-chip.removable {
+  border-style: dashed;
+  border-color: var(--line-5);
+  color: var(--ink-3);
+}
+
+.kx-kbd {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .04em;
+  padding: 3px 6px;
+  border: 1px solid var(--line-3);
+  border-radius: 5px;
+  color: var(--ink-3);
+}
+
+/* Buttons. `.kx-button` is the ghost default; `.primary` is the accent CTA
+   and `.danger` the remove/revoke treatment. */
+.kx-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid var(--line-3);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform .14s ease, background .14s ease, border-color .14s ease;
+}
+
+.kx-button:hover:not(:disabled) {
+  background: var(--line);
+  transform: translateY(-1px);
+}
+
+.kx-button:disabled {
+  opacity: .55;
+  cursor: default;
+}
+
+.kx-button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 800;
+  padding: 0 14px;
+}
+
+.kx-button.primary:hover:not(:disabled) {
+  background: var(--accent);
+}
+
+.kx-button.tall {
+  min-height: 40px;
+  padding: 0 16px;
+}
+
+.kx-button.compact {
+  min-height: 30px;
+  padding: 0 11px;
+  font-size: 12px;
+}
+
+.kx-button.danger {
+  min-height: 0;
+  padding: 6px 11px;
+  border-color: var(--danger-line);
+  background: var(--danger-fill);
+  color: var(--danger-ink);
+  font-size: 12px;
+}
+
+.kx-iconbutton {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.kx-iconbutton:hover:not(:disabled) {
+  background: var(--line);
+  color: var(--ink);
+}
+
+.kx-iconbutton.square {
+  width: 32px;
+  height: 32px;
+}
+
+.kx-input {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--fill-1);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.kx-input::placeholder {
+  color: var(--ink-3);
+}
+
+/* Avatar — an initial on the brand gradient, used at several sizes. */
+.kx-avatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--brand-forest), var(--accent));
+  object-fit: cover;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 14px;
+  color: #f4f3ee;
+  overflow: hidden;
+}
+
+.kx-avatar.lg { width: 38px; height: 38px; font-size: 15px; }
+.kx-avatar.xl { width: 58px; height: 58px; font-size: 22px; }
+.kx-avatar.sm { width: 22px; height: 22px; font-size: 11px; }
+button.kx-avatar { cursor: pointer; }
+
+/* ── App shell ───────────────────────────────────────────────────────── */
+
+.kx-shell {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+}
+
+.kx-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.kx-page {
+  padding: 26px 24px 80px;
+  animation: rise .38s var(--ease-rise) both;
+}
+
+.kx-page.narrow { max-width: 880px; }
+
+.kx-pagehead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 20px;
+  margin-bottom: 26px;
+}
+
+.kx-pagehead-copy { min-width: 0; }
+
+.kx-pagehead-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────── */
+
+.kx-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  padding: 18px 14px 28px;
+  border-right: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.kx-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 4px 6px;
+  text-decoration: none;
+}
+
+/* Both marks ship in the markup and CSS picks the pair. The files are never
+   recoloured at runtime — the dark set is a separate asset. */
+.kx-brand img { display: block; flex: none; }
+.kx-brand .kx-mark { width: 20px; height: 22px; }
+.kx-brand .kx-wordmark { height: 20px; width: auto; }
+.kx-brand [data-mark-theme="dark"] { display: none; }
+:root[data-theme="dark"] .kx-brand [data-mark-theme="light"] { display: none; }
+:root[data-theme="dark"] .kx-brand [data-mark-theme="dark"] { display: block; }
+
+.kx-navgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kx-navgroup > .kx-eyebrow {
+  padding: 0 8px 8px;
+}
+
+.kx-navrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.kx-navrow:hover { background: var(--fill-2); }
+
+.kx-navrow.is-active {
+  background: var(--fill-2);
+  color: var(--ink);
+}
+
+/* "Ways in" rows lead with an icon and sit a shade lighter. */
+.kx-navrow.with-icon { font-weight: 500; }
+.kx-navrow.with-icon svg { flex: none; }
+
+.kx-navcount {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.kx-sync {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 13px 14px;
+  border: 1px solid var(--line-b);
+  border-radius: 10px;
+}
+
+.kx-sync-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.kx-sync-caption {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+.kx-sync-bar {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--line-2);
+  overflow: hidden;
+}
+
+.kx-sync-bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #495645, #cc7f61, #d59851);
+}
+
+/* ── Topbar ──────────────────────────────────────────────────────────── */
+
+.kx-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-blur);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+}
+
+.kx-searchtrigger {
+  flex: 1 1 auto;
+  max-width: 520px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--fill-1);
+  color: var(--ink-3);
+  font-family: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kx-searchtrigger span { flex: 1 1 auto; }
+.kx-searchtrigger svg { flex: none; }
+
+.kx-searchtrigger:hover {
+  border-color: var(--accent);
+  color: var(--ink-2);
+}
+
+.kx-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.kx-themetoggle {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.kx-themetoggle:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.kx-drawer-toggle { display: none; }
+
+/* ── User menu ───────────────────────────────────────────────────────── */
+
+.kx-menu-anchor {
+  position: relative;
+  margin-left: 4px;
+}
+
+.kx-menu {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  z-index: 30;
+  width: 244px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--line-3);
+  border-radius: 12px;
+  background: var(--panel-2);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: var(--shadow-popover);
+  animation: kx-fade .16s ease both;
+}
+
+.kx-menu-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 10px 12px;
+}
+
+.kx-menu-head > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.kx-menu-head strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.kx-menu-divider {
+  height: 1px;
+  margin: 0 4px 4px;
+  background: var(--line-2);
+}
+
+.kx-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.kx-menu-item:hover { background: var(--fill-2); }
+.kx-menu-item svg { flex: none; }
+
+/* ── Responsive: below 900px the sidebar becomes a drawer ────────────── */
+
+@media (max-width: 900px) {
+  .kx-shell { grid-template-columns: minmax(0, 1fr); }
+
+  .kx-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 50;
+    width: 262px;
+    transform: translateX(-100%);
+    transition: transform .24s var(--ease-rise);
+    box-shadow: var(--shadow-popover);
+  }
+
+  .kx-sidebar.is-open { transform: none; }
+
+  .kx-drawer-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    border: 0;
+    background: var(--scrim-dialog);
+    animation: kx-fade .16s ease both;
+  }
+
+  .kx-drawer-toggle { display: grid; }
+
+  .kx-page { padding: 20px 16px 80px; }
+  .kx-title { font-size: 34px; }
+}
+
+@media (max-width: 640px) {
+  .kx-topbar { padding: 10px 16px; gap: 10px; }
+  .kx-themetoggle { display: none; }
+}
