@@ -2143,21 +2143,43 @@ def get_unmatched(category: str):
     return {"items": [dict(r) for r in rows], "count": len(rows)}
 
 @app.get("/clusters/{category}/{cluster_id}")
-def get_cluster_detail(category: str, cluster_id: str):
-    """Full detail for a single cluster — all chips and photos."""
-    rows = db_query("""
-        SELECT d.id, d.category, d.subtype, d.photo_id, d.photo_url, d.thumb_url,
-               d.flickr_url, d.photo_title, d.owner, d.bbox, d.det_score, d.chip
-        FROM detections d
-        JOIN detection_clusters dc ON d.id = dc.detection_id
-        WHERE dc.cluster_id = %s AND dc.category = %s
-    """, (cluster_id, category))
-    # Get cluster label + custom avatar info
+def get_cluster_detail(
+    category: str,
+    cluster_id: str,
+    chips: bool = Query(True, description="Include the base64 face crops"),
+):
+    """Full detail for a single cluster — its detections and their photos.
+
+    `chips=false` omits the cropped face images. They are base64 data URIs
+    stored per detection, and they are the whole weight of this response: a
+    person with 646 faces ships 4 MB, of which about 4 MB is chips. The detail
+    screen does not show a single one until the faces disclosure is opened, so
+    it asks without them first and fetches them when that opens.
+    """
+    # Read the label first: without chips we still need the one chip the
+    # identity card shows, or its cover falls back to the whole frame.
     label_rows = db_query("""
         SELECT label, avatar_detection_id, cover_photo_id, cover_crop
         FROM clusters WHERE id = %s AND category = %s
     """, (cluster_id, category))
     lr = label_rows[0] if label_rows else {}
+    avatar_id = lr.get("avatar_detection_id")
+
+    if chips:
+        chip_column, chip_params = "d.chip", ()
+    elif avatar_id:
+        chip_column = "CASE WHEN d.id = %s::uuid THEN d.chip END AS chip"
+        chip_params = (str(avatar_id),)
+    else:
+        chip_column, chip_params = "NULL AS chip", ()
+
+    rows = db_query(f"""
+        SELECT d.id, d.category, d.subtype, d.photo_id, d.photo_url, d.thumb_url,
+               d.flickr_url, d.photo_title, d.owner, d.bbox, d.det_score, {chip_column}
+        FROM detections d
+        JOIN detection_clusters dc ON d.id = dc.detection_id
+        WHERE dc.cluster_id = %s AND dc.category = %s
+    """, chip_params + (cluster_id, category))
     return {
         "cluster_id": cluster_id,
         "label": lr.get("label"),

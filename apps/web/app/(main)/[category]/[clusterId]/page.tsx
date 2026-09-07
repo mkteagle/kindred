@@ -129,16 +129,36 @@ export default function ClusterDetailPage() {
   } = useQuery<ClusterDetail>({
     queryKey: ["cluster-detail", category, clusterId],
     queryFn: async () => {
-      const response = await fetch(`${BACKEND}/clusters/${backendCat}/${clusterId}`);
+      // Without the face crops. They are base64 data URIs, one per detection,
+      // and they are almost the entire weight of this response -- 4 MB for a
+      // group of 646. Nothing on the page shows one until the disclosure is
+      // opened, so they are fetched then, by the query below.
+      const response = await fetch(`${BACKEND}/clusters/${backendCat}/${clusterId}?chips=false`);
       if (!response.ok) throw new Error("This group could not be loaded.");
       return response.json();
     },
     enabled: Boolean(clusterId),
   });
 
+  // The same group, with the crops, fetched once the faces are asked for.
+  const { data: withChips } = useQuery<ClusterDetail>({
+    queryKey: ["cluster-detail-chips", category, clusterId],
+    queryFn: async () => {
+      const response = await fetch(`${BACKEND}/clusters/${backendCat}/${clusterId}`);
+      if (!response.ok) throw new Error("Those faces could not be loaded.");
+      return response.json();
+    },
+    enabled: Boolean(clusterId) && facesOpen,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const { data: named } = useNamedPeople(backendCat);
 
   const items = useMemo(() => detail?.items ?? [], [detail]);
+  // The disclosure draws from the chip-bearing copy once it lands. Until then
+  // it has the same detections without their crops, so the skeleton below
+  // stands in rather than a strip of empty squares.
+  const faceItems = useMemo(() => withChips?.items ?? items, [withChips, items]);
   const photos = useMemo(() => uniquePhotos(items), [items]);
 
   const label = detail?.label ?? null;
@@ -292,10 +312,14 @@ export default function ClusterDetailPage() {
 
   const handleRemoveDetection = useCallback(
     (detectionId: string) => {
-      queryClient.setQueryData<ClusterDetail>(
-        ["cluster-detail", category, clusterId],
-        (old) => old && { ...old, items: old.items.filter((i) => i.id !== detectionId) },
-      );
+      // Both copies of the group, or the removed face comes back the moment
+      // the disclosure re-reads the chip-bearing one.
+      for (const key of ["cluster-detail", "cluster-detail-chips"]) {
+        queryClient.setQueryData<ClusterDetail>(
+          [key, category, clusterId],
+          (old) => old && { ...old, items: old.items.filter((i) => i.id !== detectionId) },
+        );
+      }
       void fetch(`${BACKEND}/clusters/remove-detections`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -326,10 +350,12 @@ export default function ClusterDetailPage() {
       const detectionIds = items.filter((i) => i.photo_id === photoId).map((i) => i.id);
       if (!detectionIds.length) return;
 
-      queryClient.setQueryData<ClusterDetail>(
-        ["cluster-detail", category, clusterId],
-        (old) => old && { ...old, items: old.items.filter((i) => i.photo_id !== photoId) },
-      );
+      for (const key of ["cluster-detail", "cluster-detail-chips"]) {
+        queryClient.setQueryData<ClusterDetail>(
+          [key, category, clusterId],
+          (old) => old && { ...old, items: old.items.filter((i) => i.photo_id !== photoId) },
+        );
+      }
       void fetch(`${BACKEND}/clusters/remove-detections`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -607,12 +633,12 @@ export default function ClusterDetailPage() {
         </button>
         {facesOpen && (
           <div className="kx-disclosure-body" id="cluster-detections">
-            {isPending ? (
+            {isPending || !withChips ? (
               <KxSkeletonCards count={8} minWidth={62} height={62} />
             ) : (
               <>
                 <div className="kx-facestrip">
-                  {items.slice(0, faceLimit).map((item) => (
+                  {faceItems.slice(0, faceLimit).map((item) => (
                     <FaceChip
                       key={item.id}
                       item={item}
@@ -627,13 +653,13 @@ export default function ClusterDetailPage() {
                     />
                   ))}
                 </div>
-                {faceLimit < items.length && (
+                {faceLimit < faceItems.length && (
                   <div className="kx-loadmore">
                     <button
                       className="kx-button"
                       onClick={() => setFaceLimit((current) => current + FACE_PAGE)}
                     >
-                      Show {fmt.format(Math.min(FACE_PAGE, items.length - faceLimit))} more
+                      Show {fmt.format(Math.min(FACE_PAGE, faceItems.length - faceLimit))} more
                     </button>
                   </div>
                 )}
