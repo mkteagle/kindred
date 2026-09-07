@@ -11,6 +11,7 @@ import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
 import { KxEmpty, KxErrorBanner, KxSkeletonCards } from "@/components/kx/states";
 import { useNamedPeople } from "@/components/kx/use-people";
 import { useReviewCounts } from "@/components/kx/use-review";
+import { photoThumb, faceThumb } from "@/lib/photo-url";
 
 const PAGE_SIZE = 60;
 /** Face chips shown before the strip folds into a "+N". */
@@ -133,7 +134,7 @@ function ReviewScreen() {
     () =>
       photos.map((photo) => ({
         photo_id: photo.photo_id,
-        thumb_url: photo.thumb_url || photo.photo_url,
+        thumb_url: photoThumb(photo),
         photo_url: photo.photo_url,
         flickr_url: photo.flickr_url,
         photo_title: photo.photo_title,
@@ -259,7 +260,11 @@ function ReviewScreen() {
   const position = Math.min(index + acted.size + 1, Math.max(total, 1));
   const percent = total > 0 ? Math.min(100, ((index + acted.size) / total) * 100) : 0;
 
-  const cover = current?.photo_url || current?.thumb_url || current?.avatar || null;
+  // The face chip and the Flickr columns first, since those are what a
+  // Flickr-backed library has; a NAS-backed one has neither, so fall back
+  // to deriving the frame from the photo id.
+  const cover = current?.photo_url || current?.thumb_url || current?.avatar
+    || (current ? photoThumb(current) : "") || null;
 
   return (
     <>
@@ -385,7 +390,7 @@ function ReviewScreen() {
                       aria-label="Remove this face from the group"
                       onClick={() => void removeFace(item.id)}
                     >
-                      <img src={item.chip || item.thumb_url || item.photo_url} alt="" />
+                      <img src={faceThumb(item)} alt="" />
                     </button>
                   ))}
                   {items.length > FACE_CHIPS && (
@@ -407,7 +412,7 @@ function ReviewScreen() {
                       onClick={() => openLightbox(photo.photo_id, lightboxPhotos)}
                       aria-label={photo.photo_title || "Open photo"}
                     >
-                      <img src={photo.thumb_url || photo.photo_url} alt="" loading="lazy" />
+                      <img src={photoThumb(photo)} alt="" loading="lazy" />
                     </button>
                   ))}
                 </div>

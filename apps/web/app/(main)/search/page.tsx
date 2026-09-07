@@ -11,6 +11,7 @@ import { rememberSearch } from "@/components/kx/search-overlay";
 import { KxEmptyResults, KxSkeletonCards } from "@/components/kx/states";
 import { KxDateFacet, type DateField, type DateRange } from "@/components/kx/date-facet";
 import { useNamedPeople } from "@/components/kx/use-people";
+import { photoThumb } from "@/lib/photo-url";
 
 type Media = "all" | "photo" | "video";
 
@@ -32,7 +33,7 @@ function thumbFor(result: SearchResult & { media_kind?: string }): string {
   // Videos have no Flickr thumbnail; their poster frame comes off the NAS.
   return result.media_kind === "video"
     ? `${BACKEND}/photos/${result.photo_id}/local?variant=thumb`
-    : result.thumb_url || result.photo_url || `${BACKEND}/photos/${result.photo_id}/image?size=n`;
+    : photoThumb(result);
 }
 
 function SearchContent() {

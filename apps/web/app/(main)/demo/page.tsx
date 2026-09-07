@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { DEMO_CATEGORIES, DEMO_STATS, DEMO_TIMELINE } from "./demo-data";
+import { photoThumb } from "@/lib/photo-url";
 
 const fmt = new Intl.NumberFormat();
 
@@ -98,7 +99,7 @@ export default function DemoLibraryPage() {
           <div className="clip-results-grid">
             {DEMO_TIMELINE.flatMap((m) => m.photos).slice(0, 12).map((tp, i) => (
               <div key={i} className="clip-result-card">
-                <img src={tp.thumb_url} alt="" />
+                <img src={photoThumb(tp)} alt="" />
                 <div className="clip-result-info">
                   <span className="clip-result-title">{tp.photo_title}</span>
                   <span className="clip-result-score">{tp.date_taken}</span>

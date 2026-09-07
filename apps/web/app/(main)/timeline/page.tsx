@@ -6,6 +6,7 @@ import { BACKEND, fmt } from "@/lib/constants";
 import type { TimelineMonth, TimelineResponse } from "@/types";
 import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
 import { KxEmpty, KxErrorBanner, KxSkeletonRows } from "@/components/kx/states";
+import { photoThumb } from "@/lib/photo-url";
 
 type Grain = "months" | "years" | "days";
 
@@ -200,7 +201,7 @@ export default function TimelinePage() {
                   onClick={() => openLightbox(photo.photo_id, lightboxPhotos)}
                   aria-label={photo.photo_title || "Open photo"}
                 >
-                  <img src={photo.thumb_url} alt="" loading="lazy" />
+                  <img src={photoThumb(photo)} alt="" loading="lazy" />
                 </button>
               ))}
             </div>

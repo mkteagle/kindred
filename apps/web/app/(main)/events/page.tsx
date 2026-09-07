@@ -6,6 +6,7 @@ import { BACKEND, fmt } from "@/lib/constants";
 import { useUser } from "@/lib/use-user";
 import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
 import { KxEmpty, KxErrorBanner, KxSkeletonCards } from "@/components/kx/states";
+import { photoThumb } from "@/lib/photo-url";
 
 interface EventPhoto {
   photo_id: string;
@@ -94,7 +95,7 @@ function EventCard({ event }: { event: LibraryEvent }) {
 
   const lightboxPhotos: LightboxPhoto[] = event.photos.map((photo) => ({
     photo_id: photo.photo_id,
-    thumb_url: photo.thumb_url || photo.photo_url,
+    thumb_url: photoThumb(photo),
     photo_url: photo.photo_url,
     flickr_url: photo.flickr_url,
     photo_title: photo.photo_title,
@@ -121,7 +122,7 @@ function EventCard({ event }: { event: LibraryEvent }) {
         style={{ border: 0, padding: 0, cursor: "pointer" }}
       >
         {stack.map((photo) => (
-          <img key={photo.photo_id} src={photo.thumb_url || photo.photo_url} alt="" loading="lazy" />
+          <img key={photo.photo_id} src={photoThumb(photo)} alt="" loading="lazy" />
         ))}
       </button>
 

@@ -8,6 +8,7 @@ import type { LocationGroup, LocationsResponse } from "@/types";
 import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
 import { KxEmpty, KxErrorBanner, KxSkeletonRows } from "@/components/kx/states";
 import { tileSpan } from "@/components/kx/photos";
+import { photoThumb } from "@/lib/photo-url";
 
 // Leaflet touches window on import, so it stays out of the server render.
 const LocationMap = dynamic(() => import("./map"), { ssr: false });
@@ -101,7 +102,7 @@ export default function LocationsPage() {
                 aria-pressed={active === place.name}
               >
                 {place.photos[0]?.thumb_url && (
-                  <img src={place.photos[0].thumb_url} alt="" loading="lazy" />
+                  <img src={photoThumb(place.photos[0])} alt="" loading="lazy" />
                 )}
                 <span className="kx-placerow-body">
                   <strong>{place.name}</strong>
@@ -143,7 +144,7 @@ export default function LocationsPage() {
                 aria-label={photo.photo_title || "Open photo"}
                 onClick={() => openLightbox(photo.photo_id, lightboxPhotos)}
               >
-                <img src={photo.thumb_url} alt="" loading="lazy" draggable={false} />
+                <img src={photoThumb(photo)} alt="" loading="lazy" draggable={false} />
               </button>
             ))}
           </div>

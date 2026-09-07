@@ -7,6 +7,7 @@ import type { DuplicatesResponse } from "@/types";
 import { useUser } from "@/lib/use-user";
 import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
 import { KxEmpty, KxErrorBanner, KxSkeletonRows } from "@/components/kx/states";
+import { photoThumb } from "@/lib/photo-url";
 
 /**
  * Two passes over the same index. "Exact" is a distance tight enough that the
@@ -112,7 +113,7 @@ export default function DuplicatesPage() {
             if (kept.has(index)) return null;
             const lightboxPhotos: LightboxPhoto[] = group.photos.map((photo) => ({
               photo_id: photo.photo_id,
-              thumb_url: photo.thumb_url || photo.photo_url,
+              thumb_url: photoThumb(photo),
               photo_url: photo.photo_url,
               flickr_url: photo.flickr_url,
             }));
@@ -126,7 +127,7 @@ export default function DuplicatesPage() {
                       aria-label={position === 0 ? "The frame being kept" : "The copy"}
                       onClick={() => openLightbox(photo.photo_id, lightboxPhotos)}
                     >
-                      <img src={photo.thumb_url || photo.photo_url} alt="" loading="lazy" />
+                      <img src={photoThumb(photo)} alt="" loading="lazy" />
                       {position === 0 && <span className="kx-dupkeep">Keep</span>}
                     </button>
                   ))}

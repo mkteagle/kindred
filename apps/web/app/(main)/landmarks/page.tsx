@@ -6,6 +6,7 @@ import { BACKEND, fmt } from "@/lib/constants";
 import type { ScenesResponse } from "@/types";
 import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
 import { KxEmpty, KxErrorBanner, KxSkeletonCards } from "@/components/kx/states";
+import { photoThumb } from "@/lib/photo-url";
 
 export default function LandmarksPage() {
   const { openLightbox } = useLightbox();
@@ -33,7 +34,7 @@ export default function LandmarksPage() {
     () =>
       current.map((photo) => ({
         photo_id: photo.photo_id,
-        thumb_url: photo.thumb_url || photo.photo_url,
+        thumb_url: photoThumb(photo),
         photo_url: photo.photo_url,
         flickr_url: photo.flickr_url,
         photo_title: photo.photo_title,
@@ -70,7 +71,7 @@ export default function LandmarksPage() {
             >
               <span className="kx-landmarkcard-media">
                 {photos[0] && (
-                  <img src={photos[0].thumb_url || photos[0].photo_url} alt="" loading="lazy" />
+                  <img src={photoThumb(photos[0])} alt="" loading="lazy" />
                 )}
                 <span className="kx-landmarkcard-scrim" />
                 <span className="kx-landmarkcard-copy">
@@ -111,7 +112,7 @@ export default function LandmarksPage() {
                 onClick={() => openLightbox(photo.photo_id, lightboxPhotos)}
               >
                 <img
-                  src={photo.thumb_url || photo.photo_url}
+                  src={photoThumb(photo)}
                   alt=""
                   loading="lazy"
                   draggable={false}

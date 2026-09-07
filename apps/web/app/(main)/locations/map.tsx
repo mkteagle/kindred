@@ -7,6 +7,7 @@ import "leaflet/dist/leaflet.css";
 import type { LocationGroup } from "@/types";
 import { fmt } from "@/lib/constants";
 import { useTheme } from "@/components/kx/theme";
+import { photoThumb } from "@/lib/photo-url";
 
 /**
  * Tiles follow the chrome. A near-black page with a bright street map on it
@@ -127,7 +128,7 @@ export default function LocationMap({
               </div>
               {location.photos[0] && (
                 <img
-                  src={location.photos[0].thumb_url}
+                  src={photoThumb(location.photos[0])}
                   alt=""
                   style={{ width: "100%", borderRadius: 6, marginTop: 8 }}
                 />

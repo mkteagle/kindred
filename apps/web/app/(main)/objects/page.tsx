@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { BACKEND, fmt } from "@/lib/constants";
 import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
 import { KxEmpty, KxErrorBanner, KxSkeletonCards, KxSkeletonGrid } from "@/components/kx/states";
+import { photoThumb } from "@/lib/photo-url";
 
 interface ObjectPhoto {
   photo_id: string;
@@ -57,7 +58,7 @@ export default function ObjectsPage() {
     () =>
       current.map((photo) => ({
         photo_id: photo.photo_id,
-        thumb_url: photo.thumb_url || photo.photo_url,
+        thumb_url: photoThumb(photo),
         photo_url: photo.photo_url,
         flickr_url: photo.flickr_url,
         photo_title: photo.photo_title,
@@ -107,7 +108,7 @@ export default function ObjectsPage() {
               onClick={() => setOpen(open === label ? null : label)}
             >
               {photos[0] && (
-                <img src={photos[0].thumb_url || photos[0].photo_url} alt="" loading="lazy" />
+                <img src={photoThumb(photos[0])} alt="" loading="lazy" />
               )}
               <span className="kx-objectcard-body">
                 <strong>{label}</strong>
@@ -143,7 +144,7 @@ export default function ObjectsPage() {
                   onClick={() => openLightbox(photo.photo_id, lightboxPhotos)}
                 >
                   <img
-                    src={photo.thumb_url || photo.photo_url}
+                    src={photoThumb(photo)}
                     alt=""
                     loading="lazy"
                     draggable={false}

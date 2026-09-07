@@ -6,6 +6,7 @@ import { BACKEND, fmt } from "@/lib/constants";
 import type { SearchResult } from "@/types";
 import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
 import { KxEmpty, KxErrorBanner, KxSkeletonGrid } from "@/components/kx/states";
+import { photoThumb } from "@/lib/photo-url";
 
 /**
  * The six the design names, in the palette's own language rather than a paint
@@ -46,7 +47,7 @@ export default function ColorsPage() {
     () =>
       results.map((result) => ({
         photo_id: result.photo_id,
-        thumb_url: result.thumb_url || result.photo_url,
+        thumb_url: photoThumb(result),
         photo_url: result.photo_url,
         flickr_url: result.flickr_url,
         photo_title: result.photo_title,
@@ -119,7 +120,7 @@ export default function ColorsPage() {
               onClick={() => openLightbox(result.photo_id, lightboxPhotos)}
             >
               <img
-                src={result.thumb_url || result.photo_url}
+                src={photoThumb(result)}
                 alt=""
                 loading="lazy"
                 draggable={false}

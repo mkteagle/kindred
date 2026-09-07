@@ -9,6 +9,7 @@ import { KxPeoplePicker } from "@/components/kx/people-picker";
 import { useNamedPeople } from "@/components/kx/use-people";
 import { KxEmpty, KxEmptyResults, KxErrorBanner, KxSkeletonGrid } from "@/components/kx/states";
 import { tileSpan } from "@/components/kx/photos";
+import { photoThumb } from "@/lib/photo-url";
 
 interface TogetherPhoto {
   photo_id: string;
@@ -75,7 +76,7 @@ function TogetherScreen() {
     () =>
       photos.map((photo) => ({
         photo_id: photo.photo_id,
-        thumb_url: photo.thumb_url || photo.photo_url,
+        thumb_url: photoThumb(photo),
         photo_url: photo.photo_url,
         flickr_url: photo.flickr_url,
         photo_title: photo.photo_title,
@@ -151,7 +152,7 @@ function TogetherScreen() {
               aria-label={photo.photo_title || "Open photo"}
               onClick={() => openLightbox(photo.photo_id, lightboxPhotos)}
             >
-              <img src={photo.thumb_url || photo.photo_url} alt="" loading="lazy" draggable={false} />
+              <img src={photoThumb(photo)} alt="" loading="lazy" draggable={false} />
             </button>
           ))}
         </div>
