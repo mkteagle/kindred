@@ -11,6 +11,8 @@ pub enum AppError {
     Http(#[from] reqwest::Error),
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("window error: {0}")]
+    Tauri(#[from] tauri::Error),
     #[error("not configured: {0}")]
     NotConfigured(String),
     #[error("{0}")]
