@@ -12688,6 +12688,26 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
 
 .kx-tileaction.tag { top: 6px; right: 6px; }
 .kx-tileaction.crop { bottom: 6px; right: 6px; }
+.kx-tileaction.remove { top: 6px; left: 6px; }
+
+/* Armed, the control replaces itself with its own answer rather than opening
+   anything: a tile has no room for a dialog, and taking a photo out of a
+   group is cheap to undo from the review screen. */
+.kx-tileconfirm {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: flex;
+  gap: 4px;
+}
+
+.kx-tileconfirm .kx-tileaction {
+  position: static;
+  opacity: 1;
+}
+
+.kx-tileaction.confirm { background: var(--danger-ink); color: #1a1410; }
+.kx-tileaction.confirm:hover { background: var(--danger-ink); filter: brightness(1.12); }
 
 .kx-clustertile:hover .kx-tileaction,
 .kx-tileaction:focus-visible { opacity: 1; }

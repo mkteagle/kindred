@@ -303,6 +303,40 @@ export default function ClusterDetailPage() {
     [queryClient, category, clusterId, backendCat, invalidateSummaries],
   );
 
+  /**
+   * Take a whole photo out of this group.
+   *
+   * A cluster is a set of detections, not of photos, so a photo belongs to it
+   * once for every face in the frame that was matched -- usually one, but a
+   * mis-merge can leave several. Removing "the photo" therefore means removing
+   * every detection of this cluster inside it; dropping only the first would
+   * leave the photo in the group and look like the button did nothing.
+   *
+   * Each removed detection becomes its own unnamed cluster, so nothing is
+   * deleted and the face can be re-filed from the review screen.
+   */
+  const handleRemovePhoto = useCallback(
+    (photoId: string) => {
+      const detectionIds = items.filter((i) => i.photo_id === photoId).map((i) => i.id);
+      if (!detectionIds.length) return;
+
+      queryClient.setQueryData<ClusterDetail>(
+        ["cluster-detail", category, clusterId],
+        (old) => old && { ...old, items: old.items.filter((i) => i.photo_id !== photoId) },
+      );
+      void fetch(`${BACKEND}/clusters/remove-detections`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category: backendCat,
+          cluster_id: clusterId,
+          detection_ids: detectionIds,
+        }),
+      }).then(invalidateSummaries);
+    },
+    [items, queryClient, category, clusterId, backendCat, invalidateSummaries],
+  );
+
   /* ── Naming, merging, dismissing ───────────────────────────────────── */
 
   const post = useCallback(async (path: string, body: unknown) => {
@@ -640,6 +674,7 @@ export default function ClusterDetailPage() {
               key={photo.photo_id}
               item={photo}
               span={tileSpan(index)}
+              onRemove={() => handleRemovePhoto(photo.photo_id)}
               isCover={coverPhotoId === photo.photo_id}
               coverPickMode={coverPickMode}
               onSetCover={() => handleSetCover(photo.photo_id)}
@@ -880,6 +915,7 @@ function PhotoTile({
   onAdjustCrop,
   onTag,
   onOpen,
+  onRemove,
 }: {
   item: Detection;
   span: string;
@@ -889,6 +925,7 @@ function PhotoTile({
   onAdjustCrop: () => void;
   onTag: () => void;
   onOpen: () => void;
+  onRemove: () => void;
 }) {
   const title = item.photo_title || "Untitled";
 
@@ -913,6 +950,10 @@ function PhotoTile({
         </button>
       )}
 
+      {!coverPickMode && (
+        <TileRemove title={title} onConfirm={onRemove} />
+      )}
+
       {isCover && !coverPickMode && (
         <button
           className="kx-tileaction crop"
@@ -923,6 +964,55 @@ function PhotoTile({
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * "Not them" on a photo tile, with its own confirm.
+ *
+ * The group-level ConfirmButton spells the question out in a sentence, which
+ * does not fit a 150px tile, so this asks by turning into Yes/No in place. It
+ * disarms after six seconds like the others, so a tile left hovered does not
+ * stay one stray click from changing the group.
+ */
+function TileRemove({ title, onConfirm }: { title: string; onConfirm: () => void }) {
+  const [armed, setArmed] = useState(false);
+
+  useEffect(() => {
+    if (!armed) return;
+    const timer = setTimeout(() => setArmed(false), 6000);
+    return () => clearTimeout(timer);
+  }, [armed]);
+
+  if (!armed) {
+    return (
+      <button
+        className="kx-tileaction remove"
+        onClick={() => setArmed(true)}
+        aria-label={`Remove “${title}” from this group`}
+      >
+        Not them
+      </button>
+    );
+  }
+
+  return (
+    <span className="kx-tileconfirm" role="group" aria-label={`Remove “${title}” from this group?`}>
+      <button
+        className="kx-tileaction confirm"
+        onClick={onConfirm}
+        aria-label={`Yes — remove “${title}” from this group`}
+      >
+        Remove
+      </button>
+      <button
+        className="kx-tileaction cancel"
+        onClick={() => setArmed(false)}
+        aria-label="Keep it in this group"
+      >
+        Keep
+      </button>
+    </span>
   );
 }
 
