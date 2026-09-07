@@ -1,205 +1,179 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Spinner } from "@/components/ui";
-import type { DuplicatesResponse } from "@/types";
+import { useMemo, useState } from "react";
+import { useQueries } from "@tanstack/react-query";
 import { BACKEND, fmt } from "@/lib/constants";
-import { useLightbox } from "@/components/photo-lightbox";
-import type { LightboxPhoto } from "@/components/photo-lightbox";
+import type { DuplicatesResponse } from "@/types";
+import { useUser } from "@/lib/use-user";
+import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
+import { KxEmpty, KxErrorBanner, KxSkeletonRows } from "@/components/kx/states";
+
+/**
+ * Two passes over the same index. "Exact" is a distance tight enough that the
+ * frames are the same file or the same instant; "near" opens it up to a burst
+ * or a second try at the same shot.
+ */
+const TABS = [
+  { id: "exact" as const, label: "Exact matches", threshold: 0.02 },
+  { id: "near" as const, label: "Near matches", threshold: 0.1 },
+];
+
+type TabId = (typeof TABS)[number]["id"];
 
 export default function DuplicatesPage() {
+  const { isAdmin, isLoading } = useUser();
   const { openLightbox } = useLightbox();
-  const [threshold, setThreshold] = useState(0.05);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [deleting, setDeleting] = useState(false);
-  const [deleteResult, setDeleteResult] = useState<{ deleted: number; failed: number } | null>(null);
-  const qc = useQueryClient();
+  const [tab, setTab] = useState<TabId>("exact");
+  const [kept, setKept] = useState<Set<number>>(() => new Set());
 
-  const { data, isLoading } = useQuery<DuplicatesResponse>({
-    queryKey: ["duplicates", threshold],
-    staleTime: 5 * 60 * 1000, queryFn: () =>
-      fetch(`${BACKEND}/duplicates?threshold=${threshold}`).then((r) => r.json()),
+  const queries = useQueries({
+    queries: TABS.map((entry) => ({
+      queryKey: ["kx-duplicates", entry.threshold],
+      queryFn: async () => {
+        const response = await fetch(`${BACKEND}/duplicates?threshold=${entry.threshold}`);
+        if (!response.ok) throw new Error("Duplicates could not be loaded.");
+        return (await response.json()) as DuplicatesResponse;
+      },
+      staleTime: 5 * 60 * 1000,
+      enabled: isAdmin,
+    })),
   });
 
-  const groups = data?.groups || [];
+  const activeIndex = TABS.findIndex((entry) => entry.id === tab);
+  const active = queries[activeIndex];
+  const groups = useMemo(
+    () => (active?.data?.groups ?? []).filter((_, index) => !kept.has(index)),
+    [active?.data, kept],
+  );
 
-  const toggleSelect = (photoId: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(photoId)) next.delete(photoId);
-      else next.add(photoId);
-      return next;
-    });
-  };
+  if (isLoading) return <main className="kx-page" />;
 
-  const selectAllDupes = () => {
-    // For each group, select all photos except the first (keep the original)
-    const toSelect = new Set<string>();
-    groups.forEach((group) => {
-      group.photos.slice(1).forEach((p) => toSelect.add(p.photo_id));
-    });
-    setSelected(toSelect);
-  };
-
-  const deleteSelected = async () => {
-    if (selected.size === 0) return;
-    const confirmed = window.confirm(
-      `Delete ${selected.size} photo${selected.size !== 1 ? "s" : ""} from Flickr permanently? This cannot be undone.`
+  if (!isAdmin) {
+    return (
+      <main className="kx-page" style={{ maxWidth: 1080 }}>
+        <span className="kx-eyebrow">Duplicates</span>
+        <h1 className="kx-title">The same moment, twice.</h1>
+        <KxEmpty
+          title="Admins only."
+          body="Deciding what to keep changes the library for everyone in the house, so it is kept to the people who own it."
+          action={{ label: "Browse the library", href: "/gallery", primary: true }}
+        />
+      </main>
     );
-    if (!confirmed) return;
-
-    setDeleting(true);
-    setDeleteResult(null);
-    try {
-      const resp = await fetch(`${BACKEND}/flickr/delete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photo_ids: [...selected] }),
-      });
-      const result = await resp.json();
-      setDeleteResult({ deleted: result.count || 0, failed: result.failed?.length || 0 });
-      setSelected(new Set());
-      // Refresh duplicates list
-      qc.invalidateQueries({ queryKey: ["duplicates"] });
-      qc.invalidateQueries({ queryKey: ["stats"] });
-    } catch (e) {
-      setDeleteResult({ deleted: 0, failed: selected.size });
-    }
-    setDeleting(false);
-  };
+  }
 
   return (
-    <div className="app-shell">
-      <main className="page">
-        <div className="content-head" style={{ marginBottom: 24 }}>
-          <div>
-            <h2>Duplicates</h2>
-            <p>
-              Groups of near-duplicate photos detected by visual similarity.
-              Select duplicates to delete from Flickr.
-            </p>
-          </div>
-          {groups.length > 0 && (
-            <div className="summary-note">
-              {fmt.format(groups.length)} group{groups.length !== 1 ? "s" : ""}
-            </div>
-          )}
-        </div>
+    <main className="kx-page" style={{ maxWidth: 1080 }}>
+      <span className="kx-eyebrow">Duplicates</span>
+      <h1 className="kx-title">The same moment, twice.</h1>
+      <p className="kx-lede">
+        Near-identical frames found by hash and by look. Nothing is deleted until you say so —
+        admins only.
+      </p>
 
-        <div className="duplicates-controls">
-          <label className="duplicates-slider-label">
-            <span>Sensitivity</span>
-            <input
-              type="range"
-              min={0.01}
-              max={0.15}
-              step={0.01}
-              value={threshold}
-              onChange={(e) => setThreshold(Number(e.target.value))}
-              className="duplicates-slider"
-            />
-            <span className="duplicates-slider-value">{threshold.toFixed(2)}</span>
-          </label>
-          <span className="duplicates-slider-hint">
-            Lower = stricter (near-exact), higher = looser (more matches)
-          </span>
-        </div>
+      <div className="kx-chiprow" role="group" aria-label="Which duplicates">
+        {TABS.map((entry, index) => {
+          const count = queries[index]?.data?.groups?.length;
+          return (
+            <button
+              key={entry.id}
+              className={`kx-chip ${tab === entry.id ? "is-active" : ""}`}
+              aria-pressed={tab === entry.id}
+              onClick={() => setTab(entry.id)}
+            >
+              {entry.label}
+              {count !== undefined ? ` · ${fmt.format(count)}` : ""}
+            </button>
+          );
+        })}
+        {/* TODO: the design puts "4.2 GB could come back" beside the tabs.
+            /duplicates returns no file sizes, so there is nothing to total. A
+            `bytes` field per photo on the response would give the figure. */}
+      </div>
 
-        {/* Batch actions */}
-        {groups.length > 0 && (
-          <div className="dup-actions">
-            <Button small variant="ghost" onClick={selectAllDupes}>
-              Select all duplicates (keep originals)
-            </Button>
-            {selected.size > 0 && (
-              <>
-                <Button small variant="danger" onClick={deleteSelected} disabled={deleting}>
-                  {deleting ? "Deleting..." : `Delete ${selected.size} from Flickr`}
-                </Button>
-                <Button small variant="ghost" onClick={() => setSelected(new Set())}>
-                  Clear selection
-                </Button>
-              </>
-            )}
-            {deleteResult && (
-              <span className="dup-result">
-                {deleteResult.deleted > 0 && `${deleteResult.deleted} deleted`}
-                {deleteResult.failed > 0 && ` · ${deleteResult.failed} failed`}
-              </span>
-            )}
-          </div>
-        )}
+      {active?.error && (
+        <KxErrorBanner
+          detail={(active.error as Error).message}
+          onRetry={() => void active.refetch()}
+        />
+      )}
+      {!active?.error && active?.isPending && <KxSkeletonRows count={4} height={110} />}
+      {!active?.error && !active?.isPending && groups.length === 0 && (
+        <KxEmpty
+          title="Nothing doubled up."
+          body="No near-identical frames at this closeness. Try the looser pass."
+          action={{ label: "Near matches", onClick: () => setTab("near") }}
+        />
+      )}
 
-        {isLoading && (
-          <div className="cluster-grid">{Array.from({length:8}).map((_,i)=>(<div key={i} className="skeleton-card" style={{aspectRatio:"1",borderRadius:6}}/>))}</div>
-        )}
+      {groups.length > 0 && (
+        <section className="kx-card">
+          {(active?.data?.groups ?? []).map((group, index) => {
+            if (kept.has(index)) return null;
+            const lightboxPhotos: LightboxPhoto[] = group.photos.map((photo) => ({
+              photo_id: photo.photo_id,
+              thumb_url: photo.thumb_url || photo.photo_url,
+              photo_url: photo.photo_url,
+              flickr_url: photo.flickr_url,
+            }));
+            return (
+              <div className="kx-duprow" key={`${group.photos[0]?.photo_id}-${index}`}>
+                <span className="kx-duppair">
+                  {group.photos.slice(0, 2).map((photo, position) => (
+                    <button
+                      key={photo.photo_id}
+                      className={`kx-dupshot ${position === 0 ? "keep" : ""}`.trim()}
+                      aria-label={position === 0 ? "The frame being kept" : "The copy"}
+                      onClick={() => openLightbox(photo.photo_id, lightboxPhotos)}
+                    >
+                      <img src={photo.thumb_url || photo.photo_url} alt="" loading="lazy" />
+                      {position === 0 && <span className="kx-dupkeep">Keep</span>}
+                    </button>
+                  ))}
+                </span>
 
-        {!isLoading && groups.length === 0 && (
-          <div className="empty-state">
-            <div>
-              <h2>No duplicates found</h2>
-              <p>
-                No near-duplicate groups at threshold {threshold.toFixed(2)}.
-                Try increasing the threshold for looser matching.
-              </p>
-            </div>
-          </div>
-        )}
+                <span className="kx-duprow-body">
+                  <strong>
+                    {fmt.format(group.photos.length)} copies ·{" "}
+                    {group.similarity >= 0.995
+                      ? "identical file"
+                      : `${Math.round(group.similarity * 100)}% alike`}
+                  </strong>
+                  {/* TODO: the design's reason line — "Burst of 2 · 14 June
+                      2026 21:48 · left frame is sharper" — needs dates and a
+                      sharpness score per frame. /duplicates returns neither. */}
+                  <span className="kx-cardmeta">
+                    {group.photos.length > 2
+                      ? `${fmt.format(group.photos.length - 1)} copies beyond the one being kept`
+                      : "One copy beyond the one being kept"}
+                  </span>
+                </span>
 
-        {!isLoading && groups.map((group, idx) => (
-          <div key={idx} className="duplicate-group">
-            <div className="duplicate-group-header">
-              <span className="duplicate-group-similarity">
-                {Math.round(group.similarity * 100)}% similar
-              </span>
-              <span className="duplicate-group-count">
-                {group.photos.length} photo{group.photos.length !== 1 ? "s" : ""}
-              </span>
-            </div>
-            <div className="duplicate-group-row">
-              {group.photos.map((photo, photoIdx) => (
-                <div
-                  key={photo.photo_id}
-                  className={`duplicate-photo ${selected.has(photo.photo_id) ? "dup-selected" : ""}`}
-                >
-                  <img
-                    src={photo.thumb_url || photo.photo_url}
-                    alt="Duplicate photo"
-                    onClick={() => {
-                      const lbPhotos: LightboxPhoto[] = group.photos.map((p) => ({
-                        photo_id: p.photo_id,
-                        thumb_url: p.thumb_url || p.photo_url,
-                        flickr_url: p.flickr_url,
-                        photo_url: p.photo_url,
-                      }));
-                      openLightbox(photo.photo_id, lbPhotos);
-                    }}
-                  />
-                  {photoIdx === 0 && (
-                    <span className="dup-original-badge">Original</span>
-                  )}
+                <span className="kx-duprow-actions">
+                  {/* TODO: choosing the sharper frame needs a per-photo quality
+                      score, and acting on it needs a non-destructive resolve
+                      endpoint — the only delete path today removes the file
+                      from Flickr permanently, which is not what this button
+                      says it does. Disabled rather than mislabelled. */}
                   <button
-                    className={`dup-check ${selected.has(photo.photo_id) ? "checked" : ""}`}
-                    onClick={() => toggleSelect(photo.photo_id)}
-                    title={selected.has(photo.photo_id) ? "Deselect" : "Select for deletion"}
+                    className="kx-button compact primary"
+                    disabled
+                    title="Nothing measures which frame is sharper yet"
                   >
-                    {selected.has(photo.photo_id) ? "✓" : ""}
+                    Keep the sharper one
                   </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-
-        <footer className="kindling-footer">
-          <span>By Kindling Signal</span>
-          <p>
-            Kindling builds useful software with character: warm enough for
-            real homes, sharp enough to hold up in real use.
-          </p>
-        </footer>
-      </main>
-    </div>
+                  <button
+                    className="kx-button compact"
+                    onClick={() => setKept((current) => new Set(current).add(index))}
+                  >
+                    Keep both
+                  </button>
+                </span>
+              </div>
+            );
+          })}
+        </section>
+      )}
+    </main>
   );
 }

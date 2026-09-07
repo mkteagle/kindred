@@ -1,197 +1,133 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Spinner } from "@/components/ui";
-import type { SearchResult } from "@/types";
 import { BACKEND, fmt } from "@/lib/constants";
-import { useLightbox } from "@/components/photo-lightbox";
-import type { LightboxPhoto } from "@/components/photo-lightbox";
+import type { SearchResult } from "@/types";
+import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
+import { KxEmpty, KxErrorBanner, KxSkeletonGrid } from "@/components/kx/states";
 
-const PRESET_COLORS = [
-  { name: "Red", hex: "ff0000" },
-  { name: "Orange", hex: "ff8000" },
-  { name: "Yellow", hex: "ffff00" },
-  { name: "Green", hex: "00ff00" },
-  { name: "Blue", hex: "0000ff" },
-  { name: "Purple", hex: "800080" },
-  { name: "Pink", hex: "ff69b4" },
-  { name: "White", hex: "ffffff" },
-  { name: "Black", hex: "000000" },
-  { name: "Brown", hex: "8b4513" },
+/**
+ * The six the design names, in the palette's own language rather than a paint
+ * chart's. Every one of them is a colour a household actually remembers: the
+ * fire, the lamp, the trees, the hour after sunset, the wall, the dark.
+ */
+const SWATCHES = [
+  { name: "Ember red", hex: "c04b2a" },
+  { name: "Amber", hex: "d59851" },
+  { name: "Forest", hex: "495645" },
+  { name: "Dusk blue", hex: "3f5f7a" },
+  { name: "Bone", hex: "e4ded0" },
+  { name: "Near black", hex: "1d1f1c" },
 ];
+
+/** How close a photo's dominant colour has to be. Higher is looser. */
+const THRESHOLD = 50;
 
 export default function ColorsPage() {
   const { openLightbox } = useLightbox();
-  const [selectedHex, setSelectedHex] = useState("");
-  const [hexInput, setHexInput] = useState("");
-  const [threshold, setThreshold] = useState(50);
+  const [active, setActive] = useState(SWATCHES[0]);
 
-  const activeHex = selectedHex.replace(/^#/, "");
-
-  const { data: results, isLoading } = useQuery<SearchResult[]>({
-    queryKey: ["color-search", activeHex, threshold],
-    staleTime: 5 * 60 * 1000, queryFn: () =>
-      fetch(
-        `${BACKEND}/search/color?hex=${activeHex}&threshold=${threshold}`
-      ).then((r) => r.json()),
-    enabled: activeHex.length === 6,
+  const { data, error, isPending, refetch } = useQuery<SearchResult[]>({
+    queryKey: ["kx-color-search", active.hex],
+    queryFn: async () => {
+      const response = await fetch(
+        `${BACKEND}/search/color?hex=${active.hex}&threshold=${THRESHOLD}`,
+      );
+      if (!response.ok) throw new Error("That colour could not be searched.");
+      return response.json();
+    },
+    staleTime: 5 * 60 * 1000,
   });
 
-  const handleSwatchClick = (hex: string) => {
-    setSelectedHex(hex);
-    setHexInput(hex);
-  };
+  const results = useMemo(() => data ?? [], [data]);
 
-  const handleHexSubmit = () => {
-    const cleaned = hexInput.replace(/^#/, "").trim();
-    if (/^[0-9a-fA-F]{6}$/.test(cleaned)) {
-      setSelectedHex(cleaned);
-    }
-  };
+  const lightboxPhotos = useMemo<LightboxPhoto[]>(
+    () =>
+      results.map((result) => ({
+        photo_id: result.photo_id,
+        thumb_url: result.thumb_url || result.photo_url,
+        photo_url: result.photo_url,
+        flickr_url: result.flickr_url,
+        photo_title: result.photo_title,
+      })),
+    [results],
+  );
 
   return (
-    <div className="app-shell">
-      <main className="page">
-        <div className="content-head" style={{ marginBottom: 24 }}>
-          <div>
-            <h2>Color Search</h2>
-            <p>
-              Find photos by dominant color. Pick a swatch or enter a hex code
-              to search your library.
-            </p>
-          </div>
-        </div>
+    <main className="kx-page">
+      <span className="kx-eyebrow">Colors</span>
+      <h1 className="kx-title">Browse by what it looked like.</h1>
+      <p className="kx-lede">
+        Dominant colour is worked out per photo on your server. Useful when you remember the red
+        door but not the year.
+      </p>
 
-        <div className="color-controls">
-          <div className="color-swatches">
-            {PRESET_COLORS.map((color) => (
-              <button
-                key={color.hex}
-                className={`color-swatch ${activeHex === color.hex ? "active" : ""}`}
-                style={{ backgroundColor: `#${color.hex}` }}
-                onClick={() => handleSwatchClick(color.hex)}
-                title={color.name}
-                aria-label={color.name}
-              />
-            ))}
-          </div>
-          <div className="color-hex-input">
-            <span className="color-hash">#</span>
-            <input
-              type="text"
-              value={hexInput}
-              onChange={(e) => setHexInput(e.target.value.replace(/^#/, ""))}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleHexSubmit();
-              }}
-              placeholder="ff8000"
-              maxLength={6}
-              className="color-input"
-            />
-            <button className="button small" onClick={handleHexSubmit}>
-              Search
-            </button>
-          </div>
-          <label className="color-threshold-label">
-            <span>Threshold</span>
-            <input
-              type="range"
-              min={20}
-              max={100}
-              step={5}
-              value={threshold}
-              onChange={(e) => setThreshold(Number(e.target.value))}
-              className="duplicates-slider"
-            />
-            <span className="duplicates-slider-value">{threshold}</span>
-          </label>
-        </div>
+      {/* TODO: the design puts a count on each swatch. Nothing tallies photos
+          per colour without running the search — /search/color answers one hex
+          at a time — so the counts are left off rather than fetched six times
+          on load. A `GET /colors` returning name, hex and count would fix it. */}
+      <div className="kx-swatchgrid">
+        {SWATCHES.map((swatch) => (
+          <button
+            key={swatch.hex}
+            className={`kx-card-lift kx-swatchcard ${active.hex === swatch.hex ? "is-active" : ""}`.trim()}
+            aria-pressed={active.hex === swatch.hex}
+            onClick={() => setActive(swatch)}
+          >
+            <span className="kx-swatchblock" style={{ background: `#${swatch.hex}` }} />
+            <span className="kx-swatchcard-body">
+              <strong>{swatch.name}</strong>
+              <span className="kx-cardmeta">
+                {active.hex === swatch.hex && !isPending && !error
+                  ? `${fmt.format(results.length)} photos`
+                  : `#${swatch.hex}`}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
 
-        {activeHex.length !== 6 && (
-          <div className="empty-state" style={{ minHeight: 200 }}>
-            <div>
-              <h2>Pick a color</h2>
-              <p>
-                Select a color swatch above or enter a 6-digit hex code to find
-                matching photos.
-              </p>
-            </div>
-          </div>
+      <div className="kx-chiprow" style={{ marginBottom: 12 }}>
+        <span className="kx-eyebrow quiet" style={{ width: "auto", alignSelf: "center" }}>
+          {active.name}
+        </span>
+        {!isPending && !error && (
+          <span className="kx-cardmeta" style={{ alignSelf: "center" }}>
+            {fmt.format(results.length)} {results.length === 1 ? "photo" : "photos"} · sorted by how
+            much of the frame
+          </span>
         )}
+      </div>
 
-        {activeHex.length === 6 && isLoading && (
-          <div className="empty-state" style={{ minHeight: 200 }}>
-            <Spinner />
-          </div>
-        )}
+      {error && <KxErrorBanner detail={(error as Error).message} onRetry={() => void refetch()} />}
+      {!error && isPending && <KxSkeletonGrid count={12} tile={150} />}
+      {!error && !isPending && results.length === 0 && (
+        <KxEmpty
+          title="Nothing in that colour."
+          body="No photo in the library is mostly this colour yet. Try another swatch."
+        />
+      )}
 
-        {activeHex.length === 6 && !isLoading && results && results.length > 0 && (
-          <>
-            <p
-              className="summary-note"
-              style={{ textAlign: "left", marginBottom: 16 }}
+      {results.length > 0 && (
+        <div className="kx-daygrid" style={{ ["--tile" as string]: "150px" }}>
+          {results.map((result) => (
+            <button
+              key={result.photo_id}
+              className="kx-tile"
+              aria-label={result.photo_title || "Open photo"}
+              onClick={() => openLightbox(result.photo_id, lightboxPhotos)}
             >
-              {fmt.format(results.length)} results for{" "}
-              <span
-                className="color-preview-inline"
-                style={{ backgroundColor: `#${activeHex}` }}
+              <img
+                src={result.thumb_url || result.photo_url}
+                alt=""
+                loading="lazy"
+                draggable={false}
               />
-              #{activeHex}
-            </p>
-            <div className="clip-results-grid">
-              {results.map((result) => {
-                const lbPhotos: LightboxPhoto[] = results.map((r) => ({
-                  photo_id: r.photo_id, thumb_url: r.thumb_url || r.photo_url, flickr_url: r.flickr_url, photo_url: r.photo_url, photo_title: r.photo_title,
-                }));
-                return (
-                  <button
-                    key={result.photo_id}
-                    className="clip-result-card"
-                    onClick={() => openLightbox(result.photo_id, lbPhotos)}
-                    style={{ border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
-                  >
-                    <img
-                      src={result.thumb_url || result.photo_url}
-                      alt={result.photo_title || "Color match"}
-                    />
-                    <div className="clip-result-info">
-                      <span className="clip-result-title">
-                        {result.photo_title || "Untitled"}
-                      </span>
-                      {result.distance !== undefined && (
-                        <span className="clip-result-score">
-                          {Math.round((1 - result.distance) * 100)}% match
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
-
-        {activeHex.length === 6 && !isLoading && results && results.length === 0 && (
-          <div className="empty-state" style={{ minHeight: 200 }}>
-            <div>
-              <h2>No results</h2>
-              <p>
-                No photos matched color #{activeHex} at threshold {threshold}.
-                Try a different color or increase the threshold.
-              </p>
-            </div>
-          </div>
-        )}
-
-        <footer className="kindling-footer">
-          <span>By Kindling Signal</span>
-          <p>
-            Kindling builds useful software with character: warm enough for
-            real homes, sharp enough to hold up in real use.
-          </p>
-        </footer>
-      </main>
-    </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </main>
   );
 }

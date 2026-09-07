@@ -1,12 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { BACKEND, fmt } from "@/lib/constants";
 import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
 import { PlayIcon } from "@/components/kx/icons";
 import { useKxUi } from "@/components/kx/ui-state";
 import { useLibraryCounts, useStats } from "@/components/kx/use-library";
+import { KxEmptyLibrary, KxErrorBanner, KxSkeletonGrid } from "@/components/kx/states";
+import { KxSelectBar } from "@/components/kx/select-bar";
+import { KxDayHeader } from "@/components/kx/day-header";
+import { useDayLabels } from "@/components/kx/day-labels";
 import { formatDuration, groupByDay, thumbUrl, tileSpan, type LibraryPhoto } from "@/components/kx/photos";
 
 type Page = { photos: LibraryPhoto[]; next_cursor: string | null };
@@ -22,10 +26,11 @@ interface Marquee {
 }
 
 export default function LibraryPage() {
-  const { selecting, setSelecting, selected, setSelected, toggleSelected, exitSelect } = useKxUi();
+  const { selecting, setSelecting, selected, setSelected, toggleSelected } = useKxUi();
   const { openLightbox } = useLightbox();
   const { data: counts } = useLibraryCounts();
   const { data: stats } = useStats();
+  const dayLabels = useDayLabels();
 
   const sentinel = useRef<HTMLDivElement>(null);
   const columnRef = useRef<HTMLDivElement>(null);
@@ -94,16 +99,28 @@ export default function LibraryPage() {
 
   /* ── Year scrubber ───────────────────────────────────────────────── */
 
-  // TODO: the years shown are the ones paged in so far. A `/library/years`
-  // endpoint (min/max plus the years that actually hold photos) would let the
-  // scrubber show the whole span up front instead of growing as you scroll.
+  // The whole span up front. Deriving it from the pages fetched so far would
+  // give a scrubber that grows as you scroll, which is the one thing a
+  // scrubber exists to avoid; /library/years answers it in a single group-by.
+  const { data: yearRows } = useQuery<{ years: { year: number; count: number }[] }>({
+    queryKey: ["library-years"],
+    queryFn: async () => {
+      const response = await fetch(`${BACKEND}/library/years?media=all`);
+      if (!response.ok) throw new Error("The year list could not be loaded.");
+      return response.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
   const years = useMemo(() => {
+    if (yearRows?.years?.length) return yearRows.years.map((row) => row.year);
+    // Until it lands, the years already on screen are better than none.
     const seen: number[] = [];
     for (const section of sections) {
       if (section.year && !seen.includes(section.year)) seen.push(section.year);
     }
     return seen;
-  }, [sections]);
+  }, [yearRows, sections]);
 
   // Highlight the year of the topmost day header under the topbar.
   useEffect(() => {
@@ -266,26 +283,18 @@ export default function LibraryPage() {
             const allSelected = ids.every((id) => selected.has(id));
             return (
               <section key={section.key}>
-                <div
-                  className="kx-dayhead"
-                  ref={(node) => {
+                <KxDayHeader
+                  label={section.label}
+                  count={section.photos.length}
+                  day={dayLabels.get(section.key) ?? null}
+                  allSelected={allSelected}
+                  onSelectDay={() => selectDay(ids)}
+                  year={section.year}
+                  headerRef={(node) => {
                     if (node) sectionNodes.current.set(section.key, node);
                     else sectionNodes.current.delete(section.key);
                   }}
-                  data-year={section.year}
-                >
-                  <h2>{section.label}</h2>
-                  {/* TODO: the design pairs the count with the day's place
-                      ("Campfire at the lake · 214 photos"). Nothing in the API
-                      names a day yet — /events is the closest, and it groups
-                      differently. */}
-                  <span className="kx-mono">
-                    {fmt.format(section.photos.length)} {section.photos.length === 1 ? "photo" : "photos"}
-                  </span>
-                  <button className="kx-selectday" data-selectday onClick={() => selectDay(ids)}>
-                    {allSelected ? "Deselect" : "Select all"} {fmt.format(ids.length)}
-                  </button>
-                </div>
+                />
 
                 <div className="kx-daygrid">
                   {section.photos.map((photo, index) => {
@@ -323,19 +332,15 @@ export default function LibraryPage() {
             />
           )}
 
-          {isPending && <p className="kx-status" role="status">Loading your library…</p>}
-          {!isPending && !error && photos.length === 0 && (
-            <p className="kx-status">No photos have been added yet.</p>
-          )}
+          {isPending && <KxSkeletonGrid count={18} />}
+          {!isPending && !error && photos.length === 0 && <KxEmptyLibrary />}
           {error && (
-            <p className="kx-error" role="alert">
-              {(error as Error).message}
-              <button className="kx-button" onClick={() => void (photos.length ? fetchNextPage() : refetch())}>
-                Retry
-              </button>
-            </p>
+            <KxErrorBanner
+              detail={(error as Error).message}
+              onRetry={() => void (photos.length ? fetchNextPage() : refetch())}
+            />
           )}
-          {isFetchingNextPage && <p className="kx-status" role="status">Loading more…</p>}
+          {isFetchingNextPage && <KxSkeletonGrid count={6} />}
           {/* An explicit control as well as the observer: infinite scroll fails
               silently if the sentinel never enters the viewport. */}
           {hasNextPage && !isFetchingNextPage && (
@@ -363,34 +368,8 @@ export default function LibraryPage() {
         </nav>
       </div>
 
-      {selecting && selected.size === 0 && (
-        <div className="kx-floatbar hint" role="status">
-          Click to gather · drag to sweep · Esc to stop
-        </div>
-      )}
+      <KxSelectBar />
 
-      {selected.size > 0 && (
-        <div className="kx-floatbar">
-          <span>
-            {fmt.format(selected.size)} {selected.size === 1 ? "photo" : "photos"} selected
-          </span>
-          {/* TODO: sharing a selection and adding it to an album both need
-              endpoints that take a photo id list — POST /shares and POST
-              /albums only take an album today. */}
-          <button className="kx-barbutton" disabled title="Sharing a selection is not wired up yet">
-            Share
-          </button>
-          <button className="kx-barbutton" disabled title="Adding a selection to an album is not wired up yet">
-            Add to album
-          </button>
-          <button className="kx-barbutton" onClick={() => setSelected(new Set())}>
-            Clear
-          </button>
-          <button className="kx-barbutton primary" onClick={exitSelect}>
-            Done
-          </button>
-        </div>
-      )}
     </main>
   );
 }

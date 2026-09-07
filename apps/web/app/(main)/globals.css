@@ -10849,6 +10849,20 @@ body:has(.kx) .lb-tag-chip {
 
 .lb-info-fav:disabled { opacity: .55; cursor: default; }
 
+/* Favourited: the heart fills and the whole control takes the accent, so the
+   state is legible from the edge of vision rather than only in the glyph. */
+.lb-info-fav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.lb-info-fav.is-on {
+  border-color: #cc7f61;
+  color: #cc7f61;
+}
+
 /* The rail runs the full height of the stage rather than floating inside it. */
 body:has(.kx) .lb-info-panel {
   top: 0;
@@ -10887,3 +10901,1257 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
   height: 34px;
   padding: 0;
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Redesign — states reference
+   ────────────────────────────────────────────────────────────────────────
+   The four patterns every grid and panel reuses: a grid-shaped skeleton,
+   the empty card, the unreachable-server banner and the in-progress row.
+   A grid never gets a spinner — a spinner discards the layout and then
+   hands it back, which reads as the page rebuilding itself.
+   ══════════════════════════════════════════════════════════════════════ */
+
+@keyframes kx-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .55; }
+}
+
+.kx-skel {
+  display: block;
+  border-radius: 3px;
+  background: var(--fill-2);
+  animation: kx-pulse 1.6s ease-in-out infinite;
+}
+
+/* Every third tile sits a shade brighter so the block reads as photographs
+   of differing weight rather than one flat panel. */
+.kx-skel.deep { background: var(--fill-3); }
+.kx-skel.wide { grid-column: span 2; }
+.kx-skel.big { grid-column: span 2; grid-row: span 2; }
+.kx-skel.card { border-radius: 12px; }
+.kx-skel.row { border-radius: 8px; }
+
+.kx-skel.round {
+  border-radius: 999px;
+  aspect-ratio: 1;
+}
+
+/* The mosaic's own geometry, so nothing shifts when the photos arrive. */
+.kx-skelgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--tile), 1fr));
+  grid-auto-rows: var(--tile);
+  gap: var(--gap);
+}
+
+.kx-skelcards {
+  display: grid;
+  gap: 14px;
+}
+
+.kx-skelrows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Empty ───────────────────────────────────────────────────────────── */
+
+.kx-emptycard {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  min-height: 190px;
+  padding: 26px 22px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--fill-1);
+}
+
+.kx-emptycard strong {
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.kx-emptycard p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-4);
+}
+
+.kx-emptycard .kx-button {
+  align-self: flex-start;
+  margin-top: 4px;
+  text-decoration: none;
+}
+
+/* Two empties side by side on the reference screen; one alone elsewhere. */
+.kx-emptyrow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+/* ── Error banner and progress row ───────────────────────────────────── */
+
+.kx-banner {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 13px 16px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--fill-1);
+}
+
+.kx-banner.danger {
+  border-color: var(--danger-line);
+  background: var(--danger-fill);
+}
+
+.kx-banner.danger > svg { color: var(--danger-ink); flex: none; }
+.kx-banner.danger strong { color: var(--danger-ink); }
+
+.kx-banner-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.kx-banner-copy strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.kx-banner .kx-button {
+  margin-left: auto;
+  flex: none;
+}
+
+@keyframes kx-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* A ring, not a disc: the accent is only the leading arc, so it reads as
+   progress rather than decoration. */
+.kx-spinner-ring {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  border: 2px solid var(--line-3);
+  border-top-color: var(--accent);
+  animation: kx-spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kx-skel { animation: none; }
+  .kx-spinner-ring { animation-duration: 3s; }
+}
+
+/* ── States reference screen ─────────────────────────────────────────── */
+
+.kx-stateset {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.kx-stateset > section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Facet chips with a popover ──────────────────────────────────────── */
+
+/* A chip that leads with a face rather than a word — the household knows the
+   people in its photos by sight before it reads their names. */
+.kx-chip.withface {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px 5px 5px;
+}
+
+.kx-chip.withface:not(:has(.kx-chip-avatar)) { padding-left: 13px; }
+
+.kx-chip-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  object-fit: cover;
+  flex: none;
+}
+
+.kx-chip-avatar.lg { width: 24px; height: 24px; }
+.kx-chip-avatar.blank { background: var(--fill-3); }
+
+/* A filter that is designed but not built. Dashed and inert, so it reads as a
+   plan rather than a broken control. */
+.kx-chip.deferred {
+  border-style: dashed;
+  color: var(--ink-3);
+  cursor: default;
+}
+
+.kx-chip.deferred:hover {
+  border-color: var(--line-3);
+  color: var(--ink-3);
+}
+
+.kx-menu.picker {
+  left: 0;
+  right: auto;
+  top: 40px;
+  width: 232px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.kx-menu-item.is-on {
+  background: var(--fill-2);
+  color: var(--ink);
+}
+
+.kx-menu-item img { flex: none; }
+.kx-menu-item > span:first-of-type { flex: 1 1 auto; min-width: 0; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Redesign — the sidebar routes
+   ────────────────────────────────────────────────────────────────────────
+   Shared rules for the twelve browse screens: a card is 1px --line-2 and
+   radius 12 on --fill-1, and lifts 3px with an accent border on hover.
+   Counts and metadata are mono 11px in --ink-3 everywhere.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.kx-card-lift {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--fill-1);
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform .18s var(--ease-rise), border-color .18s ease;
+}
+
+.kx-card-lift:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kx-card-lift:hover { transform: none; }
+}
+
+/* A count that sits on the photograph rather than under it. */
+.kx-coverbadge {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--scrim-badge);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: #f1f1ec;
+}
+
+.kx-cardmeta {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--ink-3);
+}
+
+.kx-cardmeta.accent { color: var(--accent); }
+
+/* ── Animals and vehicles: cover cards ───────────────────────────────── */
+
+.kx-covergrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.kx-covercard-media {
+  position: relative;
+  display: block;
+}
+
+.kx-covercard-media img {
+  width: 100%;
+  height: 168px;
+  object-fit: cover;
+  display: block;
+  background: var(--tile-bg);
+}
+
+.kx-covercard-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 13px 15px 15px;
+}
+
+.kx-covercard-body strong {
+  font-family: var(--display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.kx-covercard.unnamed .kx-covercard-media img { opacity: .82; }
+
+.kx-covercard.unnamed .kx-covercard-body strong {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--ink-4);
+}
+
+.kx-covercard-fallback {
+  display: grid;
+  place-items: center;
+  height: 168px;
+  background: var(--tile-bg);
+  font-family: var(--display);
+  font-size: 34px;
+  color: var(--ink-3);
+}
+
+/* ── Timeline ────────────────────────────────────────────────────────── */
+
+.kx-tlrow {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+
+/* The month label holds its place while its photos scroll past it. */
+.kx-tllabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: sticky;
+  top: 78px;
+}
+
+.kx-tllabel strong {
+  font-family: var(--display);
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.kx-tlstrip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  grid-auto-rows: 104px;
+  gap: 3px;
+}
+
+.kx-tlstrip button {
+  position: relative;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--tile-bg);
+  cursor: pointer;
+}
+
+.kx-tlstrip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.kx-tlstrip button:hover {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+@media (max-width: 900px) {
+  /* The label stops holding a column of its own and sits above its strip. */
+  .kx-tlrow { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .kx-tllabel { position: static; flex-direction: row; align-items: baseline; gap: 10px; }
+}
+
+/* ── Events ──────────────────────────────────────────────────────────── */
+
+.kx-eventgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+/* One photo leads and four follow — enough of the day to recognise it
+   without turning the card into a contact sheet. */
+.kx-eventstack {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  grid-auto-rows: 92px;
+  gap: 2px;
+  background: var(--tile-bg);
+}
+
+.kx-eventstack img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.kx-eventstack img:first-child { grid-row: span 2; }
+
+.kx-eventcard-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px 16px 16px;
+}
+
+.kx-eventcard-body strong {
+  font-family: var(--display);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.kx-eventcard-body.unnamed strong {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--ink-4);
+}
+
+.kx-eventname {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--fill-1);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.kx-eventcard-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* ── Together ────────────────────────────────────────────────────────── */
+
+.kx-togetherbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 16px;
+  margin-bottom: 22px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--fill-1);
+}
+
+.kx-personpill-sel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 5px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--fill-3);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kx-personpill-sel img {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  object-fit: cover;
+}
+
+.kx-personpill-sel .kx-mono { font-size: 13px; }
+.kx-personpill-sel:hover { background: var(--fill-4); }
+
+.kx-togetherbar .kx-mono.tail { margin-left: auto; }
+
+/* ── Locations ───────────────────────────────────────────────────────── */
+
+.kx-locations {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(300px, .8fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.kx-mappane {
+  position: relative;
+  height: 520px;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--fill-1);
+}
+
+.kx-mappane .leaflet-container {
+  height: 100%;
+  width: 100%;
+  background: var(--tile-bg);
+}
+
+.kx-placerow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 13px 16px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kx-placerow:hover,
+.kx-placerow.is-active { background: var(--fill-2); }
+
+.kx-placerow img {
+  width: 52px;
+  height: 52px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex: none;
+  background: var(--tile-bg);
+}
+
+.kx-placerow-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.kx-placerow-body strong {
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.kx-placerow .kx-cardmeta.tail { margin-left: auto; flex: none; }
+
+@media (max-width: 900px) {
+  .kx-locations { grid-template-columns: minmax(0, 1fr); }
+  .kx-mappane { height: 360px; }
+}
+
+/* ── Colors ──────────────────────────────────────────────────────────── */
+
+.kx-swatchgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 30px;
+}
+
+.kx-swatchblock {
+  display: block;
+  height: 92px;
+}
+
+.kx-swatchcard-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px 14px;
+}
+
+.kx-swatchcard-body strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.kx-swatchcard.is-active { border-color: var(--accent); }
+
+/* ── Objects ─────────────────────────────────────────────────────────── */
+
+.kx-objectgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.kx-objectcard img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  display: block;
+  background: var(--tile-bg);
+}
+
+.kx-objectcard-body {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 11px 13px 13px;
+}
+
+.kx-objectcard-body strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  text-transform: capitalize;
+}
+
+.kx-objectcard-body .kx-cardmeta { margin-left: auto; }
+
+/* ── Landmarks ───────────────────────────────────────────────────────── */
+
+.kx-landmarkgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.kx-landmarkcard-media {
+  position: relative;
+  display: block;
+}
+
+.kx-landmarkcard-media img {
+  width: 100%;
+  height: 190px;
+  object-fit: cover;
+  display: block;
+  background: var(--tile-bg);
+}
+
+/* The name sits on the photograph, so it needs its own ground under it. */
+.kx-landmarkcard-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(12, 14, 12, 0) 50%, rgba(12, 14, 12, .85));
+}
+
+.kx-landmarkcard-copy {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 12px;
+}
+
+.kx-landmarkcard-copy strong {
+  display: block;
+  font-family: var(--display);
+  font-size: 19px;
+  font-weight: 600;
+  color: #f1f1ec;
+  text-transform: capitalize;
+}
+
+.kx-landmarkcard-copy .kx-cardmeta { color: rgba(241, 241, 236, .72); }
+
+/* ── Shares ──────────────────────────────────────────────────────────── */
+
+.kx-sharerow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.kx-sharerow img {
+  width: 46px;
+  height: 46px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex: none;
+  background: var(--tile-bg);
+}
+
+.kx-sharerow-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.kx-sharerow-body strong { font-size: 14px; font-weight: 700; }
+
+.kx-sharerow-tail {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Live, public and expired are three different amounts of exposure, so they
+   are three different colours rather than three words in one. */
+.kx-statuspill.live { background: rgba(143, 160, 133, .18); color: var(--sage-ink); }
+.kx-statuspill.public { background: rgba(233, 184, 93, .16); color: var(--amber); }
+.kx-statuspill.expired { background: rgba(183, 62, 87, .14); color: var(--danger-ink); }
+
+/* ── Duplicates ──────────────────────────────────────────────────────── */
+
+.kx-duprow {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 13px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.kx-duppair {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+.kx-dupshot {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.kx-dupshot img {
+  width: 108px;
+  height: 108px;
+  border-radius: 6px;
+  object-fit: cover;
+  display: block;
+  background: var(--tile-bg);
+}
+
+/* The frame being kept is outlined; the ones going are dimmed. Which is
+   which has to be legible before either button is read. */
+.kx-dupshot.keep img {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.kx-dupshot:not(.keep) img { opacity: .62; }
+
+.kx-dupkeep {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(12, 14, 12, .78);
+  font-family: var(--mono);
+  font-size: 9px;
+  color: #f1f1ec;
+}
+
+.kx-duprow-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.kx-duprow-body strong { font-size: 14px; font-weight: 700; }
+
+.kx-duprow-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+@media (max-width: 900px) {
+  .kx-duprow,
+  .kx-sharerow { flex-wrap: wrap; }
+  .kx-duprow-actions,
+  .kx-sharerow-tail { margin-left: 0; width: 100%; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   Redesign — review and naming
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* The banner on the people screen. Naming is a first-class job, so the work
+   outstanding is stated where it is felt rather than filed under settings. */
+.kx-reviewbanner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 18px;
+  margin-bottom: 26px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--fill-1);
+}
+
+.kx-reviewbanner-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-right: auto;
+}
+
+.kx-reviewbanner-copy strong {
+  font-family: var(--display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.kx-reviewbanner .kx-button { text-decoration: none; }
+
+@media (max-width: 900px) {
+  /* The two actions drop under the count rather than squeezing beside it. */
+  .kx-reviewbanner-copy { margin-right: 0; width: 100%; }
+}
+
+/* ── The review screen ───────────────────────────────────────────────── */
+
+.kx-reviewhead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.kx-reviewhead .kx-lede { max-width: 48ch; margin-bottom: 0; }
+
+.kx-reviewprogress {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 210px;
+}
+
+.kx-reviewbar {
+  display: block;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--fill-3);
+  overflow: hidden;
+}
+
+.kx-reviewbar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width .3s var(--ease-rise);
+}
+
+/* The decision on the left, the evidence for it on the right. */
+.kx-reviewgrid {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.kx-reviewcard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--fill-1);
+}
+
+.kx-reviewcover {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 999px;
+  background: var(--tile-bg);
+}
+
+.kx-reviewcover.blank {
+  display: grid;
+  place-items: center;
+  font-family: var(--display);
+  font-size: 40px;
+  color: var(--ink-3);
+}
+
+.kx-reviewname {
+  min-height: 42px;
+  padding: 0 13px;
+  border: 1px solid var(--line-3);
+  border-radius: 8px;
+  background: var(--fill-1);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.kx-reviewname::placeholder { color: var(--ink-3); }
+
+.kx-reusenames {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.kx-reusenames > .kx-eyebrow { width: 100%; }
+
+.kx-namechip {
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--fill-3);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.kx-namechip:hover { background: var(--fill-4); color: var(--ink); }
+
+.kx-reviewactions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.kx-reviewactions .kx-button { justify-content: center; gap: 8px; }
+
+/* The key that does the same thing, said quietly inside the button. */
+.kx-shortcut {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  opacity: .7;
+}
+
+.kx-reviewevidence {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.kx-reviewevidence > section {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.kx-facestrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* A face chip is a claim that this detection belongs to the group. Clicking
+   one withdraws the claim, so the hover state is the danger colour. */
+.kx-facechip {
+  width: 62px;
+  height: 62px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--tile-bg);
+  cursor: pointer;
+}
+
+.kx-facechip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.kx-facechip:hover {
+  outline: 2px solid var(--danger-ink);
+  outline-offset: -2px;
+}
+
+.kx-facechip.more {
+  display: grid;
+  place-items: center;
+  background: var(--fill-3);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: default;
+}
+
+.kx-reviewphotos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 6px;
+}
+
+.kx-reviewphotos button {
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--tile-bg);
+  cursor: pointer;
+}
+
+.kx-reviewphotos img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+}
+
+.kx-reviewphotos button:hover {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+@media (max-width: 900px) {
+  .kx-reviewgrid { grid-template-columns: minmax(0, 1fr); }
+  .kx-reviewprogress { margin-left: 0; width: 100%; }
+}
+
+/* ── Day header: label provenance and naming ─────────────────────────── */
+
+/* A name a member typed and a place a machine guessed are different claims,
+   so the header always says which one it is showing. */
+.kx-provenance {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+/* Dashed, because it is an invitation rather than a statement. */
+.kx-nameday {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px dashed var(--line-5);
+  border-radius: 999px;
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--ink-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.kx-nameday:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.kx-nameday-input {
+  min-height: 28px;
+  min-width: 180px;
+  padding: 0 10px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--fill-1);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+@media (max-width: 900px) {
+  /* The chip and the invitation both drop out before the date and count do. */
+  .kx-provenance,
+  .kx-nameday { display: none; }
+}
+
+/* ── Date facet popover ──────────────────────────────────────────────── */
+
+.kx-datepop {
+  position: absolute;
+  top: 40px;
+  left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 292px;
+  padding: 14px;
+  border: 1px solid var(--line-3);
+  border-radius: 12px;
+  background: var(--panel-2);
+  backdrop-filter: blur(20px);
+  box-shadow: var(--shadow-popover);
+  animation: kx-fade .16s ease both;
+}
+
+.kx-segmented {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--fill-2);
+}
+
+.kx-segmented button {
+  flex: 1 1 0;
+  min-height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: var(--body);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.kx-segmented button.is-active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.kx-datepop-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-4);
+}
+
+.kx-datepop-note strong { font-weight: 700; }
+
+.kx-datepop-fields {
+  display: flex;
+  gap: 8px;
+}
+
+.kx-datepop-fields label {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.kx-datepop-fields input {
+  min-height: 34px;
+  padding: 0 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--fill-1);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.kx-datepop-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.kx-datepop-actions .kx-button { flex: 1 1 0; justify-content: center; }
+.kx-datepop-actions .kx-button:last-child { flex: 0 0 auto; }
+
+/* ── Selection bar ───────────────────────────────────────────────────── */
+
+/* The album picker opens upward: the bar already sits 26px off the bottom of
+   the window, so downward has nowhere to go. */
+.kx-menu.above {
+  top: auto;
+  bottom: 44px;
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 220px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.kx-menu-note {
+  display: block;
+  padding: 8px 10px 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-4);
+}
+
+.kx-barbutton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Reaching the viewer to favourite one photo at a time is a phone's worst
+   path, so the batch action appears only where that path is worst. */
+.kx-barbutton.compact-only { display: none; }
+
+@media (max-width: 900px) {
+  .kx-barbutton.compact-only { display: inline-flex; }
+}
+
+/* ── Favourites ──────────────────────────────────────────────────────── */
+
+/* The accent heart on the hero tile of /favorites — one marker for the whole
+   screen, not a badge repeated ninety-six times. */
+.kx-tile-heart {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  pointer-events: none;
+}
+
+/* The sync card's link through to the states reference. */
+.kx-sync-link {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.kx-sync-link:hover { color: var(--amber); }

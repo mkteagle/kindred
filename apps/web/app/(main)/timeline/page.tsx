@@ -1,272 +1,223 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Spinner } from "@/components/ui";
-import type { TimelineResponse, TimelineMonth } from "@/types";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { BACKEND, fmt } from "@/lib/constants";
-import { useLightbox } from "@/components/photo-lightbox";
-import type { LightboxPhoto } from "@/components/photo-lightbox";
-import { LibraryCounts } from "@/components/library-counts";
+import type { TimelineMonth, TimelineResponse } from "@/types";
+import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
+import { KxEmpty, KxErrorBanner, KxSkeletonRows } from "@/components/kx/states";
 
-function formatMonth(monthStr: string): string {
-  const [year, month] = monthStr.split("-");
-  const date = new Date(Number(year), Number(month) - 1);
-  return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+type Grain = "months" | "years" | "days";
+
+const GRAINS: { id: Grain; label: string }[] = [
+  { id: "months", label: "Months" },
+  { id: "years", label: "Years" },
+  { id: "days", label: "Days" },
+];
+
+const MONTHS_PER_PAGE = 6;
+
+interface TimelinePage extends TimelineResponse {
+  next_before?: string | null;
 }
 
-function MonthSection({ month }: { month: TimelineMonth }) {
-  const PAGE_SIZE = 24;
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const loadMoreRef = useRef<HTMLDivElement>(null);
-  const { openLightbox } = useLightbox();
-  const visible = month.photos.slice(0, visibleCount);
-  const remaining = Math.max(0, month.photos.length - visible.length);
+const MONTH_LABEL = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric" });
+const DAY_LABEL = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" });
 
-  useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
-  }, [month.month]);
+function monthLabel(value: string): string {
+  const [year, month] = value.split("-");
+  const date = new Date(Number(year), Number(month) - 1);
+  return Number.isNaN(date.getTime()) ? value : MONTH_LABEL.format(date);
+}
 
-  useEffect(() => {
-    const sentinel = loadMoreRef.current;
-    if (!sentinel || remaining === 0) return;
+interface Row {
+  key: string;
+  label: string;
+  count: number;
+  photos: TimelineMonth["photos"];
+}
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisibleCount((count) => Math.min(count + PAGE_SIZE, month.photos.length));
-        }
-      },
-      { rootMargin: "600px 0px" },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [month.photos.length, remaining]);
+/** Fold the month buckets the endpoint returns into the chosen grain. */
+function rowsFor(grain: Grain, months: TimelineMonth[]): Row[] {
+  if (grain === "months") {
+    return months.map((month) => ({
+      key: month.month,
+      label: monthLabel(month.month),
+      count: month.count,
+      photos: month.photos,
+    }));
+  }
 
-  const lbPhotos: LightboxPhoto[] = month.photos.map((p) => ({
-    photo_id: p.photo_id,
-    thumb_url: p.thumb_url,
-    flickr_url: p.flickr_url,
-    photo_title: p.photo_title,
-    date_taken: p.date_taken,
-  }));
+  if (grain === "years") {
+    const years = new Map<string, Row>();
+    for (const month of months) {
+      const year = month.month.split("-")[0];
+      const row = years.get(year);
+      if (row) {
+        row.count += month.count;
+        row.photos = row.photos.concat(month.photos);
+      } else {
+        years.set(year, { key: year, label: year, count: month.count, photos: [...month.photos] });
+      }
+    }
+    return Array.from(years.values());
+  }
 
-  return (
-    <section className="timeline-month">
-      <div className="timeline-month-header">
-        <div>
-          <h3 className="timeline-month-label">{formatMonth(month.month)}</h3>
-          <span className="timeline-month-count">
-            {fmt.format(month.count)} photo{month.count !== 1 ? "s" : ""}
-          </span>
-        </div>
-      </div>
-      <div className="clip-results-grid">
-        {visible.map((photo) => (
-          <button
-            key={photo.photo_id}
-            className="clip-result-card"
-            onClick={() => openLightbox(photo.photo_id, lbPhotos)}
-            style={{ border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
-          >
-            <img src={photo.thumb_url} alt={photo.photo_title || ""} />
-            <div className="clip-result-info">
-              <span className="clip-result-title">
-                {photo.photo_title || "Untitled"}
-              </span>
-              <span className="clip-result-score">
-                {photo.date_taken
-                  ? new Date(photo.date_taken).toLocaleDateString()
-                  : ""}
-              </span>
-            </div>
-          </button>
-        ))}
-      </div>
-      {remaining > 0 && (
-        <div
-          ref={loadMoreRef}
-          aria-hidden="true"
-          style={{ height: 1, width: "100%" }}
-        />
-      )}
-    </section>
-  );
+  // Days are cut from the photos already in hand, so a day's count is what is
+  // on screen rather than the whole day — the endpoint buckets by month.
+  const days = new Map<string, Row>();
+  for (const month of months) {
+    for (const photo of month.photos) {
+      const key = (photo.date_taken || "").slice(0, 10);
+      if (!key) continue;
+      const row = days.get(key);
+      if (row) {
+        row.count += 1;
+        row.photos.push(photo);
+      } else {
+        const date = new Date(key);
+        days.set(key, {
+          key,
+          label: Number.isNaN(date.getTime()) ? key : DAY_LABEL.format(date),
+          count: 1,
+          photos: [photo],
+        });
+      }
+    }
+  }
+  return Array.from(days.values()).sort((a, b) => b.key.localeCompare(a.key));
 }
 
 export default function TimelinePage() {
-  const { data, isLoading } = useQuery<TimelineResponse>({
-    queryKey: ["timeline"],
-    queryFn: () => fetch(`${BACKEND}/timeline`).then((r) => r.json()),
-    staleTime: 5 * 60 * 1000, // 5 min — data doesn't change often
-  });
+  const [grain, setGrain] = useState<Grain>("months");
+  const { openLightbox } = useLightbox();
+  const sentinel = useRef<HTMLDivElement>(null);
 
-  const [selectedYear, setSelectedYear] = useState<string | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const { data, error, isPending, hasNextPage, isFetchingNextPage, fetchNextPage, refetch } =
+    useInfiniteQuery<TimelinePage>({
+      queryKey: ["kx-timeline"],
+      initialPageParam: null as string | null,
+      queryFn: async ({ pageParam }) => {
+        const params = new URLSearchParams({ months: String(MONTHS_PER_PAGE), media: "all" });
+        if (pageParam) params.set("before", pageParam as string);
+        const response = await fetch(`${BACKEND}/timeline?${params}`);
+        if (!response.ok) throw new Error("The timeline could not be loaded.");
+        return response.json();
+      },
+      getNextPageParam: (page) => page.next_before ?? undefined,
+    });
 
-  const months = data?.months || [];
+  const months = useMemo(
+    () =>
+      Array.from(
+        new Map((data?.pages.flatMap((page) => page.months) ?? []).map((m) => [m.month, m])).values(),
+      ),
+    [data],
+  );
 
-  // Extract unique years sorted descending
+  const rows = useMemo(() => rowsFor(grain, months), [grain, months]);
+
+  const total = useMemo(() => months.reduce((sum, month) => sum + month.count, 0), [months]);
+
+  // One span of years is the honest headline for a library that reaches back.
   const years = useMemo(() => {
-    const set = new Set<string>();
-    months.forEach((m) => set.add(m.month.split("-")[0]));
-    return [...set].sort((a, b) => Number(b) - Number(a));
+    const set = new Set(months.map((month) => month.month.split("-")[0]));
+    return set.size;
   }, [months]);
 
-  // Extract months for selected year
-  const monthsInYear = useMemo(() => {
-    if (!selectedYear) return [];
-    const set = new Set<string>();
-    months.forEach((m) => {
-      if (m.month.startsWith(selectedYear)) {
-        set.add(m.month.split("-")[1]);
-      }
-    });
-    return [...set].sort((a, b) => Number(b) - Number(a));
-  }, [months, selectedYear]);
-
-  // Filter months based on selection
-  const filtered = useMemo(() => {
-    if (selectedMonth && selectedYear) {
-      return months.filter((m) => m.month === `${selectedYear}-${selectedMonth}`);
-    }
-    if (selectedYear) {
-      return months.filter((m) => m.month.startsWith(selectedYear));
-    }
-    return months;
-  }, [months, selectedYear, selectedMonth]);
-
-  const totalPhotos = filtered.reduce((sum, m) => sum + m.count, 0);
-
-  const monthName = (num: string) => {
-    const d = new Date(2000, Number(num) - 1);
-    return d.toLocaleDateString("en-US", { month: "short" });
-  };
+  useEffect(() => {
+    const target = sentinel.current;
+    if (!target || !hasNextPage || isFetchingNextPage || error) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) void fetchNextPage();
+      },
+      { rootMargin: "600px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, error, months.length]);
 
   return (
-    <div className="app-shell">
-      <main className="page">
-        <LibraryCounts />
-        <div className="content-head" style={{ marginBottom: 16 }}>
-          <div>
-            <h2>Timeline</h2>
-            <p>Browse your photos organized by date.</p>
-          </div>
-          {totalPhotos > 0 && (
-            <div className="summary-note">
-              {fmt.format(filtered.length)} month{filtered.length !== 1 ? "s" : ""}, {fmt.format(totalPhotos)} photos
-            </div>
-          )}
-        </div>
+    <main className="kx-page">
+      <span className="kx-eyebrow">Timeline</span>
+      <h1 className="kx-title">
+        {years > 1 ? `${years} years, end to end.` : "End to end."}
+      </h1>
+      <p className="kx-lede">
+        Every month that holds a photo. Scrub the years on the right of the library, or walk down
+        them here.
+      </p>
 
-        {/* Filter controls */}
-        {!isLoading && months.length > 0 && (
-          <div className="tl-filters">
-            {/* Year pills */}
-            <div className="tl-filter-row">
-              <span className="tl-filter-label">Year</span>
-              <div className="tl-pills">
-                <button
-                  className={`tl-pill ${!selectedYear ? "is-active" : ""}`}
-                  onClick={() => { setSelectedYear(null); setSelectedMonth(null); }}
-                >
-                  All
-                </button>
-                {years.map((y) => {
-                  const count = months.filter((m) => m.month.startsWith(y)).reduce((s, m) => s + m.count, 0);
-                  return (
-                    <button
-                      key={y}
-                      className={`tl-pill ${selectedYear === y ? "is-active" : ""}`}
-                      onClick={() => { setSelectedYear(y); setSelectedMonth(null); }}
-                    >
-                      {y}
-                      <span className="tl-pill-count">{fmt.format(count)}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Month pills (visible when year is selected) */}
-            {selectedYear && monthsInYear.length > 1 && (
-              <div className="tl-filter-row">
-                <span className="tl-filter-label">Month</span>
-                <div className="tl-pills">
-                  <button
-                    className={`tl-pill ${!selectedMonth ? "is-active" : ""}`}
-                    onClick={() => setSelectedMonth(null)}
-                  >
-                    All {selectedYear}
-                  </button>
-                  {monthsInYear.map((m) => {
-                    const full = `${selectedYear}-${m}`;
-                    const entry = months.find((e) => e.month === full);
-                    return (
-                      <button
-                        key={m}
-                        className={`tl-pill ${selectedMonth === m ? "is-active" : ""}`}
-                        onClick={() => setSelectedMonth(m)}
-                      >
-                        {monthName(m)}
-                        {entry && <span className="tl-pill-count">{fmt.format(entry.count)}</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Active filter breadcrumb */}
-            {selectedYear && (
-              <div className="tl-breadcrumb">
-                <button className="tl-crumb" onClick={() => { setSelectedYear(null); setSelectedMonth(null); }}>
-                  All years
-                </button>
-                <span className="tl-crumb-sep">/</span>
-                <button className="tl-crumb" onClick={() => setSelectedMonth(null)}>
-                  {selectedYear}
-                </button>
-                {selectedMonth && (
-                  <>
-                    <span className="tl-crumb-sep">/</span>
-                    <span className="tl-crumb is-current">{monthName(selectedMonth)} {selectedYear}</span>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {isLoading && (
-          <div className="cluster-grid">{Array.from({length:12}).map((_,i)=>(<div key={i} className="skeleton-card" style={{aspectRatio:"1",borderRadius:6}}/>))}</div>
-        )}
-
-        {!isLoading && filtered.length === 0 && (
-          <div className="empty-state">
-            <div>
-              <h2>No photos found</h2>
-              <p>
-                {months.length === 0
-                  ? "No photos with date information. Run a metadata backfill first."
-                  : "No photos match the selected filter."}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {!isLoading && filtered.map((month) => (
-          <MonthSection key={month.month} month={month} />
+      <div className="kx-chiprow" role="group" aria-label="Group the timeline by">
+        {GRAINS.map((option) => (
+          <button
+            key={option.id}
+            className={`kx-chip ${grain === option.id ? "is-active" : ""}`}
+            aria-pressed={grain === option.id}
+            onClick={() => setGrain(option.id)}
+          >
+            {option.label}
+          </button>
         ))}
+        {total > 0 && (
+          <span className="kx-cardmeta" style={{ marginLeft: "auto", alignSelf: "center" }}>
+            {fmt.format(total)} photos so far
+          </span>
+        )}
+      </div>
 
-        <footer className="kindling-footer">
-          <span>By Kindling Signal</span>
-          <p>
-            Kindling builds useful software with character: warm enough for
-            real homes, sharp enough to hold up in real use.
-          </p>
-        </footer>
-      </main>
-    </div>
+      {error && <KxErrorBanner detail={(error as Error).message} onRetry={() => void refetch()} />}
+      {!error && isPending && <KxSkeletonRows count={4} height={132} />}
+      {!error && !isPending && rows.length === 0 && (
+        <KxEmpty
+          title="Nothing here yet."
+          body="Photos need a date before they can sit on a timeline. The next sync will fill this in."
+          action={{ label: "Browse the library", href: "/gallery", primary: true }}
+        />
+      )}
+
+      {rows.map((row) => {
+        const lightboxPhotos: LightboxPhoto[] = row.photos.map((photo) => ({
+          photo_id: photo.photo_id,
+          thumb_url: photo.thumb_url,
+          flickr_url: photo.flickr_url,
+          photo_title: photo.photo_title,
+          date_taken: photo.date_taken,
+        }));
+        return (
+          <div className="kx-tlrow" key={row.key}>
+            <span className="kx-tllabel">
+              <strong>{row.label}</strong>
+              <span className="kx-cardmeta">
+                {fmt.format(row.count)} {row.count === 1 ? "photo" : "photos"}
+              </span>
+            </span>
+            <div className="kx-tlstrip">
+              {row.photos.map((photo) => (
+                <button
+                  key={photo.photo_id}
+                  onClick={() => openLightbox(photo.photo_id, lightboxPhotos)}
+                  aria-label={photo.photo_title || "Open photo"}
+                >
+                  <img src={photo.thumb_url} alt="" loading="lazy" />
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      {isFetchingNextPage && <KxSkeletonRows count={2} height={132} />}
+      {hasNextPage && !isFetchingNextPage && (
+        <div className="kx-loadmore">
+          <button className="kx-button" onClick={() => void fetchNextPage()}>
+            Load earlier months
+          </button>
+        </div>
+      )}
+      {!hasNextPage && rows.length > 0 && <p className="kx-status">That&rsquo;s the whole run.</p>}
+      <div ref={sentinel} aria-hidden="true" style={{ height: 1 }} />
+    </main>
   );
 }

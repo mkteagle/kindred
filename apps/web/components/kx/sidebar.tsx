@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { fmt } from "@/lib/constants";
 import { NavIcon } from "./icons";
+import { useFavorites } from "./favorites";
 import { useLatestSync, useLibraryCounts, useShareCount, useStats, relativeTime } from "./use-library";
 
 /** LIBRARY group — label, route, and where its count comes from. */
@@ -16,6 +17,7 @@ const LIBRARY_ROWS = [
   { href: "/timeline", label: "Timeline", count: null },
   { href: "/locations", label: "Locations", count: null },
   { href: "/shares", label: "Shared", count: "shares" as const },
+  { href: "/favorites", label: "Favorites", count: "favorites" as const },
 ];
 
 /**
@@ -57,6 +59,11 @@ function SyncCard() {
     <div className="kx-sync">
       <span className="kx-sync-label">Sync</span>
       <span className="kx-sync-caption">{caption}</span>
+      {/* The states reference hangs off the sync card, where someone already
+          looking at whether the library is healthy will find it. */}
+      <Link href="/states" className="kx-sync-link">
+        Empty · loading · error
+      </Link>
       <div className="kx-sync-bar">
         <span style={{ width: running ? "40%" : "100%" }} />
       </div>
@@ -69,6 +76,7 @@ export function KxSidebar({ open, onNavigate }: { open: boolean; onNavigate: () 
   const { data: counts } = useLibraryCounts();
   const { data: stats } = useStats();
   const { data: shares } = useShareCount();
+  const { count: favorites } = useFavorites();
 
   const countFor = (key: (typeof LIBRARY_ROWS)[number]["count"]): number | null => {
     switch (key) {
@@ -78,6 +86,8 @@ export function KxSidebar({ open, onNavigate }: { open: boolean; onNavigate: () 
         return counts?.videos ?? null;
       case "shares":
         return shares ?? null;
+      case "favorites":
+        return favorites;
       case "people":
       case "pets":
       case "vehicles":
