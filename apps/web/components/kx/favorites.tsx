@@ -77,6 +77,10 @@ export function KxFavoritesProvider({ children }: { children: React.ReactNode })
     },
   });
 
+  // `mutate` is stable across renders; the mutation object is not, and
+  // depending on it would rebuild the context value on every render.
+  const { mutate } = mutation;
+
   const toggle = useCallback(
     (photoId: string) => {
       let on = false;
@@ -88,9 +92,9 @@ export function KxFavoritesProvider({ children }: { children: React.ReactNode })
         return next;
       });
       // The optimistic flip above has already decided which way this goes.
-      mutation.mutate({ photoId, on });
+      mutate({ photoId, on });
     },
-    [mutation],
+    [mutate],
   );
 
   const seed = useCallback((photoIds: string[]) => {

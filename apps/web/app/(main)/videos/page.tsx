@@ -141,19 +141,23 @@ export default function VideosPage() {
     [videos],
   );
 
+  // Destructured because the query object is a new reference every render,
+  // and depending on it would rebuild the observer each time.
+  const { hasNextPage, isFetchingNextPage, fetchNextPage, error: catalogError } = catalog;
+
   useEffect(() => {
     const target = sentinel.current;
     if (byPerson) return;
-    if (!target || !catalog.hasNextPage || catalog.isFetchingNextPage || catalog.error) return;
+    if (!target || !hasNextPage || isFetchingNextPage || catalogError) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) void catalog.fetchNextPage();
+        if (entry.isIntersecting) void fetchNextPage();
       },
       { rootMargin: "600px" },
     );
     observer.observe(target);
     return () => observer.disconnect();
-  }, [byPerson, catalog, catalogVideos.length]);
+  }, [byPerson, hasNextPage, isFetchingNextPage, fetchNextPage, catalogError, catalogVideos.length]);
 
   const clearFilters = () => {
     setSpan("all");

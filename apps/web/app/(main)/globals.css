@@ -11285,6 +11285,12 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
   outline-offset: -2px;
 }
 
+@media (max-width: 900px) {
+  /* The label stops holding a column of its own and sits above its strip. */
+  .kx-tlrow { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .kx-tllabel { position: static; flex-direction: row; align-items: baseline; gap: 10px; }
+}
+
 /* ── Events ──────────────────────────────────────────────────────────── */
 
 .kx-eventgrid {
@@ -11722,6 +11728,11 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
 }
 
 .kx-reviewbanner .kx-button { text-decoration: none; }
+
+@media (max-width: 900px) {
+  /* The two actions drop under the count rather than squeezing beside it. */
+  .kx-reviewbanner-copy { margin-right: 0; width: 100%; }
+}
 
 /* ── The review screen ───────────────────────────────────────────────── */
 
