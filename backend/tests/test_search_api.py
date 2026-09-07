@@ -56,6 +56,40 @@ class CandidatePoolTests(unittest.TestCase):
         self.assertEqual(candidate_pool(200, Facets(media="video")), search_api.MAX_CANDIDATES)
 
 
+class EfSearchTests(unittest.TestCase):
+    """pgvector caps an HNSW scan at hnsw.ef_search candidates (default 40), so
+    a LIMIT above that returns short unless ef_search is raised with it.
+    Verified against real data: asking for 200 returned exactly 40."""
+
+    def test_ef_search_covers_the_candidate_pool(self):
+        from search_api import ef_search_for
+        for limit in (10, 60, 200):
+            for facets in (Facets(), Facets(media="video")):
+                pool = candidate_pool(limit, facets)
+                self.assertGreaterEqual(ef_search_for(pool), min(pool, search_api.MAX_EF_SEARCH))
+
+    def test_ef_search_is_clamped_to_pgvectors_ceiling(self):
+        from search_api import ef_search_for
+        self.assertEqual(ef_search_for(10_000), search_api.MAX_EF_SEARCH)
+        self.assertEqual(ef_search_for(0), 1)
+
+    def test_ef_search_is_always_an_integer_since_it_is_inlined_into_sql(self):
+        from search_api import ef_search_for
+        for value in (5, 5.9, "7"):
+            self.assertIsInstance(ef_search_for(value), int)
+
+    def test_the_vector_query_raises_ef_search_before_the_scan(self):
+        query = Mock(return_value=[])
+        by_vector(query, [0.1] * 512, Facets(), limit=60)
+        sql, params = query.call_args.args
+        self.assertIn("SET LOCAL hnsw.ef_search", sql)
+        # It must come before the CTE, and be at least the LIMIT the CTE uses.
+        self.assertLess(sql.index("SET LOCAL hnsw.ef_search"), sql.index("WITH nearest AS ("))
+        setting = int(sql.split("hnsw.ef_search = ")[1].split(";")[0])
+        pool = candidate_pool(60, Facets())
+        self.assertGreaterEqual(setting, min(pool, search_api.MAX_EF_SEARCH))
+
+
 class QueryShapeTests(unittest.TestCase):
     def test_vector_search_keeps_the_ann_scan_unfiltered_so_the_index_is_used(self):
         query = Mock(return_value=[])

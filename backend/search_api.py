@@ -20,6 +20,12 @@ OVERFETCH = 8
 OVERFETCH_WITH_FACETS = 24
 MAX_CANDIDATES = 2000
 
+# pgvector caps an HNSW scan at hnsw.ef_search candidates, and the default is
+# 40 — so a LIMIT above that silently returns fewer rows than asked for, no
+# matter how wide the overfetch. ef_search must therefore be raised to at least
+# the candidate pool on every vector query. 1000 is pgvector's own ceiling.
+MAX_EF_SEARCH = 1000
+
 JOINS = """
 FROM photos p
 LEFT JOIN photo_copies n ON n.photo_id=p.id AND n.provider='nas' AND n.status='available'
@@ -118,6 +124,16 @@ def candidate_pool(limit, facets):
     return min(limit * factor, MAX_CANDIDATES)
 
 
+def ef_search_for(pool):
+    """Search-list size for an HNSW scan expected to yield `pool` candidates.
+
+    Must be >= the LIMIT or the index returns short. Kept an int and clamped so
+    it can be inlined into SQL — it is derived from our own constants, never
+    from caller input.
+    """
+    return max(1, min(int(pool), MAX_EF_SEARCH))
+
+
 def by_vector(query, embedding, facets, limit=60):
     """Rank by CLIP distance, then apply facets to the candidate pool.
 
@@ -127,7 +143,8 @@ def by_vector(query, embedding, facets, limit=60):
     clauses, params = facets.where()
     pool = candidate_pool(limit, facets)
     rows = query(
-        f"""WITH nearest AS (
+        f"""SET LOCAL hnsw.ef_search = {ef_search_for(pool)};
+            WITH nearest AS (
                 SELECT pe.photo_id, pe.clip_embedding <=> %s AS distance
                 FROM photo_embeddings pe
                 ORDER BY pe.clip_embedding <=> %s
