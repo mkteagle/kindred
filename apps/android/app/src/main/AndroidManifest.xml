@@ -16,10 +16,18 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Kindred">
 
+        <!--
+          The whole UI is Compose, which reads the configuration reactively, so
+          the activity handles these changes itself instead of being recreated.
+          That is what lets a rotation or an unfold swap the navigation bar for
+          the tablet rail while keeping the back stack, the selection and the
+          loaded pages exactly where they were.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density|fontScale|layoutDirection"
             android:theme="@style/Theme.Kindred.Splash"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>

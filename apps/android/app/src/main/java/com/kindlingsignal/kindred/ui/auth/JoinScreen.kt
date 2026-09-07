@@ -58,7 +58,7 @@ fun JoinScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(KindredColors.Paper)
+            .background(KindredColors.Bg)
             .verticalScroll(rememberScrollState())
             .statusBarsPadding()
             .navigationBarsPadding()
@@ -74,7 +74,7 @@ fun JoinScreen(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "Back",
-                tint = KindredColors.Pine,
+                tint = KindredColors.InkBody,
                 modifier = Modifier
                     .size(24.dp)
                     .clickable { onBack() },
@@ -87,29 +87,29 @@ fun JoinScreen(
         Box(
             modifier = Modifier
                 .size(60.dp)
-                .shadow(12.dp, RoundedCornerShape(15.dp), ambientColor = KindredColors.CardShadow, spotColor = KindredColors.CardShadow)
+                .shadow(12.dp, RoundedCornerShape(15.dp), ambientColor = KindredColors.Bg, spotColor = KindredColors.Bg)
                 .clip(RoundedCornerShape(15.dp))
-                .background(KindredColors.Ember),
+                .background(KindredColors.Terracotta),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = "K",
                 style = KindredType.display(30),
-                color = KindredColors.Card,
+                color = KindredColors.OnAccentInk,
             )
         }
 
         Text(
             text = "Join a household.",
             style = KindredType.display(26, FontWeight.Bold),
-            color = KindredColors.Ash,
+            color = KindredColors.InkPrimary,
             modifier = Modifier.padding(top = 16.dp),
         )
 
         Text(
             text = "Enter your invite code to get started.",
             style = KindredType.Body,
-            color = KindredColors.Pine,
+            color = KindredColors.InkBody,
             modifier = Modifier.padding(top = 6.dp),
         )
 
@@ -188,8 +188,8 @@ fun JoinScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
                 .padding(top = 20.dp)
-                .clip(KindredShape.RadiusSM)
-                .background(if (canJoin) KindredColors.Ember else KindredColors.Ember.copy(alpha = 0.5f))
+                .clip(KindredShape.Small)
+                .background(if (canJoin) KindredColors.Terracotta else KindredColors.Terracotta.copy(alpha = 0.5f))
                 .clickable(enabled = canJoin) {
                     viewModel.register(inviteCode, username, displayName, password)
                 }
@@ -198,7 +198,7 @@ fun JoinScreen(
         ) {
             if (uiState.isLoggingIn) {
                 CircularProgressIndicator(
-                    color = KindredColors.Paper,
+                    color = KindredColors.OnAccentInk,
                     modifier = Modifier.size(20.dp),
                     strokeWidth = 2.dp,
                 )
@@ -206,7 +206,7 @@ fun JoinScreen(
                 Text(
                     text = "Join household",
                     style = KindredType.Button,
-                    color = KindredColors.Paper,
+                    color = KindredColors.OnAccentInk,
                 )
             }
         }
@@ -215,8 +215,8 @@ fun JoinScreen(
         if (uiState.error != null) {
             Text(
                 text = uiState.error!!,
-                style = KindredType.Caption,
-                color = KindredColors.Rosehip,
+                style = KindredType.BodySmall,
+                color = KindredColors.DangerInk,
                 modifier = Modifier.padding(top = 8.dp, start = 24.dp, end = 24.dp),
             )
         }
@@ -225,7 +225,7 @@ fun JoinScreen(
             Text(
                 text = "Password must be at least 6 characters",
                 style = KindredType.Micro,
-                color = KindredColors.Mist,
+                color = KindredColors.InkMeta,
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
