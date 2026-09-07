@@ -9725,3 +9725,244 @@ button.kx-avatar { cursor: pointer; }
   .kx-topbar { padding: 10px 16px; gap: 10px; }
   .kx-themetoggle { display: none; }
 }
+
+/* ── Library: day sections, mosaic, year scrubber ────────────────────── */
+
+.kx-library-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 58px;
+  gap: 8px;
+}
+
+/* The marquee is positioned against this column, and text selection would
+   fight the drag-to-sweep gesture. */
+.kx-mosaic-column {
+  min-width: 0;
+  position: relative;
+  user-select: none;
+}
+
+.kx-dayhead {
+  position: sticky;
+  top: 65px;
+  z-index: 10;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 2px;
+  background: linear-gradient(180deg, var(--bg-96), var(--bg-70));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.kx-dayhead h2 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.kx-selectday {
+  margin-left: auto;
+  min-height: 28px;
+  padding: 0 11px;
+  border: 1px solid var(--line-3);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .04em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.kx-selectday:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.kx-daygrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--tile), 1fr));
+  grid-auto-rows: var(--tile);
+  gap: var(--gap);
+  margin-bottom: 34px;
+}
+
+.kx-tile {
+  position: relative;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--tile-bg);
+  cursor: pointer;
+}
+
+.kx-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.kx-tile:hover {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.kx-tile.is-selected {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+  opacity: .78;
+}
+
+/* A few tiles break the rhythm of the mosaic. */
+.kx-tile.wide { grid-column: span 2; }
+.kx-tile.big { grid-column: span 2; grid-row: span 2; }
+
+.kx-tile-video {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--scrim-badge);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: #f1f1ec;
+}
+
+.kx-marquee {
+  position: absolute;
+  z-index: 15;
+  pointer-events: none;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  background: rgba(204, 127, 97, .13);
+}
+
+.kx-scrubber {
+  position: sticky;
+  top: 78px;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.kx-scrubber button {
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+
+.kx-scrubber button:hover { color: var(--ink); }
+
+.kx-scrubber button.is-active {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+/* ── Floating select bars ────────────────────────────────────────────── */
+
+.kx-floatbar {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px 10px 18px;
+  border: 1px solid var(--line-3);
+  border-radius: 999px;
+  background: var(--panel-2);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: var(--shadow-dialog);
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.kx-floatbar.hint {
+  padding: 10px 18px;
+  color: var(--ink-2);
+  box-shadow: none;
+}
+
+.kx-barbutton {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--fill-4);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.kx-barbutton:hover:not(:disabled) { background: var(--fill-3); }
+
+.kx-barbutton:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+.kx-barbutton.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 800;
+}
+
+/* ── Shared list states ──────────────────────────────────────────────── */
+
+.kx-status {
+  margin: 18px 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .06em;
+  color: var(--ink-3);
+}
+
+.kx-error {
+  margin: 18px 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--danger-ink);
+}
+
+.kx-loadmore {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0;
+}
+
+@media (max-width: 900px) {
+  /* The scrubber needs a column of its own; below this width there isn't one. */
+  .kx-library-body { grid-template-columns: minmax(0, 1fr); }
+  .kx-scrubber { display: none; }
+  .kx-dayhead { top: 57px; }
+  .kx-floatbar { flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 32px); }
+}
