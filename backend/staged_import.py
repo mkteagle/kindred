@@ -93,31 +93,19 @@ def read_metadata(path: Path) -> dict:
 
 
 def load_progress(path: Path) -> dict:
-    if not path.exists():
-        return {"completed": {}, "failed": {}}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        data.setdefault("completed", {})
-        data.setdefault("failed", {})
-        return data
-    except (OSError, ValueError, json.JSONDecodeError):
-        return {"completed": {}, "failed": {}}
+    from import_checkpoint import load
+    return load(path)
 
 
-def save_progress(path: Path, progress: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
-                                         prefix=path.name + ".", suffix=".tmp", delete=False) as stream:
-            temporary = Path(stream.name)
-            json.dump(progress, stream, indent=2, sort_keys=True)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
+def save_progress(path: Path, progress: dict, relative: str | None = None) -> None:
+    from import_checkpoint import save
+    save(path, progress, relative)
+
+
+def compact_progress(path: Path, progress: dict) -> None:
+    from import_checkpoint import Progress
+    if isinstance(progress, Progress) and progress.sequence != progress.snapshot_sequence:
+        save_progress(path, progress)
 
 
 @contextmanager
@@ -293,13 +281,14 @@ async def _run(args: argparse.Namespace) -> int:
         except Exception as exc:
             progress["failed"][relative] = str(exc)[:1000]
             print(f"[import] failed {relative}: {exc}", flush=True)
-        save_progress(progress_path, progress)
+        save_progress(progress_path, progress, relative)
         elapsed = max(time.monotonic() - started, 0.001)
         print(
             f"[import] scanned={index:,} | completed={len(progress['completed']):,} "
             f"failed={len(progress['failed']):,} | {index / elapsed:.2f} files/s | {relative}",
             flush=True,
         )
+    compact_progress(progress_path, progress)
     return 1 if progress["failed"] else 0
 
 

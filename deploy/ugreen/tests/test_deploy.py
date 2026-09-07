@@ -43,5 +43,16 @@ class DeployTests(unittest.TestCase):
         current = {'config': '/new', 'services': [*previous['services'], 'video-worker']}
         with patch.object(deploy, 'compose') as compose:
             deploy.restore(previous, Path('/runtime'), current)
-        self.assertEqual(compose.call_args_list[0].args[2:], ('stop', 'video-worker'))
-        self.assertNotIn('video-worker', compose.call_args_list[1].args)
+        self.assertEqual(compose.call_args_list[0].args[2:], ('stop', 'library-worker'))
+        self.assertIn('import_checkpoint.compact(path)', compose.call_args_list[1].args[-1])
+        self.assertEqual(compose.call_args_list[2].args[2:], ('stop', 'video-worker'))
+        self.assertNotIn('video-worker', compose.call_args_list[3].args)
+
+    def test_rollback_does_not_start_old_image_when_compaction_fails(self):
+        target = {'config': '/old', 'services': ['api', 'library-worker']}
+        active = {'config': '/new', 'services': ['api', 'library-worker']}
+        with patch.object(deploy, 'compose', side_effect=[None, RuntimeError('corrupt checkpoint')]) as compose:
+            with self.assertRaisesRegex(RuntimeError, 'corrupt checkpoint'):
+                deploy.restore(target, Path('/runtime'), active)
+        self.assertEqual(compose.call_count, 2)
+        self.assertTrue(all('up' not in call.args for call in compose.call_args_list))

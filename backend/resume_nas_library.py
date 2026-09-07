@@ -199,7 +199,7 @@ async def _run(args: argparse.Namespace) -> int:
                     source, analyze=False, mirror_flickr=False, privacy=args.privacy
                 )
                 receipts[relative] = receipt
-                staged_import.save_progress(progress_path, progress)
+                staged_import.save_progress(progress_path, progress, relative)
             else:
                 receipt = receipts[relative]
                 if relative not in verified_receipts:
@@ -235,7 +235,7 @@ async def _run(args: argparse.Namespace) -> int:
             failures += 1
             progress["failed"][relative] = f"{type(exc).__name__}: {exc}"[:1000]
             print(f"[resume] failed {relative}: {type(exc).__name__}: {exc}", flush=True)
-        staged_import.save_progress(progress_path, progress)
+        staged_import.save_progress(progress_path, progress, relative)
         if index % 10 == 0:
             elapsed = max(time.monotonic() - started, 0.001)
             print(
@@ -249,6 +249,7 @@ async def _run(args: argparse.Namespace) -> int:
         f"analyzed={analyzed:,} failures={failures:,}",
         flush=True,
     )
+    staged_import.compact_progress(progress_path, progress)
     return 1 if failures else 0
 
 

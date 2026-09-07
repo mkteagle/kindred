@@ -24,6 +24,24 @@ def run(*args, capture=False, cwd=None):
 
 
 def restore(target, runtime, active):
+    if 'library-worker' in active['services']:
+        # An older image may only understand the JSON snapshot. Stop the writer,
+        # then use the active image to export all journaled receipts under its lock.
+        active_config = Path(active['config'])
+        compose(active_config, runtime, 'stop', 'library-worker')
+        compact_code = """import importlib.util, os
+from pathlib import Path
+path = Path(os.environ.get('KINDRED_WORKER_DATA', '/app/data')) / 'staged-import-progress.json'
+if importlib.util.find_spec('import_checkpoint') is not None:
+    import import_checkpoint
+    import_checkpoint.compact(path)
+else:
+    journal = Path(str(path) + '.journal')
+    if journal.exists() and journal.stat().st_size:
+        raise RuntimeError('Active image cannot compact the import journal; refusing unsafe rollback')
+"""
+        compose(active_config, runtime, 'run', '--rm', '--no-deps', '--entrypoint',
+                'python', 'library-worker', '-c', compact_code)
     extras = sorted(set(active['services']) - set(target['services']))
     if extras:
         compose(Path(active['config']), runtime, 'stop', *extras)
