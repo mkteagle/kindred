@@ -124,6 +124,17 @@ final class GalleryViewModel {
     }
 
     private func requestPage() async throws -> LibraryPage {
+        // App Review signs in to a bundled, offline library. Without this the
+        // reviewer sees an empty mosaic on every screen.
+        if DemoDataProvider.shared.isActive {
+            switch source {
+            case .cluster(let id, let category):
+                return DemoDataProvider.shared.clusterPage(clusterID: id, category: category)
+            default:
+                return DemoDataProvider.shared.libraryPage(media: media)
+            }
+        }
+
         switch source {
         case .library:
             return try await APIClient.shared.libraryPhotos(

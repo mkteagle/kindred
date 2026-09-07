@@ -170,6 +170,18 @@ struct HomeView: View {
     // MARK: - Data
 
     private func load() async {
+        if DemoDataProvider.shared.isActive {
+            recent = DemoDataProvider.shared.libraryPage().photos
+            latestDay = PhotoDay.group(recent).first
+            newThisWeek = recent.count
+            newThisWeekIsFloor = false
+            peopleToName = DemoDataProvider.shared
+                .getClusterSummary(category: "people").clusters
+                .filter { $0.label == nil }.count
+            lastLoadedAt = Date()
+            return
+        }
+
         async let page = try? await APIClient.shared.libraryPhotos(limit: 60)
         async let weekPage = try? await APIClient.shared.libraryPhotos(
             dateFrom: HomeView.sevenDaysAgo, limit: 100

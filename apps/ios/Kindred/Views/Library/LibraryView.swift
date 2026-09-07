@@ -23,6 +23,7 @@ struct LibraryView: View {
     @State private var viewing: LibraryPhoto?
     @State private var showAlbumPicker = false
     @State private var showShareSheet = false
+    @State private var showUpload = false
     @State private var chrome = KindredChrome.shared
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -57,6 +58,17 @@ struct LibraryView: View {
                     .transition(.move(edge: .bottom))
                 }
             }
+            .toolbar {
+                if !gallery.isSelecting {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { showUpload = true } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 19, weight: .regular))
+                        }
+                        .accessibilityLabel("Add photos to the library")
+                    }
+                }
+            }
             .toolbar(gallery.isSelecting ? .hidden : .visible, for: .navigationBar)
             .navigationTitle("Library")
             .navigationBarTitleDisplayMode(.inline)
@@ -71,6 +83,9 @@ struct LibraryView: View {
             }
             .sheet(isPresented: $showShareSheet) {
                 SelectionShareSheet(photos: gallery.selectedPhotos)
+            }
+            .sheet(isPresented: $showUpload) {
+                UploadSheetView()
             }
         }
         .onChange(of: gallery.isSelecting) { _, selecting in

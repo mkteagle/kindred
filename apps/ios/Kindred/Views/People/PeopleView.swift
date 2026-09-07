@@ -128,7 +128,9 @@ struct PeopleView<Header: View>: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            let response = try await APIClient.shared.getClusterSummary(category: "people")
+            let response = DemoDataProvider.shared.isActive
+                ? DemoDataProvider.shared.getClusterSummary(category: "people")
+                : try await APIClient.shared.getClusterSummary(category: "people")
             // Named first, then the unnamed backlog, each by size.
             clusters = response.clusters.sorted { lhs, rhs in
                 switch (lhs.label, rhs.label) {
@@ -223,7 +225,9 @@ struct ClusterGridView<Header: View>: View {
     private func load() async {
         isLoading = true
         defer { isLoading = false }
-        let response = try? await APIClient.shared.getClusterSummary(category: category.rawValue)
+        let response = DemoDataProvider.shared.isActive
+            ? DemoDataProvider.shared.getClusterSummary(category: category.rawValue)
+            : try? await APIClient.shared.getClusterSummary(category: category.rawValue)
         clusters = (response?.clusters ?? []).sorted { $0.photo_count > $1.photo_count }
     }
 }

@@ -71,8 +71,8 @@ struct TogetherPickerView: View {
             .navigationDestination(isPresented: $showResults) {
                 TogetherResultsView(viewModel: viewModel, selectedPhoto: $selectedPhoto)
             }
-            .sheet(item: $selectedPhoto) { item in
-                FullScreenPhotoView(item: item)
+            .fullScreenCover(item: $selectedPhoto) { item in
+                PhotoViewerView(photos: [item.asLibraryPhoto], initial: item.asLibraryPhoto)
             }
             .task {
                 await viewModel.loadPeople()

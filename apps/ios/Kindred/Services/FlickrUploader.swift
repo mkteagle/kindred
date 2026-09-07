@@ -201,6 +201,10 @@ final class FlickrUploader {
             lastError = "A backup is already running."
             return .empty
         }
+        guard SyncManager.shared.canUploadNow else {
+            lastError = "Waiting for Wi-Fi. Turn off \u{201c}Only on Wi-Fi\u{201d} in Settings to back up over cellular."
+            return .empty
+        }
         guard SessionManager.shared.isAuthenticated,
               let accountID = SessionManager.shared.currentUser?.id else {
             lastError = "Your session expired. Please sign in again."
