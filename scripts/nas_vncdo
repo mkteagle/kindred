@@ -1,0 +1,3 @@
+#!/bin/sh
+PYTHONPATH=/volume1/docker/FirefoxTakeout/queue/vnc-python \
+    exec /usr/bin/python3 -m vncdotool.command "$@"

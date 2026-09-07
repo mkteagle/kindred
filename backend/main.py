@@ -25,6 +25,10 @@ from pgvector.psycopg2 import register_vector
 from datetime import datetime, timedelta, timezone
 from db_migrations import apply_migrations
 from storage import LocalStorageProvider
+from backup_status import build_backup_status_items
+from resumable_uploads import ChunkAppendError, append_chunk
+from review_account import build_review_auth_response, review_credentials_match
+from albums import album_slug, unique_album_slug
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 FLICKR_API_KEY = os.environ.get("FLICKR_API_KEY", "")
@@ -438,6 +442,25 @@ class EmailInviteRequest(BaseModel):
 class AnalyzeRequest(BaseModel):
     photos: list[dict]
 
+class BackupStatusRequest(BaseModel):
+    flickr_photo_ids: list[str]
+
+class ResumableUploadRequest(BaseModel):
+    client_upload_id: str
+    filename: str
+    content_type: str
+    byte_size: int
+    title: str = ""
+    description: str = ""
+    taken_at_unix: int | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    album_id: str | None = None
+
+class AlbumCreateRequest(BaseModel):
+    name: str
+    description: str = ""
+
 class ClusterRequest(BaseModel):
     category: str = "people"
     eps: float = 0.4
@@ -692,6 +715,9 @@ class LoginRequest(BaseModel):
 @app.post("/auth/login")
 def auth_login(req: LoginRequest):
     """Member login with username/password."""
+    if review_credentials_match(req.username, req.password):
+        return build_review_auth_response(req.username)
+
     rows = db_query(
         "SELECT id, username, display_name, role, password_hash, avatar_photo_id, avatar_upload IS NOT NULL as has_avatar_upload FROM users WHERE username = %s",
         (req.username,),
@@ -2439,6 +2465,7 @@ def appears_with(cluster_id: str, limit: int = 15):
 # ── Photo Upload (proxy to Flickr via admin credentials) ────────────────────
 
 UPLOAD_MAX_SIZE = 1024 * 1024 * 1024  # 1 GB (Flickr's per-video limit on Pro)
+RESUMABLE_CHUNK_MAX_SIZE = 8 * 1024 * 1024
 UPLOAD_ALLOWED_TYPES = {
     # Images
     "image/jpeg", "image/png", "image/gif", "image/heic", "image/heif",
@@ -2482,6 +2509,218 @@ def _content_type_for_filename(filename: str) -> str:
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".m4p", ".avi", ".wmv",
                     ".mpeg", ".mpg", ".3gp", ".m2ts", ".ogg", ".ogv"}
 
+
+def _file_sha256(path: str) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as source:
+        while chunk := source.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _store_nas_original(
+    file_path: str,
+    filename: str,
+    content_type: str,
+    title: str,
+    description: str,
+    taken_at_unix: int | None,
+    latitude: float | None,
+    longitude: float | None,
+    client_upload_id: str | None,
+) -> dict | None:
+    """Commit an original to NAS storage before attempting its Flickr mirror."""
+    if not PHOTO_STORAGE_ROOT:
+        return None
+
+    checksum = _file_sha256(file_path)
+    provider = LocalStorageProvider(PHOTO_STORAGE_ROOT)
+    conn = get_db()
+    stored = None
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            row = None
+            if client_upload_id:
+                cur.execute(
+                    "SELECT id, sha256, client_upload_id FROM photos WHERE client_upload_id = %s FOR UPDATE",
+                    (client_upload_id,),
+                )
+                row = cur.fetchone()
+                if row and row.get("sha256") and row["sha256"] != checksum:
+                    raise HTTPException(409, "Upload ID was already used for a different file")
+            if not row:
+                cur.execute(
+                    "SELECT id, sha256, client_upload_id FROM photos WHERE sha256 = %s FOR UPDATE",
+                    (checksum,),
+                )
+                row = cur.fetchone()
+            kindred_photo_id = str(row["id"]) if row else str(uuid.uuid4())
+            if not row:
+                taken_at = (
+                    datetime.fromtimestamp(taken_at_unix, tz=timezone.utc)
+                    if taken_at_unix else None
+                )
+                cur.execute(
+                    """
+                    INSERT INTO photos (
+                        id, sha256, original_filename, media_type, byte_size,
+                        title, description, taken_at, latitude, longitude,
+                        client_upload_id
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        kindred_photo_id, checksum, filename, content_type,
+                        os.path.getsize(file_path), title, description, taken_at,
+                        latitude, longitude,
+                        client_upload_id,
+                    ),
+                )
+            elif client_upload_id and not row.get("client_upload_id"):
+                cur.execute(
+                    "UPDATE photos SET client_upload_id = %s, updated_at = now() WHERE id = %s",
+                    (client_upload_id, kindred_photo_id),
+                )
+
+            cur.execute(
+                """
+                SELECT provider_key, sha256, byte_size
+                FROM photo_copies
+                WHERE photo_id = %s AND provider = 'nas' AND status = 'available'
+                """,
+                (kindred_photo_id,),
+            )
+            existing = cur.fetchone()
+            if existing and provider.resolve_local_path(existing["provider_key"]):
+                conn.commit()
+                return {
+                    "kindred_photo_id": kindred_photo_id,
+                    "provider_key": existing["provider_key"],
+                    "sha256": existing["sha256"],
+                    "byte_size": existing["byte_size"],
+                    "deduplicated": True,
+                }
+
+            stored = provider.store_file(kindred_photo_id, Path(file_path), filename)
+            cur.execute(
+                """
+                INSERT INTO photo_copies (
+                    photo_id, provider, provider_key, storage_path, sha256,
+                    byte_size, status, last_synced_at
+                ) VALUES (%s, 'nas', %s, %s, %s, %s, 'available', now())
+                ON CONFLICT (photo_id, provider) DO UPDATE SET
+                    provider_key = EXCLUDED.provider_key,
+                    storage_path = EXCLUDED.storage_path,
+                    sha256 = EXCLUDED.sha256,
+                    byte_size = EXCLUDED.byte_size,
+                    status = 'available',
+                    last_error = NULL,
+                    last_synced_at = now(),
+                    updated_at = now()
+                """,
+                (
+                    kindred_photo_id, stored.provider_key, stored.provider_key,
+                    stored.sha256, stored.byte_size,
+                ),
+            )
+        conn.commit()
+        invalidate_cache("timeline")
+        return {
+            "kindred_photo_id": kindred_photo_id,
+            "provider_key": stored.provider_key,
+            "sha256": stored.sha256,
+            "byte_size": stored.byte_size,
+            "deduplicated": False,
+        }
+    except Exception:
+        conn.rollback()
+        if stored is not None:
+            provider.delete(stored.provider_key)
+        raise
+    finally:
+        conn.close()
+
+
+def _existing_flickr_copy(kindred_photo_id: str) -> str | None:
+    rows = db_query(
+        """
+        SELECT provider_key FROM photo_copies
+        WHERE photo_id = %s AND provider = 'flickr' AND status = 'available'
+        """,
+        (kindred_photo_id,),
+    )
+    return rows[0]["provider_key"] if rows else None
+
+
+def _queue_flickr_replication(kindred_photo_id: str) -> int:
+    rows = db_query(
+        """
+        INSERT INTO replication_jobs (photo_id, source_provider, target_provider)
+        SELECT %s, 'nas', 'flickr'
+        WHERE NOT EXISTS (
+            SELECT 1 FROM replication_jobs
+            WHERE photo_id = %s AND target_provider = 'flickr'
+              AND status IN ('pending', 'running', 'retry')
+        )
+        RETURNING id
+        """,
+        (kindred_photo_id, kindred_photo_id),
+    )
+    if rows:
+        return rows[0]["id"]
+    existing = db_query(
+        """
+        SELECT id FROM replication_jobs
+        WHERE photo_id = %s AND target_provider = 'flickr'
+          AND status IN ('pending', 'running', 'retry')
+        ORDER BY id DESC LIMIT 1
+        """,
+        (kindred_photo_id,),
+    )
+    return existing[0]["id"]
+
+
+def _set_replication_status(job_id: int, status: str, error: str | None = None) -> None:
+    terminal = status in ("done", "failed")
+    db_query(
+        """
+        UPDATE replication_jobs
+        SET status = %s,
+            attempts = attempts + CASE WHEN %s = 'running' THEN 1 ELSE 0 END,
+            started_at = CASE WHEN %s = 'running' THEN now() ELSE started_at END,
+            finished_at = CASE WHEN %s THEN now() ELSE NULL END,
+            next_attempt_at = CASE WHEN %s = 'retry' THEN now() + interval '5 minutes' ELSE next_attempt_at END,
+            last_error = %s
+        WHERE id = %s
+        """,
+        (status, status, status, terminal, status, error, job_id),
+        fetch=False,
+    )
+
+
+def _record_flickr_copy(kindred_photo_id: str, flickr_photo_id: str, owner_id: str) -> None:
+    remote_url = (
+        f"https://www.flickr.com/photos/{owner_id}/{flickr_photo_id}"
+        if owner_id else None
+    )
+    db_query(
+        """
+        INSERT INTO photo_copies (
+            photo_id, provider, provider_key, remote_url, status, last_synced_at
+        ) VALUES (%s, 'flickr', %s, %s, 'available', now())
+        ON CONFLICT (photo_id, provider) DO UPDATE SET
+            provider_key = EXCLUDED.provider_key,
+            remote_url = EXCLUDED.remote_url,
+            status = 'available',
+            last_error = NULL,
+            last_synced_at = now(),
+            updated_at = now()
+        """,
+        (kindred_photo_id, flickr_photo_id, remote_url),
+        fetch=False,
+    )
+
 def _validate_upload_file(file: UploadFile) -> None:
     """Validate an upload file's extension and content type."""
     if not file.filename:
@@ -2489,6 +2728,61 @@ def _validate_upload_file(file: UploadFile) -> None:
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in UPLOAD_ALLOWED_EXTENSIONS:
         raise HTTPException(400, f"Unsupported file type: {ext}. Allowed: {', '.join(sorted(UPLOAD_ALLOWED_EXTENSIONS))}")
+
+
+def _validate_resumable_upload(body: ResumableUploadRequest) -> tuple[str, str, str]:
+    if not PHOTO_STORAGE_ROOT:
+        raise HTTPException(503, "NAS photo storage is not configured")
+    try:
+        client_upload_id = str(uuid.UUID(body.client_upload_id))
+    except ValueError:
+        raise HTTPException(400, "client_upload_id must be a UUID")
+
+    filename = os.path.basename(body.filename.strip())
+    if not filename:
+        raise HTTPException(400, "Filename is required")
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in UPLOAD_ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            400,
+            f"Unsupported file type: {ext}. Allowed: {', '.join(sorted(UPLOAD_ALLOWED_EXTENSIONS))}",
+        )
+    if body.content_type not in UPLOAD_ALLOWED_TYPES and body.content_type != "application/octet-stream":
+        raise HTTPException(400, "Unsupported content type")
+    if body.byte_size <= 0:
+        raise HTTPException(400, "File must not be empty")
+    if body.byte_size > UPLOAD_MAX_SIZE:
+        raise HTTPException(
+            413,
+            f"File too large. Maximum size is {UPLOAD_MAX_SIZE // (1024 * 1024)}MB",
+        )
+    if body.latitude is not None and not -90 <= body.latitude <= 90:
+        raise HTTPException(400, "Latitude must be between -90 and 90")
+    if body.longitude is not None and not -180 <= body.longitude <= 180:
+        raise HTTPException(400, "Longitude must be between -180 and 180")
+    return client_upload_id, filename, _content_type_for_filename(filename)
+
+
+def _resumable_receipt(row: dict) -> dict:
+    return {
+        "photo_id": row["flickr_photo_id"],
+        "kindred_photo_id": str(row["kindred_photo_id"]) if row.get("kindred_photo_id") else None,
+        "status": "ok",
+        "nas_status": "available" if row.get("kindred_photo_id") else "disabled",
+        "flickr_status": "available" if row.get("flickr_photo_id") else "pending",
+        "deduplicated": True,
+    }
+
+
+def _resumable_session_response(row: dict) -> dict:
+    response = {
+        "upload_id": str(row["id"]),
+        "status": row["status"],
+        "next_offset": int(row["received_bytes"]),
+    }
+    if row["status"] == "completed":
+        response["receipt"] = _resumable_receipt(row)
+    return response
 
 PRIVACY_FLAGS = {
     # is_public, is_friend, is_family
@@ -2623,6 +2917,331 @@ async def _upload_to_flickr(
     return match.group(1)
 
 
+@app.post("/uploads/resumable")
+def start_resumable_upload(
+    body: ResumableUploadRequest,
+    user=Depends(get_current_user),
+):
+    """Create or resume an account-owned, idempotent upload session."""
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(403, "A household account is required for resumable uploads")
+    client_upload_id, filename, content_type = _validate_resumable_upload(body)
+
+    album = None
+    if body.album_id:
+        album = _resolve_album(body.album_id)
+        if not album:
+            raise HTTPException(404, f"Album '{body.album_id}' not found")
+
+    rows = db_query(
+        "SELECT * FROM upload_sessions WHERE client_upload_id = %s",
+        (client_upload_id,),
+    )
+    if rows:
+        row = rows[0]
+        if str(row["user_id"]) != str(user_id):
+            raise HTTPException(409, "Upload ID belongs to another account")
+        if row["original_filename"] != filename or int(row["byte_size"]) != body.byte_size:
+            raise HTTPException(409, "Upload ID was already used for a different file")
+
+        if row["status"] != "completed" and row["expires_at"] < datetime.now(timezone.utc):
+            try:
+                os.unlink(row["temp_path"])
+            except FileNotFoundError:
+                pass
+            db_query(
+                "DELETE FROM upload_sessions WHERE id = %s AND user_id = %s",
+                (str(row["id"]), user_id),
+                fetch=False,
+            )
+        else:
+            # Recover a finalization abandoned by a stopped server process.
+            if (
+                row["status"] == "finalizing"
+                and row["updated_at"] < datetime.now(timezone.utc) - timedelta(hours=2)
+            ):
+                updated = db_query(
+                    """
+                    UPDATE upload_sessions
+                    SET status = 'ready', updated_at = now()
+                    WHERE id = %s
+                    RETURNING *
+                    """,
+                    (str(row["id"]),),
+                )
+                row = updated[0]
+            return _resumable_session_response(row)
+
+    staging_directory = Path(PHOTO_STORAGE_ROOT) / ".uploads"
+    staging_directory.mkdir(parents=True, exist_ok=True)
+    upload_id = str(uuid.uuid4())
+    temp_path = str(staging_directory / f"{upload_id}.part")
+    Path(temp_path).touch(exist_ok=False)
+    try:
+        rows = db_query(
+            """
+            INSERT INTO upload_sessions (
+                id, client_upload_id, user_id, original_filename, content_type,
+                byte_size, title, description, taken_at_unix, latitude,
+                longitude, temp_path, album_id
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING *
+            """,
+            (
+                upload_id, client_upload_id, user_id, filename, content_type,
+                body.byte_size, body.title or os.path.splitext(filename)[0],
+                body.description, body.taken_at_unix, body.latitude,
+                body.longitude, temp_path, album["id"] if album else None,
+            ),
+        )
+    except Exception:
+        try:
+            os.unlink(temp_path)
+        except FileNotFoundError:
+            pass
+        raise
+    return _resumable_session_response(rows[0])
+
+
+@app.put("/uploads/resumable/{upload_id}")
+async def append_resumable_upload_chunk(
+    upload_id: str,
+    request: FastAPIRequest,
+    offset: int = Query(..., ge=0),
+    user=Depends(get_current_user),
+):
+    """Append one bounded chunk at the exact server-confirmed offset."""
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(403, "A household account is required for resumable uploads")
+    try:
+        upload_id = str(uuid.UUID(upload_id))
+    except ValueError:
+        raise HTTPException(400, "Invalid upload ID")
+
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > RESUMABLE_CHUNK_MAX_SIZE:
+                raise HTTPException(413, "Upload chunk exceeds the 8MB limit")
+        except ValueError:
+            raise HTTPException(400, "Invalid Content-Length")
+    chunk = await request.body()
+    if len(chunk) > RESUMABLE_CHUNK_MAX_SIZE:
+        raise HTTPException(413, "Upload chunk exceeds the 8MB limit")
+
+    conn = get_db()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM upload_sessions WHERE id = %s FOR UPDATE",
+                (upload_id,),
+            )
+            row = cur.fetchone()
+            if not row or str(row["user_id"]) != str(user_id):
+                raise HTTPException(404, "Upload session not found")
+            if row["expires_at"] < datetime.now(timezone.utc):
+                raise HTTPException(410, "Upload session expired; start it again")
+            if row["status"] == "completed":
+                return _resumable_session_response(row)
+            if row["status"] == "finalizing":
+                raise HTTPException(409, "Upload is being finalized")
+            if offset != int(row["received_bytes"]):
+                raise HTTPException(
+                    409,
+                    f"Offset mismatch; server expects {row['received_bytes']}",
+                )
+            try:
+                next_offset = append_chunk(
+                    row["temp_path"],
+                    expected_offset=offset,
+                    expected_size=int(row["byte_size"]),
+                    chunk=chunk,
+                )
+            except ChunkAppendError as exc:
+                raise HTTPException(409, str(exc))
+            status = "ready" if next_offset == int(row["byte_size"]) else "pending"
+            cur.execute(
+                """
+                UPDATE upload_sessions
+                SET received_bytes = %s, status = %s, last_error = NULL,
+                    updated_at = now(), expires_at = now() + interval '7 days'
+                WHERE id = %s
+                RETURNING id, status, received_bytes
+                """,
+                (next_offset, status, upload_id),
+            )
+            updated = cur.fetchone()
+        conn.commit()
+        return {
+            "upload_id": str(updated["id"]),
+            "status": updated["status"],
+            "next_offset": int(updated["received_bytes"]),
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+async def _finalize_resumable_upload(upload_id: str, row: dict, creds: dict) -> None:
+    """Finish NAS/Flickr persistence after the HTTP request has returned."""
+    nas_copy = None
+    replication_job_id = None
+    try:
+        nas_copy = _store_nas_original(
+            row["temp_path"], row["original_filename"], row["content_type"],
+            row["title"], row["description"], row["taken_at_unix"],
+            row["latitude"], row["longitude"], row["client_upload_id"],
+        )
+        if not nas_copy:
+            raise RuntimeError("NAS photo storage is not configured")
+
+        photo_id = _existing_flickr_copy(nas_copy["kindred_photo_id"])
+        if not photo_id:
+            replication_job_id = _queue_flickr_replication(nas_copy["kindred_photo_id"])
+            _set_replication_status(replication_job_id, "running")
+            photo_id = await _upload_to_flickr(
+                row["temp_path"], row["original_filename"], row["title"],
+                row["description"], creds, privacy="family",
+            )
+            _record_flickr_copy(
+                nas_copy["kindred_photo_id"], photo_id, creds.get("user_id", "")
+            )
+            _set_replication_status(replication_job_id, "done")
+
+        if row["taken_at_unix"]:
+            try:
+                await _flickr_set_dates(photo_id, int(row["taken_at_unix"]), creds)
+            except Exception as exc:
+                print(f"[upload] setDates failed for photo {photo_id}: {exc}")
+        if row["latitude"] is not None and row["longitude"] is not None:
+            try:
+                await _flickr_set_location(
+                    photo_id, float(row["latitude"]), float(row["longitude"]), creds
+                )
+            except Exception as exc:
+                print(f"[upload] setLocation failed for photo {photo_id}: {exc}")
+
+        if row.get("album_id"):
+            album = _album_row(str(row["album_id"]))
+            if album:
+                await _add_photo_to_album_everywhere(
+                    album, nas_copy["kindred_photo_id"], photo_id,
+                    row["original_filename"], creds, str(row["user_id"]),
+                )
+
+        db_query(
+            """
+            UPDATE upload_sessions
+            SET status = 'completed', kindred_photo_id = %s, flickr_photo_id = %s,
+                last_error = NULL, updated_at = now()
+            WHERE id = %s
+            """,
+            (nas_copy["kindred_photo_id"], photo_id, upload_id),
+            fetch=False,
+        )
+
+        for candidate in (row["temp_path"], row["temp_path"] + ".jpg"):
+            try:
+                os.unlink(candidate)
+            except FileNotFoundError:
+                pass
+
+        ext = os.path.splitext(row["original_filename"])[1].lower()
+        if ext not in VIDEO_EXTENSIONS:
+            try:
+                await _process_uploaded_photo(photo_id)
+            except Exception as exc:
+                print(f"[upload] processing failed for photo {photo_id}: {exc}")
+    except Exception as exc:
+        if replication_job_id is not None:
+            try:
+                _set_replication_status(replication_job_id, "retry", str(exc)[:1000])
+            except Exception:
+                pass
+        try:
+            db_query(
+                """
+                UPDATE upload_sessions
+                SET status = 'ready', last_error = %s, updated_at = now()
+                WHERE id = %s AND status = 'finalizing'
+                """,
+                (str(exc)[:1000], upload_id),
+                fetch=False,
+            )
+        except Exception as update_exc:
+            print(f"[upload] could not persist finalization failure: {update_exc}")
+        print(f"[upload] resumable finalization failed for {upload_id}: {exc}")
+
+
+@app.post("/uploads/resumable/{upload_id}/complete")
+async def complete_resumable_upload(
+    upload_id: str,
+    background_tasks: BackgroundTasks,
+    user=Depends(get_current_user),
+):
+    """Commit a complete staged original to the NAS, then mirror it to Flickr."""
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(403, "A household account is required for resumable uploads")
+    try:
+        upload_id = str(uuid.UUID(upload_id))
+    except ValueError:
+        raise HTTPException(400, "Invalid upload ID")
+
+    creds = get_flickr_credentials()
+    if not creds:
+        raise HTTPException(500, "Flickr OAuth not configured — ask your household admin to connect Flickr")
+
+    conn = get_db()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM upload_sessions WHERE id = %s FOR UPDATE",
+                (upload_id,),
+            )
+            row = cur.fetchone()
+            if not row or str(row["user_id"]) != str(user_id):
+                raise HTTPException(404, "Upload session not found")
+            if row["status"] == "completed":
+                return _resumable_session_response(row)
+            if row["status"] == "finalizing":
+                return _resumable_session_response(row)
+            if row["status"] != "ready" or int(row["received_bytes"]) != int(row["byte_size"]):
+                raise HTTPException(
+                    409,
+                    f"Upload is incomplete; server has {row['received_bytes']} of {row['byte_size']} bytes",
+                )
+            try:
+                actual_size = os.path.getsize(row["temp_path"])
+            except FileNotFoundError:
+                raise HTTPException(409, "Staged upload is missing; start it again")
+            if actual_size != int(row["byte_size"]):
+                raise HTTPException(409, "Staged upload size does not match the declared size")
+            cur.execute(
+                """
+                UPDATE upload_sessions
+                SET status = 'finalizing', updated_at = now()
+                WHERE id = %s
+                RETURNING *
+                """,
+                (upload_id,),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        conn.close()
+        raise
+    conn.close()
+
+    background_tasks.add_task(_finalize_resumable_upload, upload_id, dict(row), creds)
+    return _resumable_session_response(row)
+
+
 @app.post("/photos/upload")
 async def upload_photo(
     background_tasks: BackgroundTasks,
@@ -2633,12 +3252,13 @@ async def upload_photo(
     taken_at_unix: int | None = Form(None),
     latitude: float | None = Form(None),
     longitude: float | None = Form(None),
+    client_upload_id: str | None = Form(None),
     skip_processing: bool = Query(False),
     privacy: str = Query("family"),
     album_id: str | None = Query(None),
     user=Depends(get_current_user),
 ):
-    """Upload a photo/video to Flickr via the household's admin credentials.
+    """Commit a photo/video to the NAS, then mirror it to Flickr.
 
     Any authenticated household member can upload — the admin's Flickr OAuth
     tokens are used so members don't need their own Flickr accounts.
@@ -2646,7 +3266,8 @@ async def upload_photo(
     Query params:
     - `skip_processing=true` — suppress per-photo ML for bulk runs (then hit /scan/auto)
     - `privacy` — one of: private, family (default), friends, friends_family, public
-    - `album_id` — if set, photo is added to this Flickr photoset after upload
+    - `album_id` — Kindred album UUID, slug, or Flickr photoset id. The photo
+      is symlinked into the album on the NAS and added to its Flickr photoset.
     """
     import tempfile
 
@@ -2654,6 +3275,20 @@ async def upload_photo(
         raise HTTPException(400, f"Invalid privacy '{privacy}'. Must be one of: {', '.join(PRIVACY_FLAGS)}")
 
     _validate_upload_file(photo)
+
+    # Resolve the album before spending bandwidth on the upload, so a bad
+    # album reference fails fast instead of after a 1GB video lands.
+    album = None
+    if album_id:
+        album = _resolve_album(album_id)
+        if not album:
+            raise HTTPException(404, f"Album '{album_id}' not found")
+
+    if client_upload_id:
+        try:
+            client_upload_id = str(uuid.UUID(client_upload_id))
+        except ValueError:
+            raise HTTPException(400, "client_upload_id must be a UUID")
 
     creds = get_flickr_credentials()
     if not creds:
@@ -2688,9 +3323,33 @@ async def upload_photo(
         if total == 0:
             raise HTTPException(400, "Empty file")
 
-        photo_id = await _upload_to_flickr(
-            tmp_path, filename, title, description, creds, privacy=privacy
+        nas_copy = _store_nas_original(
+            tmp_path, filename, _content_type_for_filename(filename), title,
+            description, taken_at_unix, latitude, longitude,
+            client_upload_id,
         )
+        replication_job_id = None
+        photo_id = None
+        if nas_copy:
+            photo_id = _existing_flickr_copy(nas_copy["kindred_photo_id"])
+            if not photo_id:
+                replication_job_id = _queue_flickr_replication(nas_copy["kindred_photo_id"])
+                _set_replication_status(replication_job_id, "running")
+        if not photo_id:
+            try:
+                photo_id = await _upload_to_flickr(
+                    tmp_path, filename, title, description, creds, privacy=privacy
+                )
+            except Exception as exc:
+                if replication_job_id is not None:
+                    _set_replication_status(replication_job_id, "retry", str(exc)[:1000])
+                raise
+        if nas_copy:
+            _record_flickr_copy(
+                nas_copy["kindred_photo_id"], photo_id, creds.get("user_id", "")
+            )
+            if replication_job_id is not None:
+                _set_replication_status(replication_job_id, "done")
     finally:
         # _upload_to_flickr may have replaced tmp_path with a .jpg sibling for
         # HEIC; clean up whatever's left.
@@ -2719,19 +3378,63 @@ async def upload_photo(
             print(f"[upload] setLocation failed for photo {photo_id}: {e}")
 
     # Add to album if requested. Failure here doesn't roll back the upload —
-    # the photo is on Flickr, the album link just didn't take.
-    if album_id:
-        try:
-            await _add_photo_to_album(photo_id, album_id, creds)
-        except Exception as e:
-            print(f"[upload] album add failed for photo {photo_id} → album {album_id}: {e}")
+    # the photo is stored on both providers, the album link just didn't take.
+    album_result = None
+    if album:
+        album_result = await _add_photo_to_album_everywhere(
+            album,
+            nas_copy["kindred_photo_id"] if nas_copy else None,
+            photo_id,
+            filename,
+            creds,
+            user.get("user_id"),
+        )
 
     # Trigger async ML processing for images (not videos), unless caller opted out
     ext = os.path.splitext(filename)[1].lower()
     if not skip_processing and ext not in VIDEO_EXTENSIONS:
         background_tasks.add_task(_process_uploaded_photo, photo_id)
 
-    return {"photo_id": photo_id, "status": "ok", "album_id": album_id}
+    return {
+        "photo_id": photo_id,
+        "kindred_photo_id": nas_copy["kindred_photo_id"] if nas_copy else None,
+        "status": "ok",
+        "nas_status": "available" if nas_copy else "disabled",
+        "flickr_status": "available",
+        "deduplicated": nas_copy["deduplicated"] if nas_copy else False,
+        "album_id": str(album["id"]) if album else None,
+        "album": album_result,
+    }
+
+
+@app.post("/photos/backup-status")
+def get_photo_backup_status(
+    body: BackupStatusRequest,
+    user=Depends(get_current_user),
+):
+    """Verify durable provider copies before a client offers local deletion."""
+    photo_ids = list(dict.fromkeys(body.flickr_photo_ids))
+    if len(photo_ids) > 500:
+        raise HTTPException(400, "Maximum 500 photo IDs per status request")
+    if not photo_ids:
+        return {"items": []}
+
+    rows = db_query(
+        """
+        SELECT flickr.provider_key AS flickr_photo_id,
+               p.id AS kindred_photo_id,
+               flickr.status AS flickr_status,
+               nas.status AS nas_status
+        FROM photo_copies flickr
+        JOIN photos p ON p.id = flickr.photo_id
+        LEFT JOIN photo_copies nas
+          ON nas.photo_id = p.id AND nas.provider = 'nas'
+        WHERE flickr.provider = 'flickr'
+          AND flickr.provider_key = ANY(%s)
+        """,
+        (photo_ids,),
+    )
+    return {"items": build_backup_status_items(photo_ids, rows)}
 
 
 @app.post("/photos/{photo_id}/metadata")
@@ -2819,59 +3522,72 @@ async def upload_photos_batch(
     return {"results": list(results), "uploaded": ok_count, "failed": len(photos) - ok_count}
 
 
-async def _process_uploaded_photo(photo_id: str) -> None:
-    """Background task: run ML pipeline on a newly uploaded photo."""
+async def _process_uploaded_photo(
+    photo_id: str,
+    local_path: str | None = None,
+    cluster_after: bool = True,
+    fetch_flickr_info: bool = True,
+) -> None:
+    """Run ML for a Flickr photo, preferring its NAS original when supplied."""
     import urllib.parse
 
     try:
-        # Fetch photo URL from Flickr
-        flickr_creds = get_flickr_credentials()
-        if not flickr_creds:
-            return
+        photo_url = ""
+        if fetch_flickr_info:
+            flickr_creds = get_flickr_credentials()
+            if not flickr_creds:
+                return
+            flickr_url = "https://api.flickr.com/services/rest"
+            params = {
+                "method": "flickr.photos.getInfo", "photo_id": photo_id,
+                "format": "json", "nojsoncallback": "1",
+            }
+            oauth_params = _flickr_oauth_sign(flickr_url, params)
+            auth_header = "OAuth " + ", ".join(
+                f'{k}="{urllib.parse.quote(str(v), "")}"'
+                for k, v in oauth_params.items()
+            )
+            qs = urllib.parse.urlencode(params)
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"{flickr_url}?{qs}", headers={"Authorization": auth_header}
+                )
+                data = resp.json()
+            if data.get("stat") != "ok":
+                print(f"[upload-process] Could not fetch photo info for {photo_id}: {data.get('message')}")
+                return
+            info = data["photo"]
+            server, secret = info.get("server", ""), info.get("secret", "")
+            photo_url = f"https://live.staticflickr.com/{server}/{photo_id}_{secret}_z.jpg"
+            owner_id = flickr_creds.get("user_id", "") or ""
+            title_value = info.get("title", {})
+            title = title_value.get("_content", "") if isinstance(title_value, dict) else str(title_value)
+            photo = {
+                "id": photo_id, "url": photo_url, "title": title,
+                "owner": owner_id, "thumb": photo_url.replace("_z.jpg", "_q.jpg"),
+                "flickr_url": f"https://www.flickr.com/photos/{owner_id}/{photo_id}" if owner_id else "",
+            }
+        else:
+            catalog = db_query(
+                "SELECT COALESCE(NULLIF(title, ''), original_filename, '') AS title FROM photos WHERE id=%s",
+                (photo_id,),
+            )
+            photo = {
+                "id": photo_id, "url": "", "title": catalog[0]["title"] if catalog else "",
+                "owner": "", "thumb": "", "flickr_url": "",
+            }
 
-        flickr_url = "https://api.flickr.com/services/rest"
-        params = {
-            "method": "flickr.photos.getInfo",
-            "photo_id": photo_id,
-            "format": "json",
-            "nojsoncallback": "1",
-        }
-        oauth_params = _flickr_oauth_sign(flickr_url, params)
-        auth_header = "OAuth " + ", ".join(
-            f'{k}="{urllib.parse.quote(str(v), "")}"'
-            for k, v in oauth_params.items()
-        )
-        qs = urllib.parse.urlencode(params)
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(f"{flickr_url}?{qs}", headers={"Authorization": auth_header})
-            data = resp.json()
-
-        if data.get("stat") != "ok":
-            print(f"[upload-process] Could not fetch photo info for {photo_id}: {data.get('message')}")
-            return
-
-        info = data["photo"]
-        server = info.get("server", "")
-        secret = info.get("secret", "")
-        photo_url = f"https://live.staticflickr.com/{server}/{photo_id}_{secret}_z.jpg"
-        owner_id = (flickr_creds or {}).get("user_id", "") or ""
-
-        photo = {
-            "id": photo_id,
-            "url": photo_url,
-            "title": info.get("title", {}).get("_content", "") if isinstance(info.get("title"), dict) else str(info.get("title", "")),
-            "owner": owner_id,
-            "thumb": photo_url.replace("_z.jpg", "_q.jpg"),
-            "flickr_url": f"https://www.flickr.com/photos/{owner_id}/{photo_id}" if owner_id else "",
-        }
-
-        # Run ML processing
+        # Run ML processing. NAS recovery passes a local original so indexing does
+        # not waste bandwidth downloading the same image back from Flickr. Fall
+        # back to Flickr's normalized JPEG for formats OpenCV cannot decode.
         import cv2
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(photo_url)
-            resp.raise_for_status()
-        arr = np.frombuffer(resp.content, np.uint8)
-        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        img = cv2.imread(local_path, cv2.IMREAD_COLOR) if local_path else None
+        if img is None and photo_url:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(photo_url)
+                resp.raise_for_status()
+            arr = np.frombuffer(resp.content, np.uint8)
+            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
         if img is None:
             print(f"[upload-process] Could not decode image for {photo_id}")
             return
@@ -2939,10 +3655,20 @@ async def _process_uploaded_photo(photo_id: str) -> None:
             except Exception:
                 pass
 
+            # Record completion even when the image contains no object
+            # detections; otherwise a restart analyzes it forever.
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO processed_photos (photo_id) VALUES (%s) ON CONFLICT DO NOTHING",
+                    (photo_id,),
+                )
+
             conn.commit()
 
-            for cat in ("people", "pets", "vehicles"):
-                if counts[cat] > 0:
+            if cluster_after:
+                for cat in ("people", "pets", "vehicles"):
+                    if counts[cat] <= 0:
+                        continue
                     try:
                         run_clustering(cat, distance_threshold=0.80)
                     except Exception as e:
@@ -3771,6 +4497,370 @@ async def _add_photo_to_album(photo_id: str, album_id: str, creds: dict) -> None
         if data.get("code") == 3:
             return
         raise HTTPException(502, f"Flickr addPhoto failed: {data.get('message', 'unknown')}")
+
+
+# ── Albums ───────────────────────────────────────────────────────────────────
+# Kindred owns the album list. A Flickr photoset and a NAS symlink directory are
+# both projections of an `albums` row — the album exists here first, and each
+# projection is filled in lazily and best-effort so a Flickr outage or a
+# disabled NAS never costs you the upload.
+
+def _unique_album_slug(name: str) -> str:
+    base = album_slug(name)
+    taken = {
+        row["slug"]
+        for row in db_query("SELECT slug FROM albums WHERE slug LIKE %s", (base + "%",))
+    }
+    try:
+        return unique_album_slug(name, taken)
+    except ValueError:
+        return f"{base}-{uuid.uuid4().hex[:8]}"
+
+
+def _album_row(album_id: str) -> dict | None:
+    rows = db_query("SELECT * FROM albums WHERE id = %s", (album_id,))
+    return rows[0] if rows else None
+
+
+def _resolve_album(reference: str) -> dict | None:
+    """Look an album up by Kindred UUID, slug, or Flickr photoset id.
+
+    Accepting a bare Flickr photoset id keeps the pre-albums `album_id=` upload
+    contract working, and adopts that photoset into an `albums` row the first
+    time it is used so it becomes Kindred-owned from then on.
+    """
+    reference = (reference or "").strip()
+    if not reference:
+        return None
+
+    try:
+        return _album_row(str(uuid.UUID(reference)))
+    except ValueError:
+        pass
+
+    if reference.isdigit():
+        rows = db_query("SELECT * FROM albums WHERE flickr_photoset_id = %s", (reference,))
+        if rows:
+            return rows[0]
+        return _adopt_flickr_photoset(reference)
+
+    rows = db_query("SELECT * FROM albums WHERE slug = %s", (reference,))
+    return rows[0] if rows else None
+
+
+def _flickr_photoset_title(photoset_id: str) -> str:
+    """Best-effort lookup of a photoset's title, for adopting it by name.
+
+    Deliberately synchronous: adoption happens once per album, from both sync
+    and async callers, and is not worth colouring either of them.
+    """
+    import urllib.parse
+
+    creds = get_flickr_credentials()
+    if not creds:
+        return ""
+    flickr_url = "https://api.flickr.com/services/rest"
+    params = {
+        "method": "flickr.photosets.getInfo",
+        "photoset_id": photoset_id,
+        "user_id": creds["user_id"],
+        "format": "json",
+        "nojsoncallback": "1",
+    }
+    try:
+        signed = _flickr_oauth_sign(flickr_url, params, creds)
+        auth_header = "OAuth " + ", ".join(
+            f'{k}="{urllib.parse.quote(str(v), "")}"' for k, v in signed.items()
+        )
+        with httpx.Client(timeout=15) as client:
+            resp = client.get(
+                f"{flickr_url}?{urllib.parse.urlencode(params)}",
+                headers={"Authorization": auth_header},
+            )
+        data = resp.json()
+        if data.get("stat") != "ok":
+            return ""
+        title = data["photoset"]["title"]
+        return title.get("_content", "") if isinstance(title, dict) else str(title)
+    except Exception as exc:
+        print(f"[albums] could not read Flickr photoset {photoset_id}: {exc}")
+        return ""
+
+
+def _adopt_flickr_photoset(photoset_id: str, title: str = "") -> dict | None:
+    """Create the `albums` row that stands for an album made on Flickr itself."""
+    name = title.strip() or _flickr_photoset_title(photoset_id) or f"Flickr album {photoset_id}"
+    rows = db_query(
+        """
+        INSERT INTO albums (name, slug, flickr_photoset_id)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (flickr_photoset_id) DO UPDATE SET updated_at = now()
+        RETURNING *
+        """,
+        (name, _unique_album_slug(name), photoset_id),
+    )
+    return rows[0] if rows else None
+
+
+async def _create_flickr_photoset(
+    title: str, description: str, primary_photo_id: str, creds: dict
+) -> str:
+    """flickr.photosets.create — needs a primary photo, so albums can only be
+    created on Flickr once they have their first photo."""
+    import urllib.parse
+
+    flickr_url = "https://api.flickr.com/services/rest"
+    params = {
+        "method": "flickr.photosets.create",
+        "title": title,
+        "description": description,
+        "primary_photo_id": primary_photo_id,
+        "format": "json",
+        "nojsoncallback": "1",
+    }
+    oauth_params = _flickr_oauth_sign(flickr_url, params, creds, method="POST")
+    auth_header = "OAuth " + ", ".join(
+        f'{k}="{urllib.parse.quote(str(v), "")}"' for k, v in oauth_params.items()
+    )
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(flickr_url, data=params, headers={"Authorization": auth_header})
+    try:
+        data = resp.json()
+    except Exception:
+        data = {"stat": "fail"}
+    if data.get("stat") != "ok":
+        raise HTTPException(502, f"Flickr photosets.create failed: {data.get('message', 'unknown')}")
+    return str(data["photoset"]["id"])
+
+
+async def _ensure_flickr_photoset(album: dict, primary_photo_id: str, creds: dict) -> tuple[str, bool]:
+    """Return (photoset_id, this_photo_became_the_primary).
+
+    The bool matters: Flickr puts the primary photo in the set as part of
+    creating it, so the caller must not also addPhoto it.
+    """
+    if album.get("flickr_photoset_id"):
+        return album["flickr_photoset_id"], False
+
+    photoset_id = await _create_flickr_photoset(
+        album["name"], album.get("description") or "", primary_photo_id, creds
+    )
+    claimed = db_query(
+        """
+        UPDATE albums
+        SET flickr_photoset_id = %s, flickr_last_error = NULL, updated_at = now()
+        WHERE id = %s AND flickr_photoset_id IS NULL
+        RETURNING flickr_photoset_id
+        """,
+        (photoset_id, album["id"]),
+    )
+    if claimed:
+        return photoset_id, True
+
+    # Another concurrent upload created the photoset first. Theirs wins; ours is
+    # left behind on Flickr as an empty-ish set for the admin to delete. Rare
+    # enough (it needs two first-photo uploads into one new album at the same
+    # instant) that reconciling it automatically isn't worth the delete call.
+    current = _album_row(album["id"])
+    print(
+        f"[albums] lost photoset creation race for album {album['id']}; "
+        f"orphaned Flickr photoset {photoset_id}"
+    )
+    if not current or not current.get("flickr_photoset_id"):
+        # The album was deleted mid-flight. Ours is the only set that exists.
+        return photoset_id, True
+    return current["flickr_photoset_id"], False
+
+
+def _link_photo_into_album_on_nas(album: dict, kindred_photo_id: str, filename: str) -> str | None:
+    """Symlink an original into albums/<slug>/ on the NAS."""
+    if not PHOTO_STORAGE_ROOT:
+        return None
+    rows = db_query(
+        """
+        SELECT provider_key FROM photo_copies
+        WHERE photo_id = %s AND provider = 'nas' AND status = 'available'
+        """,
+        (kindred_photo_id,),
+    )
+    if not rows:
+        return None
+    provider = LocalStorageProvider(PHOTO_STORAGE_ROOT)
+    return provider.link_into_album(album["slug"], rows[0]["provider_key"], filename)
+
+
+async def _add_photo_to_album_everywhere(
+    album: dict,
+    kindred_photo_id: str | None,
+    flickr_photo_id: str | None,
+    filename: str,
+    creds: dict,
+    user_id: str | None = None,
+) -> dict:
+    """Record album membership, then project it onto the NAS and Flickr.
+
+    Every step is best-effort and independently recorded: the photo is already
+    uploaded by the time this runs, so a failure here must never lose it. Rows
+    left with flickr_synced_at IS NULL are the retry queue.
+    """
+    result = {"album_id": str(album["id"]), "nas_linked": False, "flickr_linked": False}
+
+    if kindred_photo_id:
+        db_query(
+            """
+            INSERT INTO album_photos (album_id, photo_id, added_by)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (album_id, photo_id) DO NOTHING
+            """,
+            (album["id"], kindred_photo_id, user_id),
+            fetch=False,
+        )
+
+        try:
+            link_path = _link_photo_into_album_on_nas(album, kindred_photo_id, filename)
+            if link_path:
+                db_query(
+                    "UPDATE album_photos SET nas_link_path = %s WHERE album_id = %s AND photo_id = %s",
+                    (link_path, album["id"], kindred_photo_id),
+                    fetch=False,
+                )
+                result["nas_linked"] = True
+        except Exception as exc:
+            print(f"[albums] NAS link failed for photo {kindred_photo_id} → {album['slug']}: {exc}")
+
+    if flickr_photo_id:
+        try:
+            photoset_id, was_primary = await _ensure_flickr_photoset(album, flickr_photo_id, creds)
+            if not was_primary:
+                await _add_photo_to_album(flickr_photo_id, photoset_id, creds)
+            result["flickr_linked"] = True
+            result["flickr_photoset_id"] = photoset_id
+            if kindred_photo_id:
+                db_query(
+                    """
+                    UPDATE album_photos
+                    SET flickr_synced_at = now(), flickr_last_error = NULL
+                    WHERE album_id = %s AND photo_id = %s
+                    """,
+                    (album["id"], kindred_photo_id),
+                    fetch=False,
+                )
+        except Exception as exc:
+            message = str(exc)[:1000]
+            print(f"[albums] Flickr album add failed for {flickr_photo_id} → {album['slug']}: {exc}")
+            if kindred_photo_id:
+                db_query(
+                    """
+                    UPDATE album_photos SET flickr_last_error = %s
+                    WHERE album_id = %s AND photo_id = %s
+                    """,
+                    (message, album["id"], kindred_photo_id),
+                    fetch=False,
+                )
+            else:
+                db_query(
+                    "UPDATE albums SET flickr_last_error = %s WHERE id = %s",
+                    (message, album["id"]),
+                    fetch=False,
+                )
+
+    return result
+
+
+def _album_response(row: dict, photo_count: int | None = None) -> dict:
+    return {
+        "id": str(row["id"]),
+        "name": row["name"],
+        "slug": row["slug"],
+        "description": row.get("description") or "",
+        "flickr_photoset_id": row.get("flickr_photoset_id"),
+        "photo_count": photo_count if photo_count is not None else row.get("photo_count", 0),
+        "nas_path": f"albums/{row['slug']}" if PHOTO_STORAGE_ROOT else None,
+        "source": "kindred",
+        "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
+    }
+
+
+@app.get("/albums")
+async def list_albums(
+    include_flickr: bool = Query(
+        False,
+        description="Also list Flickr photosets Kindred hasn't adopted yet",
+    ),
+    user=Depends(get_current_user),
+):
+    """List Kindred albums, newest first."""
+    rows = db_query(
+        """
+        SELECT a.*, COUNT(ap.photo_id) AS photo_count
+        FROM albums a
+        LEFT JOIN album_photos ap ON ap.album_id = a.id
+        GROUP BY a.id
+        ORDER BY a.created_at DESC
+        """
+    )
+    albums = [_album_response(row, int(row["photo_count"])) for row in rows]
+
+    if include_flickr:
+        known = {row["flickr_photoset_id"] for row in rows if row["flickr_photoset_id"]}
+        try:
+            remote = await list_flickr_albums(user=user)
+            for photoset in remote["albums"]:
+                if photoset["id"] not in known:
+                    albums.append({
+                        "id": None,
+                        "name": photoset["title"],
+                        "slug": None,
+                        "description": "",
+                        "flickr_photoset_id": photoset["id"],
+                        "photo_count": photoset["photo_count"],
+                        "nas_path": None,
+                        "source": "flickr",
+                        "created_at": None,
+                    })
+        except Exception as exc:
+            print(f"[albums] could not list Flickr photosets: {exc}")
+
+    return {"albums": albums}
+
+
+@app.post("/albums")
+async def create_album(body: AlbumCreateRequest, user=Depends(get_current_user)):
+    """Create a Kindred album.
+
+    The album is usable immediately. Its NAS directory appears with the first
+    photo, and so does its Flickr photoset — Flickr can't create an empty one.
+    """
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, "Album name is required")
+    if len(name) > 200:
+        raise HTTPException(400, "Album name is too long (max 200 characters)")
+
+    existing = db_query("SELECT * FROM albums WHERE lower(name) = lower(%s)", (name,))
+    if existing:
+        raise HTTPException(409, f"An album named '{name}' already exists")
+
+    rows = db_query(
+        """
+        INSERT INTO albums (name, slug, description, created_by)
+        VALUES (%s, %s, %s, %s)
+        RETURNING *
+        """,
+        (name, _unique_album_slug(name), body.description.strip(), user.get("user_id")),
+    )
+    return _album_response(rows[0], 0)
+
+
+@app.get("/albums/{reference}")
+async def get_album(reference: str, user=Depends(get_current_user)):
+    album = _resolve_album(reference)
+    if not album:
+        raise HTTPException(404, "Album not found")
+    counts = db_query(
+        "SELECT COUNT(*) AS n FROM album_photos WHERE album_id = %s", (album["id"],)
+    )
+    return _album_response(album, int(counts[0]["n"]))
 
 
 @app.post("/scan/auto")

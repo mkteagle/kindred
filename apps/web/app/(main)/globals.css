@@ -8584,3 +8584,56 @@ dialog::backdrop { background: rgba(18, 18, 24, .6); backdrop-filter: blur(6px);
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/* Album destination picker on the upload page */
+.upload-album {
+  margin-bottom: 18px;
+}
+.upload-album-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  color: var(--mist);
+}
+.upload-album-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.upload-album-select,
+.upload-album-input {
+  padding: 10px 12px;
+  border: 1px solid var(--line-dark);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ash);
+  font-family: var(--body);
+  font-size: 14px;
+}
+.upload-album-select {
+  min-width: 220px;
+}
+.upload-album-input {
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+.upload-album-select:disabled,
+.upload-album-input:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+.upload-album-hint {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.upload-album-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--rosehip);
+  font-weight: 600;
+}

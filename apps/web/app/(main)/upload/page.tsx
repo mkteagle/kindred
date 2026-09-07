@@ -20,6 +20,16 @@ interface QueueItem {
   processed: boolean;
 }
 
+interface Album {
+  id: string | null;
+  name: string;
+  slug: string | null;
+  flickr_photoset_id: string | null;
+  photo_count: number;
+  nas_path: string | null;
+  source: "kindred" | "flickr";
+}
+
 /* ── Helpers ─────────────────────────────────────────────────────────── */
 
 const ACCEPT = ["image/jpeg", "image/png", "image/gif", "image/webp"];
@@ -39,22 +49,6 @@ function stripExt(name: string): string {
   return name.replace(/\.[^.]+$/, "");
 }
 
-/** Parse Flickr upload XML response to extract photo_id */
-function parseFlickrResponse(xml: string): { ok: boolean; photoId?: string; error?: string } {
-  // Success: <photoid>12345</photoid>
-  const idMatch = xml.match(/<photoid>(\d+)<\/photoid>/);
-  if (idMatch) return { ok: true, photoId: idMatch[1] };
-
-  // Error: <err code="N" msg="..." />
-  const errMatch = xml.match(/msg="([^"]+)"/);
-  const statMatch = xml.match(/stat="(\w+)"/);
-  if (statMatch && statMatch[1] === "fail") {
-    return { ok: false, error: errMatch?.[1] || "Upload failed" };
-  }
-
-  return { ok: false, error: "Unexpected response from Flickr" };
-}
-
 /* ── Component ───────────────────────────────────────────────────────── */
 
 export default function UploadPage() {
@@ -66,11 +60,62 @@ export default function UploadPage() {
   const dropRef = useRef<HTMLDivElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
+  // Album destination. "" means "no album" — photos still land on the NAS and
+  // Flickr, they just aren't grouped.
+  const [albums, setAlbums] = useState<Album[]>([]);
+  const [albumRef, setAlbumRef] = useState("");
+  const [newAlbumName, setNewAlbumName] = useState("");
+  const [creatingAlbum, setCreatingAlbum] = useState(false);
+  const [albumError, setAlbumError] = useState<string | null>(null);
+
   // Summary counters
   const totalCount = queue.length;
   const doneCount = queue.filter((q) => q.status === "done").length;
   const failedCount = queue.filter((q) => q.status === "failed").length;
   const processedCount = queue.filter((q) => q.processed).length;
+
+  /* ── Albums ──────────────────────────────────────────────────────── */
+
+  const loadAlbums = useCallback(async () => {
+    try {
+      const res = await fetch(`${BACKEND}/albums?include_flickr=true`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setAlbums(data.albums ?? []);
+    } catch {
+      // A missing album list shouldn't block uploading.
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAlbums();
+  }, [loadAlbums]);
+
+  async function createAlbum() {
+    const name = newAlbumName.trim();
+    if (!name) return;
+    setCreatingAlbum(true);
+    setAlbumError(null);
+    try {
+      const res = await fetch(`${BACKEND}/albums`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAlbumError(data.detail || "Could not create album");
+        return;
+      }
+      setAlbums((prev) => [data, ...prev]);
+      setAlbumRef(data.id);
+      setNewAlbumName("");
+    } catch {
+      setAlbumError("Could not reach the server");
+    } finally {
+      setCreatingAlbum(false);
+    }
+  }
 
   /* ── File handling ───────────────────────────────────────────────── */
 
@@ -143,29 +188,10 @@ export default function UploadPage() {
   /* ── Upload one file ─────────────────────────────────────────────── */
 
   async function uploadOne(item: QueueItem): Promise<{ photoId?: string; error?: string }> {
-    // 1. Sign the request
-    const signResp = await fetch("/api/flickr/upload/sign", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: item.title }),
-    });
-    if (!signResp.ok) {
-      const err = await signResp.json().catch(() => ({ error: "Sign request failed" }));
-      return { error: err.error || "Sign request failed" };
-    }
-    const oauthParams = await signResp.json();
-    if (oauthParams.error) return { error: oauthParams.error };
-
-    // 2. Build multipart form
     const formData = new FormData();
-    // Add OAuth params first
-    for (const [key, value] of Object.entries(oauthParams)) {
-      formData.append(key, String(value));
-    }
-    // Add the photo last (Flickr requirement)
+    formData.append("title", item.title);
     formData.append("photo", item.file);
 
-    // 3. Upload to Flickr
     const xhr = new XMLHttpRequest();
     const result = await new Promise<{ photoId?: string; error?: string }>((resolve) => {
       xhr.upload.addEventListener("progress", (e) => {
@@ -178,37 +204,24 @@ export default function UploadPage() {
       });
 
       xhr.addEventListener("load", () => {
-        const parsed = parseFlickrResponse(xhr.responseText);
-        if (parsed.ok && parsed.photoId) {
-          resolve({ photoId: parsed.photoId });
-        } else {
-          resolve({ error: parsed.error || "Upload failed" });
+        let parsed: { photo_id?: string; detail?: string; error?: string } = {};
+        try { parsed = JSON.parse(xhr.responseText); } catch { /* handled below */ }
+        if (xhr.status >= 200 && xhr.status < 300 && parsed.photo_id) {
+          resolve({ photoId: parsed.photo_id });
+          return;
         }
+        resolve({ error: parsed.detail || parsed.error || `Upload failed (${xhr.status})` });
       });
 
       xhr.addEventListener("error", () => resolve({ error: "Network error during upload" }));
       xhr.addEventListener("abort", () => resolve({ error: "Upload cancelled" }));
 
-      xhr.open("POST", "https://up.flickr.com/services/upload/");
+      const query = albumRef ? `?album_id=${encodeURIComponent(albumRef)}` : "";
+      xhr.open("POST", `${BACKEND}/photos/upload${query}`);
       xhr.send(formData);
     });
 
     return result;
-  }
-
-  /* ── Process photo on backend ────────────────────────────────────── */
-
-  async function processPhoto(photoId: string): Promise<boolean> {
-    try {
-      const resp = await fetch(`${BACKEND}/process-photo`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photo_id: photoId }),
-      });
-      return resp.ok;
-    } catch {
-      return false;
-    }
   }
 
   /* ── Batch upload ────────────────────────────────────────────────── */
@@ -239,12 +252,7 @@ export default function UploadPage() {
           )
         );
 
-        // Trigger ML processing in background
-        processPhoto(result.photoId).then((ok) => {
-          setQueue((prev) =>
-            prev.map((q) => (q.id === item.id ? { ...q, processed: ok } : q))
-          );
-        });
+        // The backend starts ML processing after the NAS and Flickr copies are safe.
       } else {
         setQueue((prev) =>
           prev.map((q) =>
@@ -284,9 +292,66 @@ export default function UploadPage() {
         <div className="upload-header">
           <h1 className="upload-title">Upload Photos</h1>
           <p className="upload-subtitle">
-            Drag and drop photos or use the file picker. Photos upload directly to Flickr,
-            then get analyzed by the ML pipeline.
+            Drag and drop photos or use the file picker. Originals are saved to your NAS,
+            mirrored to Flickr, then analyzed by the ML pipeline.
           </p>
+        </div>
+
+        {/* Album destination */}
+        <div className="upload-album">
+          <label className="upload-album-label" htmlFor="album-select">
+            Album
+          </label>
+          <div className="upload-album-row">
+            <select
+              id="album-select"
+              className="upload-album-select"
+              value={albumRef}
+              onChange={(e) => setAlbumRef(e.target.value)}
+              disabled={uploading}
+            >
+              <option value="">No album</option>
+              {albums.map((album) => {
+                const value = album.id ?? album.flickr_photoset_id ?? "";
+                return (
+                  <option key={value} value={value}>
+                    {album.name}
+                    {album.photo_count > 0 ? ` (${album.photo_count})` : ""}
+                    {album.source === "flickr" ? " — Flickr only" : ""}
+                  </option>
+                );
+              })}
+            </select>
+
+            <input
+              className="upload-album-input"
+              type="text"
+              placeholder="Or create a new album…"
+              value={newAlbumName}
+              onChange={(e) => setNewAlbumName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  createAlbum();
+                }
+              }}
+              disabled={uploading || creatingAlbum}
+            />
+            <button
+              className="button small"
+              onClick={createAlbum}
+              disabled={uploading || creatingAlbum || !newAlbumName.trim()}
+            >
+              {creatingAlbum ? "Creating…" : "Create"}
+            </button>
+          </div>
+          {albumError && <p className="upload-album-error">{albumError}</p>}
+          {albumRef && (
+            <p className="upload-album-hint">
+              Photos will be filed into this album on the NAS and added to the
+              matching Flickr album.
+            </p>
+          )}
         </div>
 
         {/* Total progress */}
