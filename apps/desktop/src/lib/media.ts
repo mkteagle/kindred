@@ -29,6 +29,27 @@ const waiting: (() => void)[] = [];
 let active = 0;
 
 const MAX_CONCURRENT = 6;
+/**
+ * How many resolved answers to remember.
+ *
+ * Scrolling a million-row library would otherwise grow this map forever. The
+ * files themselves are still on disk, so forgetting an entry costs one cheap
+ * round trip into Rust, not a re-download.
+ */
+const MAX_REMEMBERED = 20_000;
+
+function remember(id: string, state: MediaState) {
+  if (results.size >= MAX_REMEMBERED) {
+    // Insertion-ordered: drop the oldest tenth rather than clearing outright,
+    // so the screenful currently on display keeps its answers.
+    let toDrop = Math.floor(MAX_REMEMBERED / 10);
+    for (const key of results.keys()) {
+      if (toDrop-- <= 0) break;
+      results.delete(key);
+    }
+  }
+  results.set(id, state);
+}
 
 function gate(): Promise<void> {
   if (active < MAX_CONCURRENT) {
@@ -68,7 +89,7 @@ export function loadMedia(
       const state: MediaState = ref.path
         ? { src: convertFileSrc(ref.path), cached: true, loading: false, error: null }
         : { src: null, cached: false, loading: false, error: ref.error };
-      results.set(id, state);
+      remember(id, state);
       return state;
     })
     .catch((e): MediaState => {
@@ -78,7 +99,7 @@ export function loadMedia(
         loading: false,
         error: String(e),
       };
-      results.set(id, state);
+      remember(id, state);
       return state;
     })
     .finally(() => {

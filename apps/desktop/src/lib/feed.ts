@@ -78,8 +78,11 @@ export function usePhotoFeed(source: FeedSource, media: MediaFilter): Feed {
       } catch (e) {
         if (generation.current === mine) setError(String(e));
       } finally {
-        busy.current = false;
+        // Only the current generation may clear the guard. A reload bumps the
+        // generation and starts its own fetch; letting the abandoned one clear
+        // `busy` would let a scroll event page twice and duplicate a screenful.
         if (generation.current === mine) {
+          busy.current = false;
           setLoading(false);
           setLoadingMore(false);
         }
