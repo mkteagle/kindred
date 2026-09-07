@@ -1,5 +1,6 @@
 import { Providers } from "./providers";
 import { KxAppShell } from "@/components/kx/app-shell";
+import { SIDEBAR_BOOT_SCRIPT } from "@/components/kx/sidebar-script";
 import { THEME_BOOT_SCRIPT } from "@/components/kx/theme-script";
 import { SyncProgress } from "@/components/sync-progress";
 import "./globals.css";
@@ -14,6 +15,9 @@ export default function MainLayout({
       {/* Sets <html data-theme> before first paint so the shell never flashes
           the wrong ground. Has to be inline and synchronous. */}
       <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+      {/* Same trick for the rail: sets <html data-sidebar> before first paint so
+          a collapsed rail is never drawn wide and then snapped shut. */}
+      <script dangerouslySetInnerHTML={{ __html: SIDEBAR_BOOT_SCRIPT }} />
       <Providers>
         <KxAppShell>
           <SyncProgress />
