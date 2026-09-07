@@ -1,3 +1,5 @@
+from __future__ import annotations as _future_annotations
+
 import ast
 import asyncio
 from pathlib import Path
@@ -124,7 +126,10 @@ class ImageIdentityTests(unittest.TestCase):
                 PHOTO_STORAGE_ROOT=directory, HTTPException=HTTPException, FileResponse=FileResponse,
                 Path=local_path, uuid=uuid, os=os, LocalStorageProvider=lambda _: provider,
                 db_query=lambda *args: [{'provider_key': 'original.heic', 'original_filename': 'photo.heic', 'media_type': 'image/heic'}])
-            exec(compile(ast.Module(body=[function], type_ignores=[]), '<local-route>', 'exec'), namespace)
+            # main.py targets 3.11 and annotates FastAPIRequest; future
+            # annotations keep the signature from being evaluated here.
+            exec(compile(ast.Module(body=[function], type_ignores=[]), '<local-route>', 'exec',
+                         flags=_future_annotations.compiler_flag), namespace)
             response = namespace['get_local_photo']('stable-uuid', 'preview', {'role': 'member'})
             self.assertEqual(response.media_type, 'image/jpeg')
             with Image.open(response.path) as preview:

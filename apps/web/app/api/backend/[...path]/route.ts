@@ -57,6 +57,14 @@ async function handleRequest(
       if (session?.session_token) headers["X-Session-Token"] = session.session_token;
     }
 
+    // Media playback is built on byte ranges: the browser asks for part of a
+    // video to start, and again on every seek. These must reach the backend or
+    // <video> cannot seek and Safari will not play at all.
+    for (const header of ["range", "if-range"]) {
+      const value = req.headers.get(header);
+      if (value) headers[header] = value;
+    }
+
     // Forward integration secrets (e.g., Resend API key)
     const integrationSecret = req.headers.get("X-Integration-Secret");
     if (integrationSecret) {
@@ -86,18 +94,28 @@ async function handleRequest(
 
     // Check if response is binary (image, etc.) — don't try to parse as JSON
     const contentType = backendResp.headers.get("content-type") || "";
-    if (
+    const isBinary =
       contentType.startsWith("image/") ||
       contentType.startsWith("video/") ||
-      contentType.startsWith("application/octet-stream")
-    ) {
-      const buffer = await backendResp.arrayBuffer();
-      return new NextResponse(buffer, {
+      contentType.startsWith("audio/") ||
+      contentType.startsWith("application/octet-stream");
+
+    if (isBinary || backendResp.status === 206 || backendResp.status === 416) {
+      // Stream rather than buffer: a full-length video through arrayBuffer()
+      // would be held in this process's memory in its entirety.
+      const passthrough: Record<string, string> = {
+        "Content-Type": contentType,
+        "Cache-Control": backendResp.headers.get("cache-control") || "private, max-age=3600",
+      };
+      // Range answers are meaningless without these, and a 206 whose
+      // Content-Range is dropped makes the player fail in confusing ways.
+      for (const header of ["accept-ranges", "content-range", "content-length", "content-disposition"]) {
+        const value = backendResp.headers.get(header);
+        if (value) passthrough[header] = value;
+      }
+      return new NextResponse(backendResp.body, {
         status: backendResp.status,
-        headers: {
-          "Content-Type": contentType,
-          "Cache-Control": backendResp.headers.get("cache-control") || "private, max-age=3600",
-        },
+        headers: passthrough,
       });
     }
 

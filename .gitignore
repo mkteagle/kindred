@@ -31,3 +31,6 @@ fastlane/screenshots/
 tools/asc-upload/.build/
 package.json
 package-lock.json
+
+# Local database exports — irreplaceable, but too large for git
+backups/

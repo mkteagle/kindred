@@ -62,7 +62,8 @@ class ShareMediaScopeTests(unittest.TestCase):
         serve = Mock(return_value="media bytes")
         route = self.media(ALBUM_SHARE, ["p1", "p2"], serve=serve)
         self.assertEqual(route("tok", "p1"), "media bytes")
-        serve.assert_called_once_with("p1", "thumb", None)
+        # The request is forwarded so a shared video can answer range requests.
+        serve.assert_called_once_with("p1", "thumb", None, None)
 
     def test_refuses_a_photo_outside_the_album(self):
         serve = Mock()

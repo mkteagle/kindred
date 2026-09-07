@@ -4,7 +4,7 @@ Kindred backend — FastAPI + PostgreSQL/pgvector
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List
 import numpy as np
@@ -5205,7 +5205,8 @@ def unlock_share(token: str, body: ShareUnlockRequest):
 
 @app.get("/public/shares/{token}/media/{photo_id}")
 def share_media(token: str, photo_id: str, variant: str = "thumb",
-                exp: int | None = None, sig: str | None = None):
+                exp: int | None = None, sig: str | None = None,
+                request: FastAPIRequest = None):
     """Serve one photo or video from inside a share.
 
     Membership is re-checked here against the share's own scope: an id in the
@@ -5231,7 +5232,7 @@ def share_media(token: str, photo_id: str, variant: str = "thumb",
     if variant == "original" and not share.get("allow_download"):
         raise HTTPException(403, "Downloads are not enabled for this share")
 
-    return get_local_photo(photo_id, variant, None)
+    return get_local_photo(photo_id, variant, None, request)
 
 
 def _record_share_view(share_id) -> None:
@@ -5706,6 +5707,49 @@ def _merge_unindexed_originals(page: list[dict], months: int, media: str, auth_q
 THUMBNAIL_DIR = Path("/app/data/thumbnails")
 
 
+def _media_response(path: Path, media_type: str, filename: str | None,
+                    request: "FastAPIRequest | None"):
+    """Serve a file, honouring a byte-range request when one is made.
+
+    Video playback depends on this: browsers request ranges to start and to
+    seek, and Safari will not play a source that cannot answer them. The
+    starlette version FastAPI 0.111 pins has no range support in FileResponse,
+    so ranges are handled here.
+    """
+    import range_response
+
+    headers = {"Cache-Control": "private, max-age=86400", "Accept-Ranges": "bytes"}
+    file_size = path.stat().st_size
+    range_header = request.headers.get("range") if request is not None else None
+
+    try:
+        requested = range_response.parse_range(range_header, file_size)
+    except (range_response.InvalidRange, ValueError):
+        # Unsatisfiable: tell the client the real size so it can retry.
+        return Response(
+            status_code=416,
+            headers={**headers, "Content-Range": f"bytes */{file_size}"},
+        )
+
+    if requested is None:
+        return FileResponse(
+            path, media_type=media_type, filename=filename,
+            content_disposition_type="inline", headers=headers,
+        )
+
+    start, end = requested
+    return StreamingResponse(
+        range_response.iter_file_range(path, start, end),
+        status_code=206,
+        media_type=media_type,
+        headers={
+            **headers,
+            "Content-Range": range_response.content_range(start, end, file_size),
+            "Content-Length": str(end - start + 1),
+        },
+    )
+
+
 def _video_derivative(photo_id: str, source: Path, variant: str) -> tuple[Path, str]:
     """Return a cached poster frame or hover clip for a video, rendering once.
 
@@ -5751,7 +5795,8 @@ def _video_derivative(photo_id: str, source: Path, variant: str) -> tuple[Path, 
 
 
 @app.get("/photos/{photo_id}/local")
-def get_local_photo(photo_id: str, variant: str = "original", user=Depends(get_current_user)):
+def get_local_photo(photo_id: str, variant: str = "original", user=Depends(get_current_user),
+                    request: FastAPIRequest = None):
     """Serve a NAS original or an on-demand cached thumbnail.
 
     Videos derive two extra artefacts on first request: a `thumb`/`preview`
@@ -5791,12 +5836,8 @@ def get_local_photo(photo_id: str, variant: str = "original", user=Depends(get_c
 
     if media_type.startswith("video/") and variant != "original":
         response_path, media_type = _video_derivative(photo_id, source, variant)
-        return FileResponse(
-            response_path,
-            media_type=media_type,
-            content_disposition_type="inline",
-            headers={"Cache-Control": "private, max-age=86400"},
-        )
+        # The hover clip is a video too, so it also wants range support.
+        return _media_response(response_path, media_type, None, request)
     if variant == "clip":
         raise HTTPException(400, "clip is only available for videos")
 
@@ -5824,6 +5865,12 @@ def get_local_photo(photo_id: str, variant: str = "original", user=Depends(get_c
         if thumbnail.exists():
             response_path = thumbnail
             media_type = "image/jpeg"
+
+    # Videos served whole still need Accept-Ranges and 206 support so the
+    # player can seek; images fall through the same helper harmlessly.
+    if media_type.startswith("video/"):
+        return _media_response(response_path, media_type,
+                               original_filename or source.name, request)
 
     return FileResponse(
         response_path,
