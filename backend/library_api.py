@@ -15,9 +15,17 @@ INDEXED = "EXISTS (SELECT 1 FROM processed_photos x WHERE x.photo_id IN (p.id::t
 
 # Each sort names the expression it orders by and the direction. Ordering is
 # always broken by p.id so the keyset cursor below addresses exactly one row.
+# A photo whose capture date we could not recover has no date. Falling back
+# to created_at made every such photo claim the day it was imported, which put
+# all of them at the top of "newest" and made the library look like it was shot
+# this afternoon. Sort them to the far end instead, with a sentinel that keeps
+# the expression non-null so the keyset cursor below still compares cleanly.
+UNDATED_LAST_DESC = "COALESCE(p.taken_at,'0001-01-01')"
+UNDATED_LAST_ASC = "COALESCE(p.taken_at,'9999-12-31')"
+
 SORTS = {
-    "newest": ("COALESCE(p.taken_at,p.created_at)", "DESC"),
-    "oldest": ("COALESCE(p.taken_at,p.created_at)", "ASC"),
+    "newest": (UNDATED_LAST_DESC, "DESC"),
+    "oldest": (UNDATED_LAST_ASC, "ASC"),
     "added": ("p.created_at", "DESC"),
     "name": ("lower(COALESCE(NULLIF(p.title,''),p.original_filename,''))", "ASC"),
 }
@@ -35,10 +43,10 @@ def facet_clauses(media, date_from=None, date_to=None, min_duration=None):
     sql, params = media_clause(media)
     clauses = [sql]
     if date_from:
-        clauses.append("COALESCE(p.taken_at,p.created_at) >= %s")
+        clauses.append("p.taken_at >= %s")
         params.append(date_from)
     if date_to:
-        clauses.append("COALESCE(p.taken_at,p.created_at) < (%s::date + 1)")
+        clauses.append("p.taken_at < (%s::date + 1)")
         params.append(date_to)
     if min_duration is not None:
         clauses.append("p.duration_seconds >= %s")
@@ -55,10 +63,10 @@ def years(query, media="all"):
     """
     kind_sql, params = media_clause(media)
     rows = query(
-        f"""SELECT EXTRACT(YEAR FROM COALESCE(p.taken_at,p.created_at))::int AS year,
+        f"""SELECT EXTRACT(YEAR FROM p.taken_at)::int AS year,
                    count(*) AS count
             {JOINS} WHERE {AVAILABLE} AND {kind_sql}
-              AND COALESCE(p.taken_at,p.created_at) IS NOT NULL
+              AND p.taken_at IS NOT NULL
             GROUP BY 1 ORDER BY 1 DESC""",
         tuple(params),
     )
@@ -134,7 +142,7 @@ def gallery(query, sort, limit, media="all", cursor=None,
     params += [limit + 1]
     rows = query(f"""SELECT p.id::text AS photo_id,
         COALESCE(NULLIF(p.title,''),p.original_filename,'Untitled') AS photo_title,
-        COALESCE(p.taken_at,p.created_at) AS date_taken,
+        p.taken_at AS date_taken,
         p.media_kind, p.duration_seconds,
         {order_expr} AS sort_value,
         f.remote_url AS flickr_url

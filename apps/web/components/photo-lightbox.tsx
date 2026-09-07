@@ -24,7 +24,7 @@ export interface LightboxPhoto {
   flickr_url?: string;
   photo_url?: string;
   photo_title?: string;
-  date_taken?: string;
+  date_taken?: string | null;
   /** "video" swaps the still image for a real player. */
   media_kind?: "photo" | "video";
   duration_seconds?: number | null;
@@ -44,7 +44,7 @@ interface LightboxContextValue {
 
 interface PhotoMetadata {
   photo_id: string;
-  date_taken?: string;
+  date_taken?: string | null;
   latitude?: number;
   longitude?: number;
   location_name?: string;

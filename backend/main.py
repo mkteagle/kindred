@@ -6161,7 +6161,9 @@ def get_timeline(
                     f"{PUBLIC_API_URL}/photos/{row['photo_id']}/local?variant=clip{auth_query}"
                 )
             row["flickr_url"] = row.get("flickr_url") or ""
-            row["date_taken"] = str(row["date_taken"])
+            # None means the capture date is unknown; say so rather than
+            # stringifying it into the literal "None".
+            row["date_taken"] = str(row["date_taken"]) if row["date_taken"] else None
             row.pop("nas_provider_key", None)
             row.pop("month", None)
 

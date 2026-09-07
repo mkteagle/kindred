@@ -50,8 +50,7 @@ class PagingTests(unittest.TestCase):
     def query(self, sql, params=()):
         # SQLite has no to_char or = ANY(array); express both its way.
         sql = (sql.replace("p.id::text", "CAST(p.id AS TEXT)")
-                  .replace("to_char(COALESCE(p.taken_at,p.created_at), 'YYYY-MM')",
-                           "substr(COALESCE(p.taken_at,p.created_at),1,7)"))
+                  .replace("to_char(p.taken_at, 'YYYY-MM')", "substr(p.taken_at,1,7)"))
         params = list(params)
         if "= ANY(%s)" in sql:
             index = [i for i, p in enumerate(params) if isinstance(p, list)][0]

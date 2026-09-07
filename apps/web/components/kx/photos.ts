@@ -4,7 +4,8 @@ import { BACKEND } from "@/lib/constants";
 export interface LibraryPhoto {
   photo_id: string;
   photo_title: string;
-  date_taken: string;
+  /** null when no capture date could be recovered; grouped as "Undated". */
+  date_taken: string | null;
   media_kind: "photo" | "video";
   duration_seconds: number | null;
   flickr_url?: string;
@@ -52,8 +53,10 @@ const DAY_FORMAT_WITH_YEAR = new Intl.DateTimeFormat("en-GB", {
   year: "numeric",
 });
 
-function parseDate(value: string): Date | null {
-  // The API hands back "2026-06-14 21:48:00" as often as an ISO string.
+function parseDate(value: string | null | undefined): Date | null {
+  // The API hands back "2026-06-14 21:48:00" as often as an ISO string, and
+  // null when it never recovered a capture date at all.
+  if (!value) return null;
   const date = new Date(value.includes("T") ? value : value.replace(" ", "T"));
   return Number.isNaN(date.getTime()) ? null : date;
 }

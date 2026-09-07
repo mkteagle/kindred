@@ -26,7 +26,14 @@ def months_page(query, facets, months=3, before=None):
         raise HTTPException(400, f"months must be between 1 and {MAX_MONTHS}")
 
     clauses, params = facets.where()
-    bucket = "to_char(COALESCE(p.taken_at,p.created_at), 'YYYY-MM')"
+    # Undated photos have no bucket to sit in, and a NULL month sorts ahead of
+    # every real one under DESC, so it would head the page.
+    clauses = list(clauses) + ["p.taken_at IS NOT NULL"]
+    # A month view can only show photos that have a month. Undated photos used
+    # to fall back to created_at, which piled every one of them into the month
+    # they were imported; they belong in the gallery's "Undated" section, not
+    # in a bucket labelled with the day they arrived.
+    bucket = "to_char(p.taken_at, 'YYYY-MM')"
 
     month_clauses = list(clauses)
     month_params = list(params)
@@ -50,12 +57,12 @@ def months_page(query, facets, months=3, before=None):
     photo_clauses = list(clauses) + [f"{bucket} = ANY(%s)"]
     photos = query(
         f"""SELECT p.id::text AS photo_id, {bucket} AS month,
-            COALESCE(p.taken_at,p.created_at) AS date_taken,
+            p.taken_at AS date_taken,
             COALESCE(NULLIF(p.title,''),p.original_filename,'') AS photo_title,
             p.media_kind, p.duration_seconds,
             f.remote_url AS flickr_url, n.provider_key AS nas_provider_key
             {JOINS} WHERE {' AND '.join(photo_clauses)}
-            ORDER BY COALESCE(p.taken_at,p.created_at) DESC, p.id DESC""",
+            ORDER BY p.taken_at DESC, p.id DESC""",
         tuple(list(params) + [[b["month"] for b in buckets]]),
     )
 

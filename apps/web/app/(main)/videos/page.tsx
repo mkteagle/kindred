@@ -25,7 +25,8 @@ const LONG_VIDEO = 60;
 
 const DATE_BADGE = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short" });
 
-function badgeDate(value: string): string {
+function badgeDate(value: string | null | undefined): string {
+  if (!value) return "";
   const date = new Date(value.includes("T") ? value : value.replace(" ", "T"));
   return Number.isNaN(date.getTime()) ? "" : DATE_BADGE.format(date).toUpperCase();
 }

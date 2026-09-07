@@ -50,8 +50,8 @@ class CatalogTests(unittest.TestCase):
     def query(self, sql, params=()):
         # SQLite supports the relational query and FILTER; adapt parameter/cast syntax.
         sql = (sql.replace('p.id::text', 'CAST(p.id AS TEXT)')
-                  .replace('EXTRACT(YEAR FROM COALESCE(p.taken_at,p.created_at))::int',
-                           "CAST(substr(COALESCE(p.taken_at,p.created_at),1,4) AS INTEGER)")
+                  .replace('EXTRACT(YEAR FROM p.taken_at)::int',
+                           "CAST(substr(p.taken_at,1,4) AS INTEGER)")
                   .replace("(%s::date + 1)", "date(%s,'+1 day')")
                   .replace('%s', '?'))
         return [dict(row) for row in self.db.execute(sql, params)]
@@ -148,6 +148,77 @@ class CatalogTests(unittest.TestCase):
         self.assertNotIn("'video'", sql)
         self.assertEqual(sql.count('%s'), len(params))
         self.assertEqual(params, ('video', 49))
+
+
+
+class UndatedPhotoTests(unittest.TestCase):
+    """A photo whose capture date we never recovered has no date.
+
+    It used to inherit created_at, so every unrecovered photo claimed the day
+    it was imported: they took the whole top of "newest", and the year
+    scrubber grew a bucket for the current year that nothing was shot in.
+    """
+
+    def setUp(self):
+        self.db = sqlite3.connect(':memory:')
+        self.db.row_factory = sqlite3.Row
+        self.db.executescript("""
+            CREATE TABLE photos (id TEXT, legacy_photo_id TEXT, media_type TEXT,
+                title TEXT, original_filename TEXT, taken_at TEXT, created_at TEXT,
+                media_kind TEXT GENERATED ALWAYS AS (
+                    CASE WHEN media_type LIKE 'video/%' THEN 'video' ELSE 'photo' END) STORED,
+                duration_seconds REAL);
+            CREATE TABLE photo_copies (photo_id TEXT, provider TEXT, status TEXT,
+                provider_key TEXT, remote_url TEXT);
+            CREATE TABLE processed_photos (photo_id TEXT);
+            CREATE TABLE photo_favorites (photo_id TEXT, user_id TEXT, created_at TEXT);
+            INSERT INTO photos (id,legacy_photo_id,media_type,title,original_filename,
+                taken_at,created_at,duration_seconds) VALUES
+                ('old',NULL,'image/jpeg','Old','old.jpg','2004-06-01','2026-09-07',NULL),
+                ('new',NULL,'image/jpeg','New','new.jpg','2021-07-15','2026-09-07',NULL),
+                ('none',NULL,'image/jpeg','None','none.jpg',NULL,'2026-09-07',NULL);
+            INSERT INTO photo_copies VALUES
+                ('old','nas','available','old/original.jpg',NULL),
+                ('new','nas','available','new/original.jpg',NULL),
+                ('none','nas','available','none/original.jpg',NULL);
+        """)
+
+    def tearDown(self):
+        self.db.close()
+
+    query = CatalogTests.query
+
+    def test_an_undated_photo_sorts_last_not_first(self):
+        rows = gallery(self.query, 'newest', 48)['photos']
+        self.assertEqual([r["photo_id"] for r in rows], ['new', 'old', 'none'])
+
+    def test_an_undated_photo_sorts_last_when_oldest_first_too(self):
+        rows = gallery(self.query, 'oldest', 48)['photos']
+        self.assertEqual([r["photo_id"] for r in rows], ['old', 'new', 'none'])
+
+    def test_an_undated_photo_reports_no_date_rather_than_the_import_date(self):
+        rows = {r["photo_id"]: r for r in gallery(self.query, 'newest', 48)['photos']}
+        self.assertIsNone(rows['none']['date_taken'])
+        self.assertEqual(rows['old']['date_taken'], '2004-06-01')
+
+    def test_the_year_scrubber_lists_no_year_for_an_undated_photo(self):
+        self.assertEqual(years(self.query),
+                         [{"year": 2021, "count": 1}, {"year": 2004, "count": 1}])
+
+    def test_a_date_range_does_not_match_a_photo_with_no_date(self):
+        rows = gallery(self.query, 'newest', 48,
+                       date_from='2004-01-01', date_to='2026-12-31')['photos']
+        self.assertEqual([r["photo_id"] for r in rows], ['new', 'old'])
+
+    def test_paging_still_reaches_the_undated_tail_exactly_once(self):
+        seen, cursor = [], None
+        while True:
+            page = gallery(self.query, 'newest', 1, cursor=cursor)
+            seen += [r["photo_id"] for r in page['photos']]
+            cursor = page['next_cursor']
+            if not cursor:
+                break
+        self.assertEqual(seen, ['new', 'old', 'none'])
 
 
 class ImageIdentityTests(unittest.TestCase):
