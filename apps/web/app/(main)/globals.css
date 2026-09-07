@@ -10492,3 +10492,217 @@ button.kx-avatar { cursor: pointer; }
   .kx-row-actions { margin-left: 0; }
   .kx-input.wide { width: 100%; }
 }
+
+/* ── Viewer ──────────────────────────────────────────────────────────────
+   The viewer keeps its existing component — zoom, pan, tagging and the admin
+   actions all live there — and takes the redesign as a skin. It renders
+   outside the shell (the provider sits above it), so these rules are scoped
+   on `body:has(.kx)` rather than inheriting the shell's tokens, and the
+   stage stays a dark room in both themes. Only the info rail follows the
+   theme, which is what `--panel` in the handoff asks for.
+   ────────────────────────────────────────────────────────────────────── */
+
+body:has(.kx) .lb-overlay {
+  --rail-bg: transparent;
+  --rail-ink: #f1f1ec;
+  --rail-ink-2: #cfd0c9;
+  --rail-ink-3: #9ba095;
+  --rail-line: rgba(241, 241, 236, .14);
+  --rail-fill: rgba(241, 241, 236, .11);
+  background: rgba(8, 9, 8, .94);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: kx-fade .2s ease both;
+}
+
+:root[data-theme="light"] body:has(.kx) .lb-overlay {
+  --rail-bg: #f6f5f1;
+  --rail-ink: #23281f;
+  --rail-ink-2: #454d40;
+  --rail-ink-3: #5d6457;
+  --rail-line: rgba(35, 40, 31, .16);
+  --rail-fill: rgba(35, 40, 31, .1);
+}
+
+body:has(.kx) .lb-main-image,
+body:has(.kx) .lb-main-video {
+  border-radius: 4px;
+  box-shadow: 0 40px 120px rgba(0, 0, 0, .6);
+}
+
+body:has(.kx) .lb-arrow {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(241, 241, 236, .14);
+  border-radius: 999px;
+  background: rgba(12, 14, 12, .6);
+  color: #f1f1ec;
+}
+
+body:has(.kx) .lb-arrow:hover {
+  background: rgba(241, 241, 236, .14);
+}
+
+body:has(.kx) .lb-info-panel {
+  width: 300px;
+  padding: 22px 22px 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  border-left: 1px solid rgba(241, 241, 236, .1);
+  background: var(--rail-bg);
+  color: var(--rail-ink);
+  overflow-y: auto;
+}
+
+.lb-info-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.lb-info-kind {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: #cc7f61;
+}
+
+.lb-info-title {
+  margin: 8px 0 0;
+  font-family: var(--display);
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--rail-ink);
+}
+
+.lb-info-close {
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--rail-line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--rail-ink-2);
+  cursor: pointer;
+}
+
+.lb-info-close:hover { background: var(--rail-fill); }
+
+.lb-info-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--rail-ink-3);
+}
+
+body:has(.kx) .lb-info-label {
+  margin: 0 0 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--rail-ink-3);
+}
+
+body:has(.kx) .lb-person-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px 5px 5px;
+  border: 1px solid var(--rail-line);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--rail-ink);
+}
+
+body:has(.kx) .lb-person-chip-img {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  object-fit: cover;
+}
+
+body:has(.kx) .lb-tag-chip {
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--rail-fill);
+  font-size: 12px;
+  color: var(--rail-ink-2);
+}
+
+.lb-info-footer {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.lb-info-share,
+.lb-info-fav {
+  flex: 1 1 auto;
+  min-height: 40px;
+  border-radius: 8px;
+  font-family: var(--body);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.lb-info-share {
+  border: 1px solid #cc7f61;
+  background: #cc7f61;
+  color: #14150f;
+  font-weight: 800;
+}
+
+.lb-info-fav {
+  border: 1px solid var(--rail-line);
+  background: transparent;
+  color: var(--rail-ink);
+  font-weight: 700;
+}
+
+.lb-info-fav:disabled { opacity: .55; cursor: default; }
+
+/* The rail runs the full height of the stage rather than floating inside it. */
+body:has(.kx) .lb-info-panel {
+  top: 0;
+  bottom: 0;
+}
+
+body:has(.kx) .lb-image-area { padding: 44px; }
+body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
+
+/* Below the drawer breakpoint the viewer goes single column and the rail
+   becomes a bottom sheet. */
+@media (max-width: 900px) {
+  body:has(.kx) .lb-info-panel {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    max-height: 46vh;
+    border-left: 0;
+    border-top: 1px solid rgba(241, 241, 236, .1);
+  }
+
+  body:has(.kx) .lb-image-area,
+  body:has(.kx) .lb-image-area-with-info {
+    padding: 70px 16px 48vh;
+  }
+}
