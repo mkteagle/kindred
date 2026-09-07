@@ -120,7 +120,7 @@ def main():
     args.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock = (args.state_dir / 'watchdog.lock').open('w')
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    previous, last_progress, last_recovery = None, time.monotonic(), 0.0
+    previous, last_progress, last_recovery = None, time.monotonic(), float('-inf')
     failures = 0
     while True:
         try:
