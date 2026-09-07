@@ -8,6 +8,7 @@ import { PlayIcon } from "@/components/kx/icons";
 import { useKxUi } from "@/components/kx/ui-state";
 import { useLibraryCounts, useStats } from "@/components/kx/use-library";
 import { KxEmptyLibrary, KxErrorBanner, KxSkeletonGrid } from "@/components/kx/states";
+import { KxSelectBar } from "@/components/kx/select-bar";
 import { formatDuration, groupByDay, thumbUrl, tileSpan, type LibraryPhoto } from "@/components/kx/photos";
 
 type Page = { photos: LibraryPhoto[]; next_cursor: string | null };
@@ -23,7 +24,7 @@ interface Marquee {
 }
 
 export default function LibraryPage() {
-  const { selecting, setSelecting, selected, setSelected, toggleSelected, exitSelect } = useKxUi();
+  const { selecting, setSelecting, selected, setSelected, toggleSelected } = useKxUi();
   const { openLightbox } = useLightbox();
   const { data: counts } = useLibraryCounts();
   const { data: stats } = useStats();
@@ -360,34 +361,8 @@ export default function LibraryPage() {
         </nav>
       </div>
 
-      {selecting && selected.size === 0 && (
-        <div className="kx-floatbar hint" role="status">
-          Click to gather · drag to sweep · Esc to stop
-        </div>
-      )}
+      <KxSelectBar />
 
-      {selected.size > 0 && (
-        <div className="kx-floatbar">
-          <span>
-            {fmt.format(selected.size)} {selected.size === 1 ? "photo" : "photos"} selected
-          </span>
-          {/* TODO: sharing a selection and adding it to an album both need
-              endpoints that take a photo id list — POST /shares and POST
-              /albums only take an album today. */}
-          <button className="kx-barbutton" disabled title="Sharing a selection is not wired up yet">
-            Share
-          </button>
-          <button className="kx-barbutton" disabled title="Adding a selection to an album is not wired up yet">
-            Add to album
-          </button>
-          <button className="kx-barbutton" onClick={() => setSelected(new Set())}>
-            Clear
-          </button>
-          <button className="kx-barbutton primary" onClick={exitSelect}>
-            Done
-          </button>
-        </div>
-      )}
     </main>
   );
 }

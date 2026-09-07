@@ -13,6 +13,8 @@ import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useUser } from "@/lib/use-user";
 import { BACKEND, fmt } from "@/lib/constants";
+import { useFavorites } from "@/components/kx/favorites";
+import { HeartIcon } from "@/components/kx/icons";
 
 /* ── Types ──────────────────────────────────────────────────────────── */
 
@@ -199,6 +201,8 @@ function PhotoLightboxOverlay({
   onGoTo: (idx: number) => void;
 }) {
   const { isAdmin } = useUser();
+  const { isFavorite, toggle: toggleFavorite } = useFavorites();
+  const favorited = isFavorite(photoId);
   const [infoOpen, setInfoOpen] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -828,10 +832,15 @@ function PhotoLightboxOverlay({
             <button className="lb-info-share" onClick={handleCopyLink}>
               {copySuccess ? "Link copied" : "Share"}
             </button>
-            {/* TODO: favourites need somewhere to live — there is no per-user
-                favourite endpoint on the backend yet. */}
-            <button className="lb-info-fav" disabled title="Favourites are not stored yet">
-              Favorite
+            {/* Per member, not per household: this is one person's shortlist
+                of their own library. */}
+            <button
+              className={`lb-info-fav ${favorited ? "is-on" : ""}`.trim()}
+              aria-pressed={favorited}
+              onClick={() => toggleFavorite(photoId)}
+            >
+              <HeartIcon filled={favorited} />
+              {favorited ? "Favorited" : "Favorite"}
             </button>
           </div>
         </aside>

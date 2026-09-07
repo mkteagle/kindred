@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { fmt } from "@/lib/constants";
 import { NavIcon } from "./icons";
+import { useFavorites } from "./favorites";
 import { useLatestSync, useLibraryCounts, useShareCount, useStats, relativeTime } from "./use-library";
 
 /** LIBRARY group — label, route, and where its count comes from. */
@@ -16,6 +17,7 @@ const LIBRARY_ROWS = [
   { href: "/timeline", label: "Timeline", count: null },
   { href: "/locations", label: "Locations", count: null },
   { href: "/shares", label: "Shared", count: "shares" as const },
+  { href: "/favorites", label: "Favorites", count: "favorites" as const },
 ];
 
 /**
@@ -74,6 +76,7 @@ export function KxSidebar({ open, onNavigate }: { open: boolean; onNavigate: () 
   const { data: counts } = useLibraryCounts();
   const { data: stats } = useStats();
   const { data: shares } = useShareCount();
+  const { count: favorites } = useFavorites();
 
   const countFor = (key: (typeof LIBRARY_ROWS)[number]["count"]): number | null => {
     switch (key) {
@@ -83,6 +86,8 @@ export function KxSidebar({ open, onNavigate }: { open: boolean; onNavigate: () 
         return counts?.videos ?? null;
       case "shares":
         return shares ?? null;
+      case "favorites":
+        return favorites;
       case "people":
       case "pets":
       case "vehicles":

@@ -10849,6 +10849,20 @@ body:has(.kx) .lb-tag-chip {
 
 .lb-info-fav:disabled { opacity: .55; cursor: default; }
 
+/* Favourited: the heart fills and the whole control takes the accent, so the
+   state is legible from the edge of vision rather than only in the glyph. */
+.lb-info-fav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.lb-info-fav.is-on {
+  border-color: #cc7f61;
+  color: #cc7f61;
+}
+
 /* The rail runs the full height of the stage rather than floating inside it. */
 body:has(.kx) .lb-info-panel {
   top: 0;
@@ -11053,6 +11067,57 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* ── Selection bar ───────────────────────────────────────────────────── */
+
+/* The album picker opens upward: the bar already sits 26px off the bottom of
+   the window, so downward has nowhere to go. */
+.kx-menu.above {
+  top: auto;
+  bottom: 44px;
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 220px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.kx-menu-note {
+  display: block;
+  padding: 8px 10px 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-4);
+}
+
+.kx-barbutton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Reaching the viewer to favourite one photo at a time is a phone's worst
+   path, so the batch action appears only where that path is worst. */
+.kx-barbutton.compact-only { display: none; }
+
+@media (max-width: 900px) {
+  .kx-barbutton.compact-only { display: inline-flex; }
+}
+
+/* ── Favourites ──────────────────────────────────────────────────────── */
+
+/* The accent heart on the hero tile of /favorites — one marker for the whole
+   screen, not a badge repeated ninety-six times. */
+.kx-tile-heart {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  pointer-events: none;
 }
 
 /* The sync card's link through to the states reference. */

@@ -5,6 +5,7 @@ import { useState, useEffect, useRef, Suspense } from "react";
 import { initPostHog } from "@/lib/posthog";
 import { LightboxProvider } from "@/components/photo-lightbox";
 import { ToastProvider } from "@/components/notifications";
+import { KxFavoritesProvider } from "@/components/kx/favorites";
 
 /**
  * Global 401 interceptor — when the backend returns 401 on any /api/* route
@@ -66,11 +67,15 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <Suspense fallback={null}>
-        <LightboxProvider>
-          <ToastProvider>{children}</ToastProvider>
-        </LightboxProvider>
-      </Suspense>
+      {/* Favourites sit above the lightbox: the viewer's heart and the
+          sidebar's count are the same per-member state. */}
+      <KxFavoritesProvider>
+        <Suspense fallback={null}>
+          <LightboxProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </LightboxProvider>
+        </Suspense>
+      </KxFavoritesProvider>
     </QueryClientProvider>
   );
 }
