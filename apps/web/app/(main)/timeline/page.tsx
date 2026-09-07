@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Spinner } from "@/components/ui";
+import { Spinner } from "@/components/ui";
 import type { TimelineResponse, TimelineMonth } from "@/types";
 import { BACKEND, fmt } from "@/lib/constants";
 import { useLightbox } from "@/components/photo-lightbox";
@@ -17,6 +17,7 @@ function formatMonth(monthStr: string): string {
 function MonthSection({ month }: { month: TimelineMonth }) {
   const PAGE_SIZE = 24;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
   const { openLightbox } = useLightbox();
   const visible = month.photos.slice(0, visibleCount);
   const remaining = Math.max(0, month.photos.length - visible.length);
@@ -24,6 +25,22 @@ function MonthSection({ month }: { month: TimelineMonth }) {
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
   }, [month.month]);
+
+  useEffect(() => {
+    const sentinel = loadMoreRef.current;
+    if (!sentinel || remaining === 0) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisibleCount((count) => Math.min(count + PAGE_SIZE, month.photos.length));
+        }
+      },
+      { rootMargin: "600px 0px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [month.photos.length, remaining]);
 
   const lbPhotos: LightboxPhoto[] = month.photos.map((p) => ({
     photo_id: p.photo_id,
@@ -42,15 +59,6 @@ function MonthSection({ month }: { month: TimelineMonth }) {
             {fmt.format(month.count)} photo{month.count !== 1 ? "s" : ""}
           </span>
         </div>
-        {remaining > 0 && (
-          <Button
-            small
-            variant="ghost"
-            onClick={() => setVisibleCount((count) => Math.min(count + PAGE_SIZE, month.photos.length))}
-          >
-            Load {fmt.format(Math.min(PAGE_SIZE, remaining))} more
-          </Button>
-        )}
       </div>
       <div className="clip-results-grid">
         {visible.map((photo) => (
@@ -75,13 +83,11 @@ function MonthSection({ month }: { month: TimelineMonth }) {
         ))}
       </div>
       {remaining > 0 && (
-        <Button
-          variant="ghost"
-          onClick={() => setVisibleCount((count) => Math.min(count + PAGE_SIZE, month.photos.length))}
-          style={{ marginTop: 10 }}
-        >
-          +{fmt.format(remaining)} more photo{remaining !== 1 ? "s" : ""}
-        </Button>
+        <div
+          ref={loadMoreRef}
+          aria-hidden="true"
+          style={{ height: 1, width: "100%" }}
+        />
       )}
     </section>
   );
