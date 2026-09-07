@@ -77,9 +77,12 @@ export function KxUserMenu({ user }: { user: User | null }) {
 
   if (!user) {
     return (
-      <Link href={`${API}/auth/flickr`} className="kx-button primary">
+      // A plain anchor, not next/link: this is an OAuth redirect, not a route.
+      // Link prefetches it, and prefetching mints a throwaway Flickr request
+      // token on every render the session has not resolved in yet.
+      <a href={`${API}/auth/flickr`} className="kx-button primary">
         Connect library
-      </Link>
+      </a>
     );
   }
 
