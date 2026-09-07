@@ -58,7 +58,8 @@ not the data migration itself.
 ## Checkpoint import and indexing worker
 
 The `library-worker` service runs independently from the API using the
-`kindred-api:recovery-54b251c` image. API recreation no longer terminates the
+same commit-tagged API image. The importer and indexer run concurrently, with
+a final indexing pass after import finishes. API recreation no longer terminates the
 import job. Both importer entry points share a nonblocking checkpoint lock;
 checkpoint writes use unique temporary files and atomic replacement.
 
@@ -121,6 +122,14 @@ the UGOS project's existing `docker-compose.yaml` path, so the native app agrees
 with the deployed configuration. No credentials are printed by verification.
 
 A push to GitHub does not itself deploy: run the deployment command after pushing.
-The NAS repository uses public HTTPS reads and does not require GitHub credentials.
+The NAS repository uses SSH with a repository-scoped, read-only GitHub deploy
+key belonging to the NAS `mkteagle` administrator. The private key stays at
+`/home/mkteagle/.ssh/kindred_github_ed25519`; the root-owned checkout configures
+its SSH command explicitly so `sudo` deployments use that key. GitHub access
+does not depend on the Mac's credentials.
+
+From the configured Mac, `ssh kindred-nas` logs in as `mkteagle` using the separate
+`~/.ssh/kindred_nas_ed25519` key. Run the `sudo` deployment command above after
+connecting; UGOS administrator privileges still require the account password.
 SSH must be enabled in UGOS while connecting; check its automatic shutdown timer
 if port 22 starts refusing connections again.
