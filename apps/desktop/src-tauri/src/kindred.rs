@@ -7,7 +7,9 @@ use crate::error::Result;
 
 #[derive(Deserialize, Debug)]
 pub struct UploadResponse {
-    pub photo_id: String,
+    pub photo_id: Option<String>,
+    pub kindred_photo_id: Option<String>,
+    pub nas_status: Option<String>,
 }
 
 #[derive(Deserialize, Debug, serde::Serialize)]
@@ -44,7 +46,7 @@ pub struct KindredClient {
 pub enum UploadError {
     #[error("auth failed ({0}) — check your API key")]
     Auth(String),
-    #[error("file too large for backend (50MB limit on /photos/upload)")]
+    #[error("file exceeds the configured backend original-file limit")]
     TooLarge,
     #[error("server error ({status}): {body}")]
     Server { status: u16, body: String },
@@ -70,7 +72,7 @@ impl UploadError {
 impl KindredClient {
     pub fn new(base_url: String, api_key: String) -> Result<Self> {
         let client = Client::builder()
-            .timeout(Duration::from_secs(300))
+            .timeout(Duration::from_secs(7200))
             .build()?;
         Ok(Self {
             client,
@@ -253,6 +255,11 @@ impl KindredClient {
             .json()
             .await
             .map_err(|e| UploadError::BadResponse(e.to_string()))?;
+        if body.photo_id.is_none()
+            && !(body.kindred_photo_id.is_some() && body.nas_status.as_deref() == Some("available"))
+        {
+            return Err(UploadError::BadResponse("No durable storage receipt".into()));
+        }
         Ok(body)
     }
 }

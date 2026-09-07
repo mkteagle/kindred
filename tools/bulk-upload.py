@@ -317,6 +317,48 @@ def scan_total_size(files: list[Path]) -> int:
 
 # ── Flickr Upload ────────────────────────────────────────────────────────────
 
+def queue_video_on_nas(file_path, meta, backend_url, backend_key, session):
+    """Stream the full original to Kindred; conversion runs in NAS workers."""
+    if not backend_url or not backend_key:
+        raise ValueError('Videos require --backend-url and --backend-key for durable NAS storage')
+    boundary = 'Kindred-' + uuid.uuid4().hex
+    fields = {'title': meta.title or file_path.stem, 'description': meta.description or ''}
+    if meta.date_taken:
+        fields['taken_at_unix'] = str(int(datetime.strptime(meta.date_taken, '%Y-%m-%d %H:%M:%S').timestamp()))
+    if meta.latitude is not None and meta.longitude is not None:
+        fields.update(latitude=str(meta.latitude), longitude=str(meta.longitude))
+    prefix = b''
+    for name, value in fields.items():
+        prefix += (f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n').encode()
+    filename = file_path.name.replace('"', '_').replace('\r', '_').replace('\n', '_')
+    prefix += (f'--{boundary}\r\nContent-Disposition: form-data; name="photo"; filename="{filename}"\r\n'
+               f'Content-Type: {CONTENT_TYPES.get(file_path.suffix.lower(), "application/octet-stream")}\r\n\r\n').encode()
+    suffix = f'\r\n--{boundary}--\r\n'.encode()
+    def body():
+        yield prefix
+        with file_path.open('rb') as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                yield chunk
+        yield suffix
+    total_length = len(prefix) + file_path.stat().st_size + len(suffix)
+    class MultipartStream:
+        def __len__(self):
+            return total_length
+
+        def __iter__(self):
+            return body()
+
+    response = session.post(backend_url.rstrip('/') + '/photos/upload?privacy=family&skip_processing=true',
+        data=MultipartStream(), headers={'X-API-Key': backend_key,
+            'Content-Type': f'multipart/form-data; boundary={boundary}',
+            'Content-Length': str(total_length)}, timeout=7200)
+    response.raise_for_status()
+    receipt = response.json()
+    if receipt.get('nas_status') != 'available' or not receipt.get('kindred_photo_id'):
+        raise ValueError('Backend did not return a durable NAS receipt')
+    return receipt
+
+
 def upload_to_flickr(
     file_path: Path,
     meta: PhotoMeta,
@@ -331,6 +373,8 @@ def upload_to_flickr(
     Uses OAuth 1.0a signing in the Authorization header and sends
     the file as multipart/form-data, matching the backend's approach.
     """
+    if file_path.suffix.lower() in VIDEO_EXTENSIONS:
+        raise ValueError('Video originals must be sent through the NAS queue')
     title = meta.title or file_path.stem
     description = meta.description or ""
 
@@ -478,20 +522,24 @@ def upload_single_file(
     last_error = None
     for attempt in range(MAX_RETRIES):
         try:
-            photo_id = upload_to_flickr(
-                file_path=file_path,
-                meta=meta,
-                consumer_key=consumer_key,
-                consumer_secret=consumer_secret,
-                oauth_token=oauth_token,
-                oauth_secret=oauth_secret,
-                session=session,
-            )
+            is_video = file_path.suffix.lower() in VIDEO_EXTENSIONS
+            if is_video:
+                photo_id = queue_video_on_nas(file_path, meta, backend_url, backend_key, session)
+            else:
+                photo_id = upload_to_flickr(
+                    file_path=file_path,
+                    meta=meta,
+                    consumer_key=consumer_key,
+                    consumer_secret=consumer_secret,
+                    oauth_token=oauth_token,
+                    oauth_secret=oauth_secret,
+                    session=session,
+                )
 
             progress.mark_uploaded(filepath_str, photo_id, file_size)
 
             # Notify backend (best effort — don't fail the upload if this errors)
-            if not skip_backend and backend_url and backend_key:
+            if not is_video and not skip_backend and backend_url and backend_key:
                 notify_backend(photo_id, backend_url, backend_key, session)
 
             # Rate limiting

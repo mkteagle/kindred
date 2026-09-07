@@ -13,7 +13,7 @@ _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
 VIDEO_EXTENSIONS = {'.mp4', '.mov', '.m4v', '.m4p', '.avi', '.wmv', '.mpeg',
-                    '.mpg', '.3gp', '.m2ts', '.ogg', '.ogv'}
+                    '.mpg', '.3gp', '.m2ts', '.ogg', '.ogv', '.mkv'}
 
 
 def managed_originals(root):

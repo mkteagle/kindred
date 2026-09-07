@@ -2504,7 +2504,7 @@ UPLOAD_ALLOWED_TYPES = {
     "video/mp4", "video/quicktime", "video/x-m4v",
     "video/x-msvideo", "video/x-ms-wmv",
     "video/mpeg", "video/3gpp", "video/mp2t",
-    "video/ogg",
+    "video/ogg", "video/x-matroska",
 }
 UPLOAD_ALLOWED_EXTENSIONS = {
     # Images (Flickr converts BMP/TIFF/WebP/HEIC/PSD to JPEG server-side)
@@ -2512,7 +2512,7 @@ UPLOAD_ALLOWED_EXTENSIONS = {
     ".webp", ".heic", ".heif", ".psd",
     # Videos
     ".mp4", ".mov", ".m4v", ".m4p", ".avi", ".wmv",
-    ".mpeg", ".mpg", ".3gp", ".m2ts", ".ogg", ".ogv",
+    ".mpeg", ".mpg", ".3gp", ".m2ts", ".ogg", ".ogv", ".mkv",
 }
 
 def _content_type_for_filename(filename: str) -> str:
@@ -2526,7 +2526,7 @@ def _content_type_for_filename(filename: str) -> str:
         ".tif": "image/tiff", ".tiff": "image/tiff",
         ".psd": "image/vnd.adobe.photoshop",
         # Videos
-        ".mp4": "video/mp4", ".mov": "video/quicktime",
+        ".mkv": "video/x-matroska", ".mp4": "video/mp4", ".mov": "video/quicktime",
         ".m4v": "video/x-m4v", ".m4p": "video/mp4",
         ".avi": "video/x-msvideo", ".wmv": "video/x-ms-wmv",
         ".mpeg": "video/mpeg", ".mpg": "video/mpeg",
@@ -2536,7 +2536,7 @@ def _content_type_for_filename(filename: str) -> str:
     return mapping.get(ext, "application/octet-stream")
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".m4p", ".avi", ".wmv",
-                    ".mpeg", ".mpg", ".3gp", ".m2ts", ".ogg", ".ogv"}
+                    ".mpeg", ".mpg", ".3gp", ".m2ts", ".ogg", ".ogv", ".mkv"}
 
 
 def _file_sha256(path: str) -> str:
@@ -2671,6 +2671,24 @@ def _store_nas_original(
         conn.close()
 
 
+def _queue_video(nas_copy, title, description, privacy, taken_at_unix=None,
+                 latitude=None, longitude=None):
+    import video_queue
+    source = LocalStorageProvider(PHOTO_STORAGE_ROOT).resolve_local_path(nas_copy['provider_key'])
+    if source is None:
+        raise RuntimeError('Video has no durable NAS original')
+    metadata = dict(title=title, description=description, taken_at_unix=taken_at_unix,
+                    latitude=latitude, longitude=longitude)
+    video_queue.enqueue(nas_copy['kindred_photo_id'], source, metadata, privacy)
+    _queue_flickr_replication(nas_copy['kindred_photo_id'])
+
+
+def _original_upload_limit(filename):
+    if PHOTO_STORAGE_ROOT and Path(filename).suffix.lower() in VIDEO_EXTENSIONS:
+        return int(os.environ.get('VIDEO_ORIGINAL_MAX_BYTES', str(64 * 1024**3)))
+    return UPLOAD_MAX_SIZE
+
+
 def _existing_flickr_copy(kindred_photo_id: str) -> str | None:
     rows = db_query(
         """
@@ -2755,6 +2773,8 @@ def _validate_upload_file(file: UploadFile) -> None:
     if not file.filename:
         raise HTTPException(400, "Filename is required")
     ext = os.path.splitext(file.filename)[1].lower()
+    if ext in VIDEO_EXTENSIONS and not PHOTO_STORAGE_ROOT:
+        raise HTTPException(503, 'Video uploads require durable NAS storage')
     if ext not in UPLOAD_ALLOWED_EXTENSIONS:
         raise HTTPException(400, f"Unsupported file type: {ext}. Allowed: {', '.join(sorted(UPLOAD_ALLOWED_EXTENSIONS))}")
 
@@ -2780,10 +2800,10 @@ def _validate_resumable_upload(body: ResumableUploadRequest) -> tuple[str, str, 
         raise HTTPException(400, "Unsupported content type")
     if body.byte_size <= 0:
         raise HTTPException(400, "File must not be empty")
-    if body.byte_size > UPLOAD_MAX_SIZE:
+    if body.byte_size > _original_upload_limit(filename):
         raise HTTPException(
             413,
-            f"File too large. Maximum size is {UPLOAD_MAX_SIZE // (1024 * 1024)}MB",
+            f"File too large. Maximum size is {_original_upload_limit(filename) // (1024 * 1024)}MB",
         )
     if body.latitude is not None and not -90 <= body.latitude <= 90:
         raise HTTPException(400, "Latitude must be between -90 and 90")
@@ -2839,6 +2859,10 @@ async def _upload_to_flickr(
     import urllib.parse
 
     ext = os.path.splitext(filename)[1].lower()
+    if ext in VIDEO_EXTENSIONS:
+        from video_mirror import validate_part
+        import asyncio
+        await asyncio.to_thread(validate_part, Path(file_path))
     converted_heic = False
 
     # Convert HEIC/HEIF to a temporary high-quality JPEG for Flickr while
@@ -3129,7 +3153,11 @@ async def _finalize_resumable_upload(upload_id: str, row: dict, creds: dict) -> 
             raise RuntimeError("NAS photo storage is not configured")
 
         photo_id = _existing_flickr_copy(nas_copy["kindred_photo_id"])
-        if not photo_id:
+        is_video = Path(row['original_filename']).suffix.lower() in VIDEO_EXTENSIONS
+        if not photo_id and is_video:
+            _queue_video(nas_copy, row['title'], row['description'], 'family',
+                         row['taken_at_unix'], row['latitude'], row['longitude'])
+        if not photo_id and not is_video:
             replication_job_id = _queue_flickr_replication(nas_copy["kindred_photo_id"])
             _set_replication_status(replication_job_id, "running")
             photo_id = await _upload_to_flickr(
@@ -3141,12 +3169,12 @@ async def _finalize_resumable_upload(upload_id: str, row: dict, creds: dict) -> 
             )
             _set_replication_status(replication_job_id, "done")
 
-        if row["taken_at_unix"]:
+        if photo_id and row["taken_at_unix"]:
             try:
                 await _flickr_set_dates(photo_id, int(row["taken_at_unix"]), creds)
             except Exception as exc:
                 print(f"[upload] setDates failed for photo {photo_id}: {exc}")
-        if row["latitude"] is not None and row["longitude"] is not None:
+        if photo_id and row["latitude"] is not None and row["longitude"] is not None:
             try:
                 await _flickr_set_location(
                     photo_id, float(row["latitude"]), float(row["longitude"]), creds
@@ -3341,11 +3369,11 @@ async def upload_photo(
             if not chunk:
                 break
             total += len(chunk)
-            if total > UPLOAD_MAX_SIZE:
+            if total > _original_upload_limit(filename):
                 tmp.close()
                 raise HTTPException(
                     413,
-                    f"File too large. Maximum size is {UPLOAD_MAX_SIZE // (1024*1024)}MB",
+                    f"File too large. Maximum size is {_original_upload_limit(filename) // (1024*1024)}MB",
                 )
             tmp.write(chunk)
         tmp.close()
@@ -3357,6 +3385,19 @@ async def upload_photo(
             description, taken_at_unix, latitude, longitude,
             client_upload_id,
         )
+        if nas_copy and Path(filename).suffix.lower() in VIDEO_EXTENSIONS:
+            photo_id = _existing_flickr_copy(nas_copy['kindred_photo_id'])
+            if not photo_id:
+                _queue_video(nas_copy, title, description, privacy, taken_at_unix, latitude, longitude)
+            album_result = None
+            if album:
+                album_result = await _add_photo_to_album_everywhere(
+                    album, nas_copy['kindred_photo_id'], photo_id, filename, creds, user.get('user_id'))
+            return dict(photo_id=photo_id, kindred_photo_id=nas_copy['kindred_photo_id'],
+                        status='ok', nas_status='available',
+                        flickr_status='available' if photo_id else 'pending',
+                        deduplicated=nas_copy['deduplicated'],
+                        album_id=str(album['id']) if album else None, album=album_result)
         replication_job_id = None
         photo_id = None
         if nas_copy:
@@ -3436,6 +3477,25 @@ async def upload_photo(
     }
 
 
+@app.get('/photos/{photo_id}/video-mirror')
+def get_video_mirror_status(photo_id: str, user=Depends(get_current_user)):
+    from video_queue import queue_root
+    try:
+        photo_id = str(uuid.UUID(photo_id))
+    except ValueError:
+        raise HTTPException(400, 'Invalid Kindred photo ID')
+    path = queue_root() / photo_id / 'job.json'
+    if not path.exists():
+        raise HTTPException(404, 'Video mirror is not queued')
+    job = json.loads(path.read_text())
+    manifest_path = path.with_name('manifest.json')
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {'parts': {}}
+    return dict(photo_id=photo_id, status=job['status'], phase=job.get('phase'),
+                error=job.get('error'), next_attempt=job.get('next_attempt'),
+                complete=job['status'] == 'done', parts=manifest['parts'],
+                owner_id=manifest.get('owner_id'), duration=manifest.get('duration'))
+
+
 @app.post("/photos/backup-status")
 def get_photo_backup_status(
     body: BackupStatusRequest,
@@ -3513,42 +3573,20 @@ async def upload_photos_batch(
     if not creds:
         raise HTTPException(500, "Flickr OAuth not configured — ask your household admin to connect Flickr")
 
-    # Read all file data upfront (UploadFile streams can't be read concurrently)
-    file_items = []
-    for i, photo_file in enumerate(photos):
+    results = []
+    for photo_file in photos:
         try:
-            _validate_upload_file(photo_file)
-            file_data = await photo_file.read()
-            if len(file_data) > UPLOAD_MAX_SIZE:
-                file_items.append({"filename": photo_file.filename or f"file_{i}", "error": "File too large"})
-            elif len(file_data) == 0:
-                file_items.append({"filename": photo_file.filename or f"file_{i}", "error": "Empty file"})
-            else:
-                filename = photo_file.filename or f"upload_{i}.jpg"
-                file_items.append({"filename": filename, "data": file_data, "title": title or os.path.splitext(filename)[0]})
-        except HTTPException as e:
-            file_items.append({"filename": photo_file.filename or f"file_{i}", "error": e.detail})
-        except Exception as e:
-            file_items.append({"filename": photo_file.filename or f"file_{i}", "error": str(e)})
-
-    async def upload_one(item: dict) -> dict:
-        if "error" in item:
-            return {"filename": item["filename"], "status": "error", "error": item["error"]}
-        try:
-            photo_id = await _upload_to_flickr(item["data"], item["filename"], item["title"], description, creds)
-            ext = os.path.splitext(item["filename"])[1].lower()
-            if ext not in (".mp4", ".mov"):
-                background_tasks.add_task(_process_uploaded_photo, photo_id)
-            return {"filename": item["filename"], "photo_id": photo_id, "status": "ok"}
-        except HTTPException as e:
-            return {"filename": item["filename"], "status": "error", "error": e.detail}
-        except Exception as e:
-            return {"filename": item["filename"], "status": "error", "error": str(e)}
-
-    import asyncio
-    results = await asyncio.gather(*[upload_one(item) for item in file_items])
-    ok_count = sum(1 for r in results if r["status"] == "ok")
-    return {"results": list(results), "uploaded": ok_count, "failed": len(photos) - ok_count}
+            result = await upload_photo(
+                background_tasks, request, photo=photo_file, title=title,
+                description=description, taken_at_unix=None, latitude=None,
+                longitude=None, client_upload_id=None, skip_processing=False,
+                privacy='family', album_id=None, user=user)
+            results.append(dict(result, filename=photo_file.filename))
+        except Exception as exc:
+            results.append(dict(filename=photo_file.filename, status='error',
+                                error=str(getattr(exc, 'detail', exc))))
+    ok_count = sum(r['status'] == 'ok' for r in results)
+    return {'results': results, 'uploaded': ok_count, 'failed': len(photos) - ok_count}
 
 
 async def _process_uploaded_photo(
@@ -4785,6 +4823,15 @@ async def _add_photo_to_album_everywhere(
             photoset_id, was_primary = await _ensure_flickr_photoset(album, flickr_photo_id, creds)
             if not was_primary:
                 await _add_photo_to_album(flickr_photo_id, photoset_id, creds)
+            if kindred_photo_id and PHOTO_STORAGE_ROOT:
+                from video_queue import queue_root
+                manifest_path = queue_root() / str(kindred_photo_id) / 'manifest.json'
+                if manifest_path.exists():
+                    manifest = json.loads(manifest_path.read_text())
+                    if manifest['complete']:
+                        for part in manifest['parts'].values():
+                            if part['flickr_id'] != flickr_photo_id:
+                                await _add_photo_to_album(part['flickr_id'], photoset_id, creds)
             result["flickr_linked"] = True
             result["flickr_photoset_id"] = photoset_id
             if kindred_photo_id:

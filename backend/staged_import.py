@@ -32,11 +32,11 @@ SUPPORTED_EXTENSIONS = {
     ".jpg", ".jpeg", ".jfif", ".png", ".gif", ".heic", ".heif",
     ".webp", ".bmp", ".tif", ".tiff", ".psd", ".mp4", ".mov",
     ".m4v", ".m4p", ".avi", ".wmv", ".mpeg", ".mpg", ".3gp",
-    ".m2ts", ".ogg", ".ogv",
+    ".m2ts", ".ogg", ".ogv", ".mkv",
 }
 VIDEO_EXTENSIONS = {
     ".mp4", ".mov", ".m4v", ".m4p", ".avi", ".wmv", ".mpeg",
-    ".mpg", ".3gp", ".m2ts", ".ogg", ".ogv",
+    ".mpg", ".3gp", ".m2ts", ".ogg", ".ogv", ".mkv",
 }
 
 
@@ -162,6 +162,12 @@ async def import_one(
 
     flickr_id = main._existing_flickr_copy(nas_copy["kindred_photo_id"])
     replication_job_id = None
+    if not flickr_id and mirror_flickr and source.suffix.lower() in VIDEO_EXTENSIONS:
+        main._queue_video(nas_copy, metadata['title'], metadata['description'], privacy,
+                          metadata['taken_at_unix'], metadata['latitude'], metadata['longitude'])
+        return {'kindred_photo_id': nas_copy['kindred_photo_id'], 'flickr_photo_id': None,
+                'flickr_status': 'queued', 'deduplicated': bool(nas_copy['deduplicated'])}
+
     if not flickr_id and mirror_flickr:
         credentials = main.get_flickr_credentials()
         if not credentials:

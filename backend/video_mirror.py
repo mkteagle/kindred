@@ -32,12 +32,26 @@ def part_plan(duration: float) -> list[tuple[float, float]]:
 
 
 def save(path: Path, value: dict):
-    with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as stream:
-        temporary = Path(stream.name)
-        json.dump(value, stream, indent=2)
-        stream.flush()
-        os.fsync(stream.fileno())
-    temporary.replace(path)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as stream:
+            temporary = Path(stream.name)
+            json.dump(value, stream, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(path)
+        sync_directory(path.parent)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def sync_directory(directory):
+    fd = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def convert(source: Path, destination: Path, start: float, duration: float):
@@ -53,13 +67,16 @@ def convert(source: Path, destination: Path, start: float, duration: float):
         '-bufsize', '20M', '-threads', '2', '-pix_fmt', 'yuv420p',
         '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', str(temporary)]
     try:
-        subprocess.run(command, check=True)
+        subprocess.run(command, check=True, timeout=86400)
         info = probe(temporary)
         if info['size'] > MAX_BYTES or info['duration'] >= 600:
             raise ValueError('Converted part exceeds Flickr size or playback limits')
         if abs(info['duration'] - duration) > 2:
             raise ValueError('Converted part duration differs from its source segment')
+        with temporary.open('rb') as output:
+            os.fsync(output.fileno())
         temporary.replace(destination)
+        sync_directory(destination.parent)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -121,46 +138,135 @@ async def verify_parts(main, manifest_path, manifest, creds, metadata):
         raise VideoProcessing('Flickr is still processing parts ' + ', '.join(pending))
 
 
-async def mirror(main, photo_id, source, title, description, creds, privacy, metadata=None):
-    """Resume numbered uploads and return a copy ID only after ALL parts exist."""
+class DerivativeInvalid(ValueError):
+    """A cached derivative needs regeneration before any network attempt."""
+
+
+class ReconciliationRequired(RuntimeError):
+    """An upload may have succeeded; require explicit remote receipt reconciliation."""
+
+
+def validate_part(path, expected_duration=None):
+    info = probe(path)
+    if info['size'] > MAX_BYTES or info['duration'] >= 600:
+        raise ValueError('Video exceeds Flickr size or playback limits')
+    if expected_duration is not None and abs(info['duration'] - expected_duration) > 2:
+        raise ValueError('Video duration differs from planned segment')
+    return info
+
+
+def manifest_path(photo_id):
+    from video_queue import queue_root
+    return queue_root() / str(photo_id) / 'manifest.json'
+
+
+def prepare(photo_id, source, expected_sha256=None):
+    """Prepare outputs under the caller's existing job.lock; retain legacy receipts."""
+    from hashlib import sha256
     source = Path(source)
-    info = await asyncio.to_thread(probe, source)
-    root = Path(os.environ.get('KINDRED_WORKER_DATA', '/app/data')) / 'video-mirrors' / str(photo_id)
-    root.mkdir(parents=True, exist_ok=True)
-    manifest_path = root / 'manifest.json'
+    path = manifest_path(photo_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
     fingerprint = {'size': source.stat().st_size, 'mtime_ns': source.stat().st_mtime_ns}
-    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {
+    manifest = json.loads(path.read_text()) if path.exists() else {
         'source': str(source), 'fingerprint': fingerprint, 'parts': {}, 'complete': False}
     if manifest['fingerprint'] != fingerprint:
-        raise ValueError('Original changed since video mirroring began; refusing to mix versions')
+        raise ValueError('Original changed since video mirroring began')
+    digest = sha256()
+    with source.open('rb') as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+            digest.update(chunk)
+    checksum = digest.hexdigest()
+    if expected_sha256 and expected_sha256 != checksum:
+        raise ValueError('NAS original checksum differs from catalog')
+    if manifest.get('sha256', checksum) != checksum:
+        raise ValueError('Original checksum changed')
+    manifest['sha256'] = checksum
+    info = probe(source)
     parts = part_plan(info['duration'])
-    manifest['complete'] = False
-    manifest['duration'] = info['duration']
-    manifest['part_count'] = len(parts)
-    save(manifest_path, manifest)
+    if manifest.get('part_count', len(parts)) != len(parts):
+        raise ValueError('Video part plan changed')
+    manifest.update(duration=info['duration'], part_count=len(parts))
+    # Legacy manifests have no in-flight intent marker. If conversion/upload had
+    # started for an unreceipted part, fail closed rather than duplicate a remote.
+    if path.exists() and 'version' not in manifest and not manifest.get('complete'):
+        for number in range(1, len(parts) + 1):
+            key = str(number)
+            if not manifest['parts'].get(key, {}).get('flickr_id') and (path.parent / f'part-{number:03d}.mp4').exists():
+                manifest['parts'].setdefault(key, {})['state'] = 'uncertain'
+    manifest['version'] = 2
+    save(path, manifest)
     for number, (start, duration) in enumerate(parts, 1):
-        key = str(number)
-        if manifest['parts'].get(key, {}).get('flickr_id'):
+        part = manifest['parts'].setdefault(str(number), {})
+        part.update(start=start, duration=duration)
+        if part.get('flickr_id'):
             continue
-        destination = root / f'part-{number:03d}.mp4'
+        if part.get('state') in ('uploading', 'uncertain'):
+            save(path, manifest)
+            raise ReconciliationRequired(f'Check Flickr for part {number} before retrying')
+        destination = path.parent / f'part-{number:03d}.mp4'
+        if destination.exists():
+            try:
+                validate_part(destination, duration)
+            except (ValueError, subprocess.SubprocessError, KeyError, StopIteration):
+                destination.unlink()
         if not destination.exists():
-            print(f'[video] {source.name}: converting part {number}/{len(parts)}', flush=True)
-            await asyncio.to_thread(convert, source, destination, start, duration)
-        converted = probe(destination)
-        if (converted['size'] > MAX_BYTES or converted['duration'] >= 600
-                or abs(converted['duration'] - duration) > 2):
-            raise ValueError('Cached video derivative exceeds Flickr limits')
-        part_title = title if len(parts) == 1 else f'{title} — Part {number} of {len(parts)}'
-        part_description = f'{description}\n\nKindred video copy: part {number}/{len(parts)}, '
-        part_description += f'source seconds {start:.3f}–{start + duration:.3f}. Full original retained on NAS.'
-        flickr_id = await main._upload_to_flickr(str(destination), destination.name,
-            part_title, part_description, creds, privacy=privacy)
-        manifest['parts'][key] = {'flickr_id': flickr_id, 'start': start, 'duration': duration,
-                                  'bytes': converted['size']}
-        save(manifest_path, manifest)
+            convert(source, destination, start, duration)
+        part.update(bytes=validate_part(destination, duration)['size'], state='ready')
+        save(path, manifest)
+    manifest['prepared'] = True
+    save(path, manifest)
+    return manifest
+
+
+async def upload_prepared(main, photo_id, title, description, creds, privacy, metadata=None):
+    path = manifest_path(photo_id)
+    manifest = json.loads(path.read_text())
+    owner = creds.get('user_id')
+    if not owner:
+        raise ValueError('Flickr destination account ID is required')
+    if manifest.get('owner_id', owner) != owner:
+        raise ValueError('Flickr account changed; refusing to mix destination accounts')
+    # Existing receipts from the previous worker had no account stamp. Bind only
+    # after the operator verifies the old receipt destination, never infer it.
+    if 'owner_id' not in manifest and any(p.get('flickr_id') for p in manifest['parts'].values()):
+        raise ReconciliationRequired('Verify the destination account for legacy Flickr receipts')
+    manifest['owner_id'] = owner
+    save(path, manifest)
+    count = manifest['part_count']
+    for number in range(1, count + 1):
+        part = manifest['parts'][str(number)]
+        if part.get('flickr_id'):
+            continue
+        if part.get('state') in ('uploading', 'uncertain'):
+            raise ReconciliationRequired(f'Check Flickr for part {number} before retrying')
+        destination = path.parent / f'part-{number:03d}.mp4'
+        try:
+            await asyncio.to_thread(validate_part, destination, part['duration'])
+        except (ValueError, OSError, subprocess.SubprocessError, KeyError, StopIteration) as exc:
+            raise DerivativeInvalid(str(exc)) from exc
+        part['state'] = 'uploading'
+        save(path, manifest)
+        try:
+            flickr_id = await main._upload_to_flickr(str(destination), destination.name,
+                f'{title} — Part {number} of {count}',
+                f'{description}\n\nKindred {photo_id}, part {number}/{count}; '
+                f"seconds {part['start']:.3f}–{part['start'] + part['duration']:.3f}. Full original on NAS.",
+                creds, privacy=privacy)
+        except Exception as exc:
+            part['state'] = 'uncertain'
+            save(path, manifest)
+            raise ReconciliationRequired(f'Upload outcome unknown for part {number}: {exc}') from exc
+        part.update(flickr_id=flickr_id, state='uploaded')
+        save(path, manifest)
         destination.unlink(missing_ok=True)
-        print(f'[video] {source.name}: uploaded part {number}/{len(parts)} as {flickr_id}', flush=True)
-    await verify_parts(main, manifest_path, manifest, creds, metadata or {})
-    manifest['complete'] = True
-    save(manifest_path, manifest)
+    manifest['complete'] = False
+    await verify_parts(main, path, manifest, creds, metadata or {})
+    manifest['complete'] = True  # All parts playable; queue also gates albums/SQL.
+    save(path, manifest)
     return manifest['parts']['1']['flickr_id']
+
+
+async def mirror(main, photo_id, source, title, description, creds, privacy, metadata=None):
+    """Compatibility entry point; production queue dispatches the two phases separately."""
+    await asyncio.to_thread(prepare, photo_id, source)
+    return await upload_prepared(main, photo_id, title, description, creds, privacy, metadata)

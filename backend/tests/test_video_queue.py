@@ -21,27 +21,34 @@ class VideoTests(unittest.TestCase):
             for (start, length), (next_start, _) in zip(parts, parts[1:]):
                 self.assertEqual(start + length, next_start)
 
-    def test_restart_uploads_only_missing_parts(self):
+    def test_restart_preserves_receipts_and_requires_ambiguous_part_reconciliation(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, KINDRED_WORKER_DATA=directory):
             source = Path(directory) / 'original.mov'
             source.write_bytes(b'original untouched')
+            photo_id = str(uuid.uuid4())
+            video_queue.enqueue(photo_id, source, {}, 'private')
             info = {'duration': 700, 'size': 18, 'codec': 'h264'}
-            part_info = {'duration': 540, 'size': 100, 'codec': 'h264'}
             def probe(path):
-                return info if path == source else dict(part_info, duration=160 if '002' in path.name else 540)
+                return info if path == source else dict(info, duration=160 if '002' in path.name else 540)
             def convert(source, destination, start, duration):
                 destination.write_bytes(b'derivative')
             main = Mock()
-            main._upload_to_flickr = AsyncMock(side_effect=['first', RuntimeError('network')])
+            main._upload_to_flickr = AsyncMock(side_effect=['101', RuntimeError('network')])
+            creds = {'user_id': 'owner'}
             with patch.object(video_mirror, 'probe', side_effect=probe), patch.object(video_mirror, 'convert', side_effect=convert), patch.object(video_mirror, 'remote_status', AsyncMock(return_value='ready')):
-                with self.assertRaises(RuntimeError):
-                    asyncio.run(video_mirror.mirror(main, 'test', source, 'title', '', {}, 'private'))
-                manifest = json.loads((Path(directory) / 'video-mirrors/test/manifest.json').read_text())
+                with self.assertRaises(video_mirror.ReconciliationRequired):
+                    asyncio.run(video_mirror.mirror(main, photo_id, source, 'title', '', creds, 'private'))
+                path = video_mirror.manifest_path(photo_id)
+                manifest = json.loads(path.read_text())
                 self.assertFalse(manifest['complete'])
-                self.assertEqual(manifest['parts']['1']['flickr_id'], 'first')
-                main._upload_to_flickr = AsyncMock(return_value='second')
-                result = asyncio.run(video_mirror.mirror(main, 'test', source, 'title', '', {}, 'private'))
-                self.assertEqual(result, 'first')
+                self.assertEqual(manifest['parts']['1']['flickr_id'], '101')
+                main._upload_to_flickr = AsyncMock(return_value='102')
+                with self.assertRaises(video_mirror.ReconciliationRequired):
+                    asyncio.run(video_mirror.mirror(main, photo_id, source, 'title', '', creds, 'private'))
+                main._upload_to_flickr.assert_not_called()
+                video_queue.reconcile_part(photo_id, 2, confirmed_absent=True)
+                result = asyncio.run(video_mirror.mirror(main, photo_id, source, 'title', '', creds, 'private'))
+                self.assertEqual(result, '101')
                 main._upload_to_flickr.assert_awaited_once()
                 self.assertEqual(source.read_bytes(), b'original untouched')
 
@@ -53,7 +60,7 @@ class VideoTests(unittest.TestCase):
             main = Mock()
             main._existing_flickr_copy.return_value = None
             main.get_flickr_credentials.return_value = {'user_id': 'u'}
-            with patch.object(video_mirror, 'mirror', AsyncMock(side_effect=RuntimeError('bad video'))):
+            with patch.object(video_queue, 'durable_source', side_effect=RuntimeError('bad video')):
                 asyncio.run(video_queue.process(main, path))
             main._record_flickr_copy.assert_not_called()
             job = json.loads(path.read_text())
@@ -127,7 +134,10 @@ class VideoTests(unittest.TestCase):
                 main = Mock()
                 main._existing_flickr_copy.return_value = None
                 main.get_flickr_credentials.return_value = {'user_id': 'owner'}
-                with patch.object(video_mirror, 'mirror', AsyncMock(side_effect=exception)):
+                job = json.loads(path.read_text())
+                job['phase'] = 'upload'
+                video_mirror.save(path, job)
+                with patch.object(video_mirror, 'upload_prepared', AsyncMock(side_effect=exception)):
                     asyncio.run(video_queue.process(main, path))
                 self.assertEqual(json.loads(path.read_text())['status'], expected)
                 main._record_flickr_copy.assert_not_called()

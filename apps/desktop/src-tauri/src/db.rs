@@ -41,6 +41,7 @@ CREATE INDEX IF NOT EXISTS idx_files_sidecar_null ON files(id) WHERE sidecar_pat
 const MIGRATIONS: &[&str] = &[
     "ALTER TABLE files ADD COLUMN target_album_id TEXT",
     "ALTER TABLE files ADD COLUMN sidecar_path TEXT",
+    "ALTER TABLE files ADD COLUMN kindred_photo_id TEXT",
 ];
 
 pub struct Db {
@@ -180,13 +181,13 @@ impl Db {
             .map_err(Into::into)
     }
 
-    pub fn mark_done(&self, id: i64, flickr_photo_id: &str) -> Result<()> {
+    pub fn mark_done(&self, id: i64, flickr_photo_id: Option<&str>, kindred_photo_id: Option<&str>) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "UPDATE files
-             SET status='done', flickr_photo_id=?, completed_at=unixepoch(), error=NULL
+             SET status='done', flickr_photo_id=?, kindred_photo_id=?, completed_at=unixepoch(), error=NULL
              WHERE id=?",
-            params![flickr_photo_id, id],
+            params![flickr_photo_id, kindred_photo_id, id],
         )?;
         Ok(())
     }

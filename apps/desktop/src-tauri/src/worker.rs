@@ -128,7 +128,7 @@ async fn upload_one(
 
     match client.upload_file(&path, pending.target_album_id.as_deref(), meta.as_ref()).await {
         Ok(resp) => {
-            let _ = db.mark_done(pending.id, &resp.photo_id);
+            let _ = db.mark_done(pending.id, resp.photo_id.as_deref(), resp.kindred_photo_id.as_deref());
             state
                 .bytes_uploaded_session
                 .fetch_add(pending.size_bytes as u64, Ordering::SeqCst);
@@ -138,7 +138,7 @@ async fn upload_one(
                     kind: "ok".into(),
                     file_id: pending.id,
                     path: pending.path,
-                    photo_id: Some(resp.photo_id),
+                    photo_id: resp.photo_id,
                     error: None,
                 },
             );
