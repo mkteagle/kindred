@@ -12,7 +12,7 @@ from unittest.mock import Mock
 
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
-from library_api import counts, gallery
+from library_api import counts, gallery, years
 
 
 class CatalogTests(unittest.TestCase):
@@ -30,10 +30,10 @@ class CatalogTests(unittest.TestCase):
             CREATE TABLE processed_photos (photo_id TEXT);
             INSERT INTO photos (id,legacy_photo_id,media_type,title,original_filename,
                 taken_at,created_at,duration_seconds) VALUES
-                ('a',NULL,'image/heic','A','a.heic','2020','2024',NULL),
-                ('b',NULL,'image/jpeg','B','b.jpg','2021','2024',NULL),
-                ('c',NULL,'video/mp4','C','c.mp4','2022','2024',12.5),
-                ('d',NULL,'image/jpeg','D','d.jpg','2023','2024',NULL);
+                ('a',NULL,'image/heic','A','a.heic','2020-05-01','2024-01-01',NULL),
+                ('b',NULL,'image/jpeg','B','b.jpg','2021-07-15','2024-01-01',NULL),
+                ('c',NULL,'video/mp4','C','c.mp4','2022-03-02','2024-01-01',12.5),
+                ('d',NULL,'image/jpeg','D','d.jpg','2023-01-01','2024-01-01',NULL);
             INSERT INTO photo_copies VALUES
                 ('a','nas','available','a/original.heic',NULL),
                 ('b','nas','available','b/original.jpg',NULL),
@@ -47,7 +47,11 @@ class CatalogTests(unittest.TestCase):
 
     def query(self, sql, params=()):
         # SQLite supports the relational query and FILTER; adapt parameter/cast syntax.
-        sql = sql.replace('p.id::text', 'CAST(p.id AS TEXT)').replace('%s', '?')
+        sql = (sql.replace('p.id::text', 'CAST(p.id AS TEXT)')
+                  .replace('EXTRACT(YEAR FROM COALESCE(p.taken_at,p.created_at))::int',
+                           "CAST(substr(COALESCE(p.taken_at,p.created_at),1,4) AS INTEGER)")
+                  .replace("(%s::date + 1)", "date(%s,'+1 day')")
+                  .replace('%s', '?'))
         return [dict(row) for row in self.db.execute(sql, params)]
 
     def test_counts_do_not_double_count_mirrors_or_require_flickr_for_indexing(self):
@@ -95,6 +99,26 @@ class CatalogTests(unittest.TestCase):
             gallery(self.query, 'newest', 48, media='videos; DROP TABLE photos')
         with self.assertRaises(HTTPException):
             gallery(self.query, 'newest', 48, cursor='not-a-cursor')
+
+    def test_years_covers_the_whole_library_not_just_a_page(self):
+        # The scrubber needs the full span before anything is scrolled.
+        self.assertEqual(years(self.query), [
+            {"year": 2022, "count": 1}, {"year": 2021, "count": 1}, {"year": 2020, "count": 1},
+        ])
+
+    def test_years_respects_the_media_facet(self):
+        self.assertEqual(years(self.query, media="video"), [{"year": 2022, "count": 1}])
+
+    def test_a_date_range_narrows_the_gallery(self):
+        rows = gallery(self.query, 'newest', 48, date_from='2021-01-01', date_to='2021-12-31')['photos']
+        self.assertEqual([r["photo_id"] for r in rows], ["b"])
+
+    def test_min_duration_selects_only_long_enough_videos(self):
+        self.assertEqual(
+            [r["photo_id"] for r in gallery(self.query, 'newest', 48, media='video',
+                                            min_duration=10)['photos']], ["c"])
+        self.assertEqual(
+            gallery(self.query, 'newest', 48, media='video', min_duration=60)['photos'], [])
 
     def test_gallery_parameterizes_every_value_for_psycopg(self):
         query = Mock(return_value=[])

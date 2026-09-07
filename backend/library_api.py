@@ -25,6 +25,46 @@ SORTS = {
 MEDIA = {"all": None, "photo": "photo", "video": "video"}
 
 
+def facet_clauses(media, date_from=None, date_to=None, min_duration=None):
+    """Filters the gallery understands beyond its media kind.
+
+    The video screen's "this year" and "over a minute" chips need these: a
+    client-side filter over the current page would silently hide matches that
+    simply had not been scrolled to yet.
+    """
+    sql, params = media_clause(media)
+    clauses = [sql]
+    if date_from:
+        clauses.append("COALESCE(p.taken_at,p.created_at) >= %s")
+        params.append(date_from)
+    if date_to:
+        clauses.append("COALESCE(p.taken_at,p.created_at) < (%s::date + 1)")
+        params.append(date_to)
+    if min_duration is not None:
+        clauses.append("p.duration_seconds >= %s")
+        params.append(float(min_duration))
+    return " AND ".join(clauses), params
+
+
+def years(query, media="all"):
+    """Every year the library covers, newest first, with a count each.
+
+    The year scrubber needs the whole span up front; deriving it from the pages
+    fetched so far would show a list that grows as you scroll, which is exactly
+    the thing a scrubber exists to avoid.
+    """
+    kind_sql, params = media_clause(media)
+    rows = query(
+        f"""SELECT EXTRACT(YEAR FROM COALESCE(p.taken_at,p.created_at))::int AS year,
+                   count(*) AS count
+            {JOINS} WHERE {AVAILABLE} AND {kind_sql}
+              AND COALESCE(p.taken_at,p.created_at) IS NOT NULL
+            GROUP BY 1 ORDER BY 1 DESC""",
+        tuple(params),
+    )
+    return [{"year": int(row["year"]), "count": int(row["count"])} for row in rows]
+
+
 def media_clause(media):
     """Return (sql, params) restricting to one media kind."""
     if media not in MEDIA:
@@ -61,7 +101,8 @@ def counts(query):
     return row
 
 
-def gallery(query, sort, limit, media="all", cursor=None):
+def gallery(query, sort, limit, media="all", cursor=None,
+            date_from=None, date_to=None, min_duration=None):
     """One page of the catalog, ordered by `sort` and filtered by `media`.
 
     Pages by keyset rather than OFFSET: the cursor carries the last row's sort
@@ -71,7 +112,7 @@ def gallery(query, sort, limit, media="all", cursor=None):
     if sort not in SORTS:
         raise HTTPException(400, 'Unsupported gallery sort')
     order_expr, direction = SORTS[sort]
-    kind_sql, params = media_clause(media)
+    kind_sql, params = facet_clauses(media, date_from, date_to, min_duration)
 
     keyset = "TRUE"
     if cursor:

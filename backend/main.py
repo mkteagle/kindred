@@ -507,6 +507,10 @@ class ShareUnlockRequest(BaseModel):
     password: str | None = None
 
 
+class AlbumAddPhotosRequest(BaseModel):
+    photo_ids: list[str]
+
+
 class AlbumCreateRequest(BaseModel):
     name: str
     description: str = ""
@@ -5071,6 +5075,61 @@ async def create_album(body: AlbumCreateRequest, user=Depends(get_current_user))
     return _album_response(rows[0], 0)
 
 
+@app.post("/albums/{reference}/photos")
+async def add_photos_to_album(reference: str, body: AlbumAddPhotosRequest,
+                              user=Depends(get_current_user)):
+    """Add photos to an album, as the library's selection bar does.
+
+    Each photo is projected onto the NAS symlink tree and the Flickr photoset
+    exactly as an upload would be, so an album filled this way is
+    indistinguishable from one filled at upload time. Per-photo failures are
+    reported rather than aborting the batch — a partial success is more useful
+    than losing forty additions to one bad row.
+    """
+    album = _resolve_album(reference)
+    if not album:
+        raise HTTPException(404, "Album not found")
+    if not body.photo_ids:
+        raise HTTPException(400, "No photos given")
+    if len(body.photo_ids) > 500:
+        raise HTTPException(400, "Too many photos in one request (maximum 500)")
+
+    creds = get_flickr_credentials()
+    added, failed = [], []
+    for raw_id in body.photo_ids:
+        try:
+            photo_id = str(uuid.UUID(str(raw_id)))
+        except ValueError:
+            failed.append({"photo_id": str(raw_id), "error": "Not a photo id"})
+            continue
+        rows = db_query(
+            """
+            SELECT p.original_filename, f.provider_key AS flickr_photo_id
+            FROM photos p
+            LEFT JOIN photo_copies f
+                   ON f.photo_id = p.id AND f.provider = 'flickr' AND f.status = 'available'
+            WHERE p.id = %s
+            """,
+            (photo_id,),
+        )
+        if not rows:
+            failed.append({"photo_id": photo_id, "error": "Photo not found"})
+            continue
+        row = rows[0]
+        try:
+            result = await _add_photo_to_album_everywhere(
+                album, photo_id, row.get("flickr_photo_id"),
+                row.get("original_filename") or "photo", creds or {},
+                user.get("user_id"),
+            )
+            added.append({"photo_id": photo_id, **result})
+        except Exception as exc:
+            failed.append({"photo_id": photo_id, "error": str(exc)[:300]})
+
+    return {"album_id": str(album["id"]), "added": len(added),
+            "failed": failed, "results": added}
+
+
 @app.get("/albums/{reference}")
 async def get_album(reference: str, user=Depends(get_current_user)):
     album = _resolve_album(reference)
@@ -5892,9 +5951,25 @@ def get_library_counts(user=Depends(get_current_user)):
 def get_library_photos(sort: str = "newest",
                        media: str = Query("all", description="all, photo, or video"),
                        cursor: str | None = Query(None, description="next_cursor from the previous page"),
+                       date_from: str | None = Query(None, description="ISO date, inclusive"),
+                       date_to: str | None = Query(None, description="ISO date, inclusive"),
+                       min_duration: float | None = Query(None, ge=0, description="Seconds; videos only"),
                        limit: int = Query(48, ge=1, le=100), user=Depends(get_current_user)):
     from library_api import gallery
-    return gallery(db_query, sort, limit, media=media, cursor=cursor)
+    return gallery(db_query, sort, limit, media=media, cursor=cursor,
+                   date_from=date_from, date_to=date_to, min_duration=min_duration)
+
+
+@app.get("/library/years")
+def get_library_years(media: str = Query("all", description="all, photo, or video"),
+                      user=Depends(get_current_user)):
+    """Every year the library covers, for the year scrubber.
+
+    Returned whole rather than derived from the pages fetched so far, so the
+    scrubber can show the full span before anything has been scrolled.
+    """
+    from library_api import years
+    return {"years": years(db_query, media=media)}
 
 
 @app.get("/timeline")

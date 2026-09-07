@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "accounts": [
+    {"account_key": "michael-icloud", "person_key": "michael", "provider": "icloud", "export_root": "/data/photos/imports/cloud/michael/icloud"},
+    {"account_key": "wife-icloud", "person_key": "wife", "provider": "icloud", "export_root": "/data/photos/imports/cloud/wife/icloud"},
+    {"account_key": "michael-google", "person_key": "michael", "provider": "google_photos", "export_root": "/data/photos/imports/cloud/michael/google"},
+    {"account_key": "wife-google", "person_key": "wife", "provider": "google_photos", "export_root": "/data/photos/imports/cloud/wife/google"}
+  ]
+}
