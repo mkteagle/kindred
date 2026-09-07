@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BACKEND } from "@/lib/constants";
+import { BACKEND, fmt } from "@/lib/constants";
+import { KxEmpty, KxErrorBanner, KxSkeletonRows } from "@/components/kx/states";
 
 interface Album {
   id: string | null;
@@ -32,31 +33,53 @@ const EXPIRY_CHOICES = [
   { value: "365", label: "1 year" },
 ];
 
+/** Live, public and expired are three different amounts of exposure. */
+function statusOf(share: Share): { pill: string; label: string } {
+  if (share.expires_at && new Date(share.expires_at).getTime() < Date.now()) {
+    return { pill: "expired", label: "Expired" };
+  }
+  if (!share.password_protected) return { pill: "public", label: "Public" };
+  return { pill: "live", label: "Live" };
+}
+
+/** "expires in 6 days", "no expiry", "expired". */
+function expiryLine(share: Share): string {
+  if (!share.expires_at) return "no expiry";
+  const days = Math.ceil((new Date(share.expires_at).getTime() - Date.now()) / 86_400_000);
+  if (days < 0) return "expired";
+  if (days === 0) return "expires today";
+  return `expires in ${fmt.format(days)} ${days === 1 ? "day" : "days"}`;
+}
+
 export default function SharesPage() {
   const queryClient = useQueryClient();
+  const [making, setMaking] = useState(false);
   const [albumId, setAlbumId] = useState("");
   const [password, setPassword] = useState("");
   const [allowDownload, setAllowDownload] = useState(false);
   const [expiresInDays, setExpiresInDays] = useState("");
   const [freshLink, setFreshLink] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
 
   const { data: albums } = useQuery<Album[]>({
-    queryKey: ["albums"],
+    queryKey: ["kx-albums"],
     queryFn: async () => {
       const response = await fetch(`${BACKEND}/albums`);
       if (!response.ok) return [];
-      return (await response.json()).albums ?? [];
+      const data: { albums?: Album[] } = await response.json();
+      return data.albums ?? [];
     },
+    enabled: making,
   });
 
-  const { data: shares, isPending } = useQuery<Share[]>({
-    queryKey: ["shares"],
+  const { data: shares, error, isPending, refetch } = useQuery<Share[]>({
+    queryKey: ["kx-shares"],
     queryFn: async () => {
       const response = await fetch(`${BACKEND}/shares`);
-      if (!response.ok) throw new Error("Your shares could not be loaded.");
-      return (await response.json()).shares ?? [];
+      if (!response.ok) throw new Error("Your links could not be loaded.");
+      const data: { shares?: Share[] } = await response.json();
+      return data.shares ?? [];
     },
   });
 
@@ -74,148 +97,206 @@ export default function SharesPage() {
         }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || "Could not create the link");
+      if (!response.ok) throw new Error(data.detail || "That link could not be made.");
       return data as Share & { url: string };
     },
     onSuccess: (data) => {
-      // The token is shown exactly once — it is only stored hashed.
+      // The token is shown once — the server only keeps a hash of it.
       setFreshLink(data.url);
-      setError(null);
+      setProblem(null);
       setPassword("");
-      void queryClient.invalidateQueries({ queryKey: ["shares"] });
+      setMaking(false);
+      void queryClient.invalidateQueries({ queryKey: ["kx-shares"] });
+      void queryClient.invalidateQueries({ queryKey: ["share-count"] });
     },
-    onError: (err: Error) => setError(err.message),
+    onError: (err: Error) => setProblem(err.message),
   });
 
   const revoke = useMutation({
     mutationFn: async (id: string) => {
       const response = await fetch(`${BACKEND}/shares/${id}`, { method: "DELETE" });
-      if (!response.ok) throw new Error("Could not revoke that link");
+      if (!response.ok) throw new Error("That link could not be revoked.");
     },
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["shares"] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["kx-shares"] });
+      void queryClient.invalidateQueries({ queryKey: ["share-count"] });
+    },
   });
 
-  async function copyLink(url: string) {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false);
-    }
-  }
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(null), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  const rows = shares ?? [];
 
   return (
-    <div className="app-shell">
-      <main className="page">
-        <div className="content-head">
-          <div>
-            <h2>Shared links</h2>
-            <p>
-              Anyone with a link can see what it points at — and nothing else. Revoke
-              one and it stops working immediately.
-            </p>
+    <main className="kx-page" style={{ maxWidth: 1000 }}>
+      <span className="kx-eyebrow">Shared</span>
+      <h1 className="kx-title">What has left the house.</h1>
+      <p className="kx-lede">
+        Every link you have handed out, what it points at, and how to take it back.
+      </p>
+
+      {problem && <KxErrorBanner title="That did not work" detail={problem} />}
+
+      {freshLink && (
+        <div className="kx-banner" role="status" style={{ marginBottom: 16 }}>
+          <span className="kx-banner-copy">
+            <strong>Copy this now.</strong>
+            <span className="kx-mono">
+              The link is only shown once — Kindred stores it hashed, so it cannot be shown again.
+            </span>
+          </span>
+          <button
+            className="kx-button primary"
+            onClick={() => {
+              void navigator.clipboard.writeText(freshLink).then(() => setCopied("fresh"));
+            }}
+          >
+            {copied === "fresh" ? "Copied" : "Copy link"}
+          </button>
+        </div>
+      )}
+
+      <section className="kx-card">
+        <div className="kx-cardhead">
+          <h2>Active links</h2>
+          <span className="kx-mono">{fmt.format(rows.length)}</span>
+          <div className="kx-cardhead-actions">
+            <button className="kx-button primary" onClick={() => setMaking((open) => !open)}>
+              New share
+            </button>
           </div>
         </div>
 
-        <section className="share-create">
-          <h3>Share an album</h3>
-          <div className="share-create-row">
-            <label className="facet-field">
-              <span>Album</span>
-              <select value={albumId} onChange={(e) => setAlbumId(e.target.value)}>
+        {making && (
+          <div className="kx-row" style={{ flexWrap: "wrap", gap: 12 }}>
+            <label className="kx-mono">
+              Album{" "}
+              <select
+                className="kx-select"
+                value={albumId}
+                onChange={(event) => setAlbumId(event.target.value)}
+              >
                 <option value="">Choose an album…</option>
-                {(albums ?? []).map((album) => (
-                  <option key={album.id ?? album.name} value={album.id ?? ""}>
-                    {album.name} ({album.photo_count})
+                {(albums ?? [])
+                  .filter((album) => album.id)
+                  .map((album) => (
+                    <option key={album.id} value={album.id as string}>
+                      {album.name} ({fmt.format(album.photo_count)})
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label className="kx-mono">
+              Expires{" "}
+              <select
+                className="kx-select"
+                value={expiresInDays}
+                onChange={(event) => setExpiresInDays(event.target.value)}
+              >
+                {EXPIRY_CHOICES.map((choice) => (
+                  <option key={choice.value} value={choice.value}>
+                    {choice.label}
                   </option>
                 ))}
               </select>
             </label>
-
-            <label className="facet-field">
-              <span>Expires</span>
-              <select value={expiresInDays} onChange={(e) => setExpiresInDays(e.target.value)}>
-                {EXPIRY_CHOICES.map((choice) => (
-                  <option key={choice.value} value={choice.value}>{choice.label}</option>
-                ))}
-              </select>
+            <label className="kx-mono">
+              Password{" "}
+              <input
+                className="kx-input"
+                type="text"
+                value={password}
+                placeholder="No password"
+                onChange={(event) => setPassword(event.target.value)}
+              />
             </label>
-
-            <label className="facet-field">
-              <span>Password (optional)</span>
-              <input type="text" value={password} placeholder="No password"
-                onChange={(e) => setPassword(e.target.value)} />
-            </label>
-
-            <label className="share-checkbox">
-              <input type="checkbox" checked={allowDownload}
-                onChange={(e) => setAllowDownload(e.target.checked)} />
+            <label className="kx-mono">
+              <input
+                type="checkbox"
+                checked={allowDownload}
+                onChange={(event) => setAllowDownload(event.target.checked)}
+              />{" "}
               Allow downloading originals
             </label>
-
-            <button className="button primary" disabled={!albumId || create.isPending}
-              onClick={() => create.mutate()}>
-              {create.isPending ? "Creating…" : "Create link"}
-            </button>
-          </div>
-
-          {error && <p className="share-error" role="alert">{error}</p>}
-
-          {freshLink && (
-            <div className="share-fresh" role="status">
-              <p><strong>Copy this now.</strong> The link is only shown once — Kindred
-                stores it hashed, so it cannot be shown again.</p>
-              <div className="share-fresh-row">
-                <input readOnly value={freshLink} onFocus={(e) => e.currentTarget.select()} />
-                <button className="button small" onClick={() => void copyLink(freshLink)}>
-                  {copied ? "Copied" : "Copy"}
-                </button>
-              </div>
+            <div className="kx-row-actions">
+              <button
+                className="kx-button primary"
+                disabled={!albumId || create.isPending}
+                onClick={() => create.mutate()}
+              >
+                {create.isPending ? "Making…" : "Make the link"}
+              </button>
+              <button className="kx-button" onClick={() => setMaking(false)}>
+                Cancel
+              </button>
             </div>
-          )}
-        </section>
-
-        {isPending && <p role="status">Loading shared links…</p>}
-
-        {!isPending && (shares ?? []).length === 0 && (
-          <p>Nothing is shared right now.</p>
+          </div>
         )}
 
-        {(shares ?? []).length > 0 && (
-          <table className="share-table">
-            <thead>
-              <tr>
-                <th>What</th><th>Settings</th><th>Views</th><th>Expires</th><th />
-              </tr>
-            </thead>
-            <tbody>
-              {(shares ?? []).map((share) => (
-                <tr key={share.id}>
-                  <td>{share.title || share.album_name || share.subject_type}</td>
-                  <td>
-                    {share.password_protected ? "Password" : "Open link"}
-                    {share.allow_download && " · downloads on"}
-                  </td>
-                  <td>{share.view_count}</td>
-                  <td>
-                    {share.expires_at
-                      ? new Date(share.expires_at).toLocaleDateString()
-                      : "Never"}
-                  </td>
-                  <td>
-                    <button className="button small ghost"
-                      onClick={() => revoke.mutate(share.id)}
-                      disabled={revoke.isPending}>
-                      Revoke
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {error && <KxErrorBanner detail={(error as Error).message} onRetry={() => void refetch()} />}
+        {!error && isPending && (
+          <div style={{ padding: 16 }}>
+            <KxSkeletonRows count={3} height={46} />
+          </div>
         )}
-      </main>
-    </div>
+        {!error && !isPending && rows.length === 0 && (
+          <div style={{ padding: 16 }}>
+            <KxEmpty
+              title="Nothing has left the house."
+              body="Share an album and the link will appear here, with a way to take it back."
+            />
+          </div>
+        )}
+
+        {rows.map((share) => {
+          const status = statusOf(share);
+          return (
+            <div className="kx-sharerow" key={share.id}>
+              {/* TODO: the design leads each row with a 46px thumb of what the
+                  link points at. /shares returns no cover — the row carries an
+                  album id and a title but no photo — so the row leads with the
+                  title instead. A `cover_photo_id` on the share row would add
+                  it. */}
+              <span className="kx-sharerow-body">
+                <strong>{share.title || share.album_name || "Untitled share"}</strong>
+                <span className="kx-cardmeta">
+                  {share.password_protected ? "password needed" : "anyone with the link"}
+                  {share.allow_download ? " · can download" : " · view only"}
+                </span>
+              </span>
+              <span className="kx-sharerow-tail">
+                <span className="kx-cardmeta">
+                  {fmt.format(share.view_count)} {share.view_count === 1 ? "view" : "views"} ·{" "}
+                  {expiryLine(share)}
+                </span>
+                <span className={`kx-statuspill ${status.pill}`}>{status.label}</span>
+                {/* TODO: /shares does not return the link, only its id — the
+                    token is hashed and shown once at creation. Copying an
+                    existing link is impossible without a rotate endpoint that
+                    issues a fresh token. */}
+                <button
+                  className="kx-button compact"
+                  disabled
+                  title="The link is only shown once, when it is made"
+                >
+                  Copy link
+                </button>
+                <button
+                  className="kx-button compact danger"
+                  disabled={revoke.isPending}
+                  onClick={() => revoke.mutate(share.id)}
+                >
+                  Revoke
+                </button>
+              </span>
+            </div>
+          );
+        })}
+      </section>
+    </main>
   );
 }

@@ -21,15 +21,15 @@ const COPY: Record<string, { eyebrow: string; title: string; lede: string; singu
   },
   animals: {
     eyebrow: "Animals",
-    title: "The four-legged ones.",
-    lede: "Every animal the scan has picked out, grouped and waiting for a name.",
+    title: "The other members.",
+    lede: "Pets get their own profiles — name one and every photo of them follows.",
     singular: "animal",
     plural: "animals",
   },
   vehicles: {
     eyebrow: "Vehicles",
-    title: "What we drove.",
-    lede: "Cars, vans and bikes the scan has separated out of the library.",
+    title: "Everything with wheels.",
+    lede: "The van, the truck, the car that lasted nine summers.",
     singular: "vehicle",
     plural: "vehicles",
   },
@@ -59,6 +59,8 @@ export function KxClusterBrowse({
   const backendCat = toBackendCategory(category);
   const sentinel = useRef<HTMLDivElement>(null);
   const counts = useReviewCounts(category);
+  // People are faces; animals and vehicles are shapes a circle would crop away.
+  const round = category === "people";
 
   const { data, error, isPending, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } =
     useInfiniteQuery<ClustersSummaryResponse>({
@@ -133,7 +135,7 @@ export function KxClusterBrowse({
         </div>
       )}
 
-      {isPending && <KxSkeletonCards count={12} minWidth={150} round />}
+      {isPending && <KxSkeletonCards count={12} minWidth={round ? 150 : 240} height={220} round={round} />}
       {error && <KxErrorBanner detail={(error as Error).message} onRetry={() => void refetch()} />}
       {!isPending && !error && clusters.length === 0 && (
         <KxEmpty
@@ -142,44 +144,74 @@ export function KxClusterBrowse({
         />
       )}
 
-      <div className="kx-peoplegrid">
+      <div className={round ? "kx-peoplegrid" : "kx-covergrid"}>
         {clusters.map((cluster) => {
           const cover = coverFor(cluster);
           const named = Boolean(cluster.label);
+          const crop = cluster.cover_crop
+            ? { objectPosition: `${cluster.cover_crop.x}% ${cluster.cover_crop.y}%` }
+            : undefined;
+          const name = cluster.label || `Unnamed ${copy.singular}`;
+
+          // People are faces, so their covers are circles. An animal or a
+          // vehicle is a shape, and a circle crops the shape away.
+          if (round) {
+            return (
+              <Link
+                key={cluster.id}
+                href={`/${category}/${cluster.id}`}
+                className={`kx-personcard ${named ? "" : "unnamed"}`.trim()}
+              >
+                {cover ? (
+                  <img src={cover.src} alt="" loading="lazy" style={crop} />
+                ) : (
+                  <span className="kx-personcard-fallback" aria-hidden="true">
+                    ?
+                  </span>
+                )}
+                <span className="kx-personcard-name">{name}</span>
+                <span className="kx-personcard-count">
+                  {fmt.format(cluster.photo_count)} photos{named ? "" : " · name them"}
+                </span>
+              </Link>
+            );
+          }
+
           return (
             <Link
               key={cluster.id}
               href={`/${category}/${cluster.id}`}
-              className={`kx-personcard ${named ? "" : "unnamed"}`.trim()}
+              className={`kx-card-lift kx-covercard ${named ? "" : "unnamed"}`.trim()}
             >
-              {cover ? (
-                <img
-                  src={cover.src}
-                  alt=""
-                  loading="lazy"
-                  style={
-                    cluster.cover_crop
-                      ? { objectPosition: `${cluster.cover_crop.x}% ${cluster.cover_crop.y}%` }
-                      : undefined
-                  }
-                />
-              ) : (
-                <span className="kx-personcard-fallback" aria-hidden="true">
-                  ?
+              <span className="kx-covercard-media">
+                {cover ? (
+                  <img src={cover.src} alt="" loading="lazy" style={crop} />
+                ) : (
+                  <span className="kx-covercard-fallback" aria-hidden="true">
+                    ?
+                  </span>
+                )}
+                <span className="kx-coverbadge">
+                  {fmt.format(cluster.photo_count)} photos
                 </span>
-              )}
-              <span className="kx-personcard-name">
-                {cluster.label || `Unnamed ${copy.singular}`}
               </span>
-              <span className="kx-personcard-count">
-                {fmt.format(cluster.photo_count)} photos{named ? "" : " · name them"}
+              <span className="kx-covercard-body">
+                <strong>{name}</strong>
+                {/* TODO: the design's provenance line — "dog · named March
+                    2019" — needs the group's subtype and the date its name was
+                    set. The summary endpoint returns neither; subtype lives on
+                    the detections and `clusters` records no timestamp. Until
+                    then the line says only what is known. */}
+                <span className="kx-cardmeta">
+                  {named ? `${copy.singular} · named` : "name them"}
+                </span>
               </span>
             </Link>
           );
         })}
       </div>
 
-      {isFetchingNextPage && <KxSkeletonCards count={6} minWidth={150} round />}
+      {isFetchingNextPage && <KxSkeletonCards count={6} minWidth={round ? 150 : 240} height={220} round={round} />}
       {hasNextPage && !isFetchingNextPage && (
         <div className="kx-loadmore">
           <button className="kx-button" onClick={() => void fetchNextPage()}>

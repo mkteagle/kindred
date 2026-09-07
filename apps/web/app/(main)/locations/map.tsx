@@ -1,33 +1,49 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { LocationGroup } from "@/types";
 import { fmt } from "@/lib/constants";
+import { useTheme } from "@/components/kx/theme";
 
-// Fix Leaflet default marker icons in Next.js
-const markerIcon = new L.Icon({
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
-});
+/**
+ * Tiles follow the chrome. A near-black page with a bright street map on it
+ * reads as two applications; the dark basemap is the one the design asks for.
+ */
+const TILES = {
+  dark: {
+    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  },
+  light: {
+    url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  },
+} as const;
 
-const activeIcon = new L.Icon({
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-  iconSize: [30, 49],
-  iconAnchor: [15, 49],
-  popupAnchor: [1, -40],
-  shadowSize: [49, 49],
-  className: "marker-active",
-});
+const ACCENT = "#cc7f61";
+const AMBER = "#d59851";
+
+/**
+ * An ember pin: a filled dot with a ring, drawn rather than fetched, so the
+ * map does not pull marker images off a CDN and does not need recolouring to
+ * match the palette. The active pin is larger and takes the amber.
+ */
+function pin(active: boolean): L.DivIcon {
+  const size = active ? 22 : 15;
+  const colour = active ? AMBER : ACCENT;
+  return L.divIcon({
+    className: "kx-mappin",
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
+    html: `<span style="display:block;width:${size}px;height:${size}px;border-radius:999px;background:${colour};box-shadow:0 0 0 3px rgba(204,127,97,.28),0 2px 8px rgba(0,0,0,.45);"></span>`,
+  });
+}
 
 function FitBounds({ locations }: { locations: LocationGroup[] }) {
   const map = useMap();
@@ -35,9 +51,7 @@ function FitBounds({ locations }: { locations: LocationGroup[] }) {
 
   useEffect(() => {
     if (fitted.current || locations.length === 0) return;
-    const bounds = L.latLngBounds(
-      locations.map((l) => [l.lat, l.lng] as [number, number])
-    );
+    const bounds = L.latLngBounds(locations.map((l) => [l.lat, l.lng] as [number, number]));
     map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
     fitted.current = true;
   }, [locations, map]);
@@ -56,10 +70,8 @@ function FlyToSelected({
 
   useEffect(() => {
     if (!selectedLocation) return;
-    const loc = locations.find((l) => l.name === selectedLocation);
-    if (loc) {
-      map.flyTo([loc.lat, loc.lng], 13, { duration: 0.8 });
-    }
+    const location = locations.find((l) => l.name === selectedLocation);
+    if (location) map.flyTo([location.lat, location.lng], 13, { duration: 0.8 });
   }, [selectedLocation, locations, map]);
 
   return null;
@@ -74,42 +86,48 @@ export default function LocationMap({
   selectedLocation: string | null;
   onSelect: (name: string) => void;
 }) {
-  if (locations.length === 0) return null;
+  const { theme } = useTheme();
+  const tiles = TILES[theme] ?? TILES.dark;
 
-  const center: [number, number] = [
-    locations.reduce((s, l) => s + l.lat, 0) / locations.length,
-    locations.reduce((s, l) => s + l.lng, 0) / locations.length,
-  ];
+  const center = useMemo<[number, number]>(
+    () => [
+      locations.reduce((sum, l) => sum + l.lat, 0) / Math.max(locations.length, 1),
+      locations.reduce((sum, l) => sum + l.lng, 0) / Math.max(locations.length, 1),
+    ],
+    [locations],
+  );
+
+  if (locations.length === 0) return null;
 
   return (
     <MapContainer
       center={center}
       zoom={4}
-      style={{ height: 420, width: "100%", borderRadius: 12 }}
-      scrollWheelZoom={true}
+      // The pane owns the height; the map fills whatever it is given.
+      style={{ height: "100%", width: "100%" }}
+      scrollWheelZoom
     >
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
+      {/* Keyed so a theme change swaps the basemap rather than layering one
+          over the other. */}
+      <TileLayer key={theme} attribution={tiles.attribution} url={tiles.url} />
       <FitBounds locations={locations} />
       <FlyToSelected locations={locations} selectedLocation={selectedLocation} />
-      {locations.map((loc) => (
+      {locations.map((location) => (
         <Marker
-          key={loc.name}
-          position={[loc.lat, loc.lng]}
-          icon={selectedLocation === loc.name ? activeIcon : markerIcon}
-          eventHandlers={{ click: () => onSelect(loc.name) }}
+          key={location.name}
+          position={[location.lat, location.lng]}
+          icon={pin(selectedLocation === location.name)}
+          eventHandlers={{ click: () => onSelect(location.name) }}
         >
           <Popup>
             <div style={{ fontFamily: "inherit", minWidth: 140 }}>
-              <strong style={{ fontSize: 14 }}>{loc.name}</strong>
+              <strong style={{ fontSize: 14 }}>{location.name}</strong>
               <div style={{ color: "#666", fontSize: 12, marginTop: 2 }}>
-                {fmt.format(loc.count)} photo{loc.count !== 1 ? "s" : ""}
+                {fmt.format(location.count)} photo{location.count !== 1 ? "s" : ""}
               </div>
-              {loc.photos[0] && (
+              {location.photos[0] && (
                 <img
-                  src={loc.photos[0].thumb_url}
+                  src={location.photos[0].thumb_url}
                   alt=""
                   style={{ width: "100%", borderRadius: 6, marginTop: 8 }}
                 />
