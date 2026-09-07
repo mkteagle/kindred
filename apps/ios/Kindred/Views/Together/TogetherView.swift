@@ -55,6 +55,7 @@ struct TogetherPickerView: View {
                             .clipShape(Circle())
                             .overlay(Circle().stroke(KindredTheme.line, lineWidth: 1))
                     }
+                    .accessibilityLabel("Back")
                 }
                 ToolbarItem(placement: .principal) {
                     Text("Together")
@@ -172,6 +173,7 @@ struct TogetherPickerView: View {
                         .font(.system(size: 14))
                         .foregroundStyle(KindredTheme.mist)
                 }
+                .accessibilityLabel("Clear search")
             }
         }
         .padding(.horizontal, 12)
@@ -499,6 +501,7 @@ struct TogetherResultsView: View {
                         .clipShape(Circle())
                         .overlay(Circle().stroke(KindredTheme.line, lineWidth: 1))
                 }
+                .accessibilityLabel("Share")
             }
         }
     }

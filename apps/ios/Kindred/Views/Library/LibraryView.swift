@@ -60,6 +60,16 @@ struct LibraryView: View {
             }
             .toolbar {
                 if !gallery.isSelecting {
+                    // The in-content title is Space Grotesk under a mono
+                    // eyebrow, which the system large title cannot draw, so
+                    // the collapse is rebuilt: this appears as that scrolls off.
+                    ToolbarItem(placement: .principal) {
+                        Text(scope.rawValue)
+                            .font(.kindredTitle)
+                            .foregroundStyle(KindredTheme.ink)
+                            .opacity(scrollOffset > 44 ? 1 : 0)
+                            .animation(KindredTheme.ease(0.2), value: scrollOffset > 44)
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button { showUpload = true } label: {
                             Image(systemName: "plus")
@@ -70,7 +80,6 @@ struct LibraryView: View {
                 }
             }
             .toolbar(gallery.isSelecting ? .hidden : .visible, for: .navigationBar)
-            .navigationTitle("Library")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .fullScreenCover(item: $viewing) { photo in

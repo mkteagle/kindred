@@ -193,8 +193,7 @@ struct SearchView: View {
     private var resultGrid: some View {
         LazyVGrid(columns: columns, spacing: KindredTheme.tileGap) {
             ForEach(visibleResults) { hit in
-                PhotoTile(photo: hit.asLibraryPhoto, matchPercent: hit.matchPercent)
-                    .aspectRatio(1, contentMode: .fill)
+                SquarePhotoTile(photo: hit.asLibraryPhoto, matchPercent: hit.matchPercent)
                     .onTapGesture { viewing = hit.asLibraryPhoto }
             }
         }

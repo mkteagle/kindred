@@ -257,8 +257,7 @@ struct SlideshowView: View {
             KindredTheme.stage.ignoresSafeArea()
 
             if photos.indices.contains(index) {
-                KindredThumbnail(photo: photos[index], variant: .preview)
-                    .aspectRatio(contentMode: .fit)
+                KindredThumbnail(photo: photos[index], variant: .preview, contentMode: .fit)
                     .ignoresSafeArea()
                     .transition(.opacity)
                     .id(photos[index].photo_id)

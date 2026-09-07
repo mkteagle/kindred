@@ -102,8 +102,7 @@ struct PhotoViewerView: View {
     private var stage: some View {
         TabView(selection: $index) {
             ForEach(Array(photos.enumerated()), id: \.element.photo_id) { position, photo in
-                KindredThumbnail(photo: photo, variant: .preview)
-                    .aspectRatio(contentMode: .fit)
+                KindredThumbnail(photo: photo, variant: .preview, contentMode: .fit)
                     .scaleEffect(position == index ? zoom : 1)
                     // Pinch zooms.
                     .gesture(

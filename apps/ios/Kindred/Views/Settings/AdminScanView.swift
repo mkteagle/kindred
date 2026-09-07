@@ -285,7 +285,7 @@ struct AdminScanView: View {
             .padding(.vertical, 12)
 
             if !isLast {
-                Divider()
+                Divider().overlay(KindredTheme.hairline)
                     .overlay(KindredTheme.line)
                     .padding(.leading, 34)
             }

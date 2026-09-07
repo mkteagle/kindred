@@ -86,7 +86,7 @@ struct PairDeviceView: View {
         VStack(spacing: 16) {
             Text("On a computer, open Kindred and go to Settings → Pair a device. Point your camera at the code it shows.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(KindredTheme.inkBody)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
@@ -166,7 +166,7 @@ struct PairDeviceView: View {
                 .font(.title2.weight(.semibold))
             Text("This device is signed in to your household.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(KindredTheme.inkBody)
                 .multilineTextAlignment(.center)
             Button("Done") { dismiss() }
                 .buttonStyle(.borderedProminent)

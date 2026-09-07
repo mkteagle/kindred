@@ -354,7 +354,7 @@ struct IntelligenceView: View {
             .padding(.vertical, 12)
 
             if !isLast {
-                Divider()
+                Divider().overlay(KindredTheme.hairline)
                     .overlay(KindredTheme.line)
                     .padding(.leading, 14)
             }
@@ -409,7 +409,7 @@ struct IntelligenceView: View {
                     .padding(.vertical, 12)
 
                     if index < categories.count - 1 {
-                        Divider()
+                        Divider().overlay(KindredTheme.hairline)
                             .overlay(KindredTheme.line)
                             .padding(.leading, 14)
                     }
@@ -439,7 +439,7 @@ struct IntelligenceView: View {
             .contentShape(Rectangle())
             .buttonStyle(.plain)
 
-            Divider()
+            Divider().overlay(KindredTheme.hairline)
                 .overlay(KindredTheme.line)
                 .padding(.leading, 14)
 
@@ -515,7 +515,7 @@ struct IntelligenceView: View {
                     .padding(.vertical, 12)
 
                     if index < items.count - 1 {
-                        Divider()
+                        Divider().overlay(KindredTheme.hairline)
                             .overlay(KindredTheme.line)
                             .padding(.leading, 14)
                     }
@@ -652,7 +652,7 @@ struct IntelligenceExplainerSheet: View {
             }
 
             // Footer explanation
-            Divider()
+            Divider().overlay(KindredTheme.hairline)
                 .overlay(KindredTheme.line)
                 .padding(.top, 14)
 
@@ -696,7 +696,7 @@ struct IntelligenceExplainerSheet: View {
                 .padding(.vertical, 10)
 
                 if index < qas.count - 1 {
-                    Divider()
+                    Divider().overlay(KindredTheme.hairline)
                         .overlay(KindredTheme.line)
                 }
             }
@@ -846,7 +846,7 @@ struct IntelligenceOnboardingView: View {
                 .padding(.vertical, 10)
 
                 if index < points.count - 1 {
-                    Divider()
+                    Divider().overlay(KindredTheme.hairline)
                         .overlay(KindredTheme.line)
                 }
             }
@@ -902,7 +902,7 @@ struct PauseIntelligenceSheet: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
         }
-        .background(KindredTheme.paper)
+        .background(KindredTheme.sheet)
     }
 }
 
@@ -954,6 +954,6 @@ struct ReindexSheet: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
         }
-        .background(KindredTheme.paper)
+        .background(KindredTheme.sheet)
     }
 }

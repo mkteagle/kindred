@@ -151,6 +151,7 @@ struct AvatarPickerView: View {
                             .font(.system(size: 14))
                             .foregroundStyle(KindredTheme.mist)
                     }
+                    .accessibilityLabel("Clear search")
                 }
             }
             .padding(.horizontal, 12)
@@ -206,6 +207,7 @@ struct AvatarPickerView: View {
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(KindredTheme.ember)
                     }
+                    .accessibilityLabel("Back to all photos")
                     KindredAvatar(url: cluster.avatar ?? cluster.thumb_url, size: 28, borderWidth: 1)
                     Text(cluster.label ?? "Unnamed")
                         .font(.kindredCardTitle)

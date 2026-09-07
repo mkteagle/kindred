@@ -947,6 +947,7 @@ struct NotificationInboxView: View {
                                     .foregroundStyle(KindredTheme.pine)
                             }
                     }
+                    .accessibilityLabel("Notification settings")
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 4)

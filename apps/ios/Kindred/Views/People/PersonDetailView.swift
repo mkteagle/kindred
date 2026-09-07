@@ -237,8 +237,7 @@ struct PersonDetailView: View {
             } else {
                 LazyVGrid(columns: columns, spacing: KindredTheme.tileGap) {
                     ForEach(gallery.photos.prefix(12)) { photo in
-                        PhotoTile(photo: photo)
-                            .aspectRatio(1, contentMode: .fill)
+                        SquarePhotoTile(photo: photo)
                             .onTapGesture { viewing = photo }
                     }
                 }

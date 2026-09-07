@@ -10,6 +10,8 @@ struct KindredThumbnail: View {
     let photo: LibraryPhoto
     var variant: APIClient.MediaVariant = .thumb
     var cornerRadius: CGFloat = 0
+    /// `.fill` for tiles and posters; `.fit` is the viewer's `object-fit: contain`.
+    var contentMode: ContentMode = .fill
 
     @State private var localFailed = false
 
@@ -21,7 +23,7 @@ struct KindredThumbnail: View {
                 AsyncImage(url: url, transaction: Transaction(animation: KindredTheme.ease(0.2))) { phase in
                     switch phase {
                     case .success(let image):
-                        image.resizable().scaledToFill()
+                        image.resizable().aspectRatio(contentMode: contentMode)
                     case .failure:
                         placeholder
                             .task { if !localFailed { localFailed = true } }
@@ -35,7 +37,7 @@ struct KindredThumbnail: View {
                 placeholder
             }
         }
-        .clipped()
+        .if(contentMode == .fill) { $0.clipped() }
         .contentShape(Rectangle())
         .accessibilityLabel(Text(accessibilityText))
     }
@@ -121,5 +123,33 @@ struct PhotoTile: View {
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
             .accessibilityValue(isSelecting ? (isSelected ? "Selected" : "Not selected") : "")
+    }
+}
+
+// MARK: - Square tile
+
+/// A tile forced to 1:1 inside a flexible grid cell.
+///
+/// `aspectRatio` on the thumbnail itself is unreliable while the image is
+/// still loading and the view has no intrinsic size, so the ratio is held by
+/// a clear spacer and the tile is drawn over it.
+struct SquarePhotoTile: View {
+    let photo: LibraryPhoto
+    var isSelected: Bool = false
+    var isSelecting: Bool = false
+    var matchPercent: Int? = nil
+
+    var body: some View {
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                PhotoTile(
+                    photo: photo,
+                    isSelected: isSelected,
+                    isSelecting: isSelecting,
+                    matchPercent: matchPercent
+                )
+            }
+            .clipped()
     }
 }

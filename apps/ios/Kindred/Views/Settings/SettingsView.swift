@@ -621,7 +621,7 @@ struct BackupDetailView: View {
             }
             .padding(14)
 
-            Divider().padding(.leading, 14)
+            Divider().overlay(KindredTheme.hairline).padding(.leading, 14)
 
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -637,7 +637,7 @@ struct BackupDetailView: View {
             }
             .padding(14)
 
-            Divider().padding(.leading, 14)
+            Divider().overlay(KindredTheme.hairline).padding(.leading, 14)
 
             Button {
                 showFreeSpaceConfirm = true
@@ -769,7 +769,7 @@ struct FreeSpaceConfirmSheet: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
         }
-        .background(KindredTheme.paper)
+        .background(KindredTheme.sheet)
     }
 }
 
@@ -806,7 +806,7 @@ struct SpaceFreedSheet: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
         }
-        .background(KindredTheme.paper)
+        .background(KindredTheme.sheet)
     }
 }
 
@@ -858,7 +858,7 @@ struct SignOutSheet: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
         }
-        .background(KindredTheme.paper)
+        .background(KindredTheme.sheet)
     }
 }
 
@@ -894,7 +894,7 @@ struct PrivacyInfoSheet: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
         }
-        .background(KindredTheme.paper)
+        .background(KindredTheme.sheet)
     }
 }
 
@@ -952,6 +952,6 @@ struct BackendInfoSheet: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
         }
-        .background(KindredTheme.paper)
+        .background(KindredTheme.sheet)
     }
 }
