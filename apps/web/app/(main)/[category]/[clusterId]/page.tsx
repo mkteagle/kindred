@@ -1,53 +1,211 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { Spinner } from "@/components/ui";
 import { PhotoTagDialog } from "@/components/photo-tag-dialog";
 import { FocalPointDialog } from "@/components/focal-point-dialog";
-import type { ClustersSummaryResponse, ClusterDetail, Detection } from "@/types";
+import { MergeDialog } from "@/components/dialogs";
+import type {
+  ClusterDetail,
+  ClusterSummary,
+  ClustersSummaryResponse,
+  Detection,
+} from "@/types";
 import { BACKEND, fmt, toBackendCategory } from "@/lib/constants";
 import { useLightbox } from "@/components/photo-lightbox";
 import type { LightboxPhoto } from "@/components/photo-lightbox";
 import { photoThumb, faceThumb } from "@/lib/photo-url";
+import { AlertIcon } from "@/components/kx/icons";
+import { useNamedPeople } from "@/components/kx/use-people";
+import {
+  KxEmpty,
+  KxErrorBanner,
+  KxSkeletonCards,
+  KxSkeletonGrid,
+  KxSkeletonRows,
+} from "@/components/kx/states";
+import { tileSpan } from "@/components/kx/photos";
 
-const getUniquePhotos = (items: Detection[]): Detection[] => {
-  const photoMap = new Map<string, Detection>();
-  items.forEach((item) => {
-    if (!photoMap.has(item.photo_id)) photoMap.set(item.photo_id, item);
-  });
-  return Array.from(photoMap.values());
+/**
+ * How many photographs reach the DOM at once.
+ *
+ * The cluster endpoint hands back every detection in the group in one
+ * response — for a well-photographed person that is 646 faces across 611
+ * photos — and the page used to render all of it on first paint: 1,267 `<img>`
+ * elements, every one of them a request. Nothing was broken, but the browser
+ * spent a minute working through the queue and the page read as "the
+ * thumbnails are missing".
+ *
+ * So the photographs arrive a screenful at a time, the same shape the library
+ * uses: an IntersectionObserver ahead of the fold, plus an explicit button for
+ * when the observer never fires. Paging is client-side over the response we
+ * already hold, because there is nothing to page against on the server yet.
+ *
+ * TODO: `GET /clusters/{category}/{cluster_id}/photos?cursor=&limit=` — one
+ * photo per row, keyset-paged like `/library/photos`, so a group of 600 costs
+ * one small request instead of one very large one. Until it exists the whole
+ * group (including every base64 face chip) still crosses the wire in a single
+ * response; this only stops it all being decoded at once.
+ */
+const PHOTO_PAGE = 60;
+
+/** Face chips revealed per step, once the disclosure is opened. */
+const FACE_PAGE = 48;
+
+const COPY: Record<
+  string,
+  { eyebrow: string; singular: string; plural: string; detections: string; faces: string }
+> = {
+  people: {
+    eyebrow: "Person",
+    singular: "person",
+    plural: "people",
+    detections: "faces",
+    faces: "Faces in this group · click one for its options",
+  },
+  animals: {
+    eyebrow: "Animal",
+    singular: "animal",
+    plural: "animals",
+    detections: "detections",
+    faces: "Detections in this group · click one for its options",
+  },
+  vehicles: {
+    eyebrow: "Vehicle",
+    singular: "vehicle",
+    plural: "vehicles",
+    detections: "detections",
+    faces: "Detections in this group · click one for its options",
+  },
 };
+
+/** One photo per detection — a group of 646 faces is not 646 photographs. */
+function uniquePhotos(items: Detection[]): Detection[] {
+  const seen = new Map<string, Detection>();
+  for (const item of items) if (!seen.has(item.photo_id)) seen.set(item.photo_id, item);
+  return Array.from(seen.values());
+}
 
 export default function ClusterDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const category = (params.category as string) || "people";
+  const copy = COPY[category] ?? COPY.people;
   const backendCat = toBackendCategory(category);
   const clusterId = (params.clusterId as string) || "";
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
   const { openLightbox } = useLightbox();
 
   const [coverPickMode, setCoverPickMode] = useState(false);
   const [focalPickPhoto, setFocalPickPhoto] = useState<string | null>(null);
   const [tagPhotoId, setTagPhotoId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [facesOpen, setFacesOpen] = useState(false);
+  const [faceLimit, setFaceLimit] = useState(FACE_PAGE);
+  const [visible, setVisible] = useState(PHOTO_PAGE);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeTarget, setMergeTarget] = useState<ClusterSummary | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const { data: summary } = useQuery<ClustersSummaryResponse>({
-    queryKey: ["clusters-summary", category],
-    queryFn: () =>
-      fetch(`${BACKEND}/clusters/${backendCat}/summary`).then((r) => r.json()),
-  });
+  const sentinel = useRef<HTMLDivElement>(null);
 
-  const cluster = summary?.clusters?.find((c) => c.id === clusterId);
+  /* ── Data ──────────────────────────────────────────────────────────── */
 
-  const { data: detail, isLoading } = useQuery<ClusterDetail>({
+  // The group's own record carries its label, so there is no second request
+  // for the whole category summary just to find out what this one is called.
+  const {
+    data: detail,
+    isPending,
+    error,
+    refetch,
+  } = useQuery<ClusterDetail>({
     queryKey: ["cluster-detail", category, clusterId],
-    queryFn: () =>
-      fetch(`${BACKEND}/clusters/${backendCat}/${clusterId}`).then((r) =>
-        r.json()
-      ),
+    queryFn: async () => {
+      const response = await fetch(`${BACKEND}/clusters/${backendCat}/${clusterId}`);
+      if (!response.ok) throw new Error("This group could not be loaded.");
+      return response.json();
+    },
+    enabled: Boolean(clusterId),
   });
+
+  const { data: named } = useNamedPeople(backendCat);
+
+  const items = useMemo(() => detail?.items ?? [], [detail]);
+  const photos = useMemo(() => uniquePhotos(items), [items]);
+
+  const label = detail?.label ?? null;
+  const name = label || (isPending ? "" : `Unnamed ${copy.singular}`);
+
+  const avatarDetectionId = detail?.avatar_detection_id || null;
+  const coverPhotoId = detail?.cover_photo_id || null;
+  const coverCrop = detail?.cover_crop || null;
+
+  const coverPhoto = coverPhotoId ? items.find((i) => i.photo_id === coverPhotoId) : null;
+  const avatarDetection = avatarDetectionId
+    ? items.find((i) => i.id === avatarDetectionId)
+    : items.length > 0
+      ? [...items].sort((a, b) => b.det_score - a.det_score)[0]
+      : null;
+
+  // The card's picture: the chosen cover if there is one, otherwise the
+  // clearest face. Both are already in the response, so neither costs a
+  // request beyond the one image.
+  const heroSrc = coverPhoto
+    ? photoThumb(coverPhoto)
+    : avatarDetection
+      ? faceThumb(avatarDetection)
+      : null;
+
+  // Stepping with ←/→ should reach every photo in the group, not only the ones
+  // currently painted — the list is data, not elements, so it costs nothing.
+  const lightboxPhotos = useMemo<LightboxPhoto[]>(
+    () =>
+      photos.map((photo) => ({
+        photo_id: photo.photo_id,
+        thumb_url: photoThumb(photo),
+        photo_url: photo.photo_url,
+        flickr_url: photo.flickr_url,
+        photo_title: photo.photo_title,
+      })),
+    [photos],
+  );
+
+  /* ── Progressive paint ─────────────────────────────────────────────── */
+
+  useEffect(() => {
+    setVisible(PHOTO_PAGE);
+    setFacesOpen(false);
+    setFaceLimit(FACE_PAGE);
+    setDraft(null);
+    setCoverPickMode(false);
+  }, [clusterId, category]);
+
+  const shown = photos.slice(0, visible);
+  const hasMore = visible < photos.length;
+
+  useEffect(() => {
+    const target = sentinel.current;
+    if (!target || !hasMore) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setVisible((current) => current + PHOTO_PAGE);
+      },
+      { rootMargin: "800px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, visible]);
+
+  /* ── Cover, crop and avatar ────────────────────────────────────────── */
+
+  const invalidateSummaries = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ["clusters-summary"] });
+    void queryClient.invalidateQueries({ queryKey: ["kx-cluster-browse", backendCat] });
+    void queryClient.invalidateQueries({ queryKey: ["kx-review-queue", backendCat] });
+    void queryClient.invalidateQueries({ queryKey: ["kx-named-people", backendCat] });
+  }, [queryClient, backendCat]);
 
   const setAvatarMutation = useMutation({
     mutationFn: (payload: {
@@ -58,112 +216,63 @@ export default function ClusterDetailPage() {
       fetch(`${BACKEND}/clusters/set-avatar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          category: backendCat,
-          cluster_id: clusterId,
-          ...payload,
-        }),
-      }).then((r) => {
-        if (!r.ok) throw new Error(`set-avatar failed: ${r.status}`);
-        return r.json();
+        body: JSON.stringify({ category: backendCat, cluster_id: clusterId, ...payload }),
+      }).then((response) => {
+        if (!response.ok) throw new Error(`set-avatar failed: ${response.status}`);
+        return response.json();
       }),
     onSuccess: (_result, payload) => {
-      // Optimistically update cluster detail
-      qc.setQueryData<ClusterDetail>(
+      queryClient.setQueryData<ClusterDetail>(
         ["cluster-detail", category, clusterId],
-        (old) => {
-          if (!old) return old;
-          return {
+        (old) =>
+          old && {
             ...old,
             avatar_detection_id:
               payload.avatar_detection_id !== undefined
                 ? payload.avatar_detection_id
                 : old.avatar_detection_id,
             cover_photo_id:
-              payload.cover_photo_id !== undefined
-                ? payload.cover_photo_id
-                : old.cover_photo_id,
-            cover_crop:
-              payload.cover_crop !== undefined
-                ? payload.cover_crop
-                : old.cover_crop,
-          };
-        }
+              payload.cover_photo_id !== undefined ? payload.cover_photo_id : old.cover_photo_id,
+            cover_crop: payload.cover_crop !== undefined ? payload.cover_crop : old.cover_crop,
+          },
       );
-      // Optimistically update the summary cache so the card on the grid page reflects changes immediately
-      qc.setQueryData<ClustersSummaryResponse>(
+      // The browse grid shows the same picture; keep it in step rather than
+      // making the user reload /people to see what they just chose.
+      queryClient.setQueryData<ClustersSummaryResponse>(
         ["clusters-summary", category],
         (old) => {
           if (!old?.clusters) return old;
-          const detail = qc.getQueryData<ClusterDetail>(["cluster-detail", category, clusterId]);
           return {
             ...old,
-            clusters: old.clusters.map((c) => {
-              if (c.id !== clusterId) return c;
-              const updated = { ...c };
-              if (payload.cover_photo_id !== undefined && detail) {
-                const photo = detail.items.find((i) => i.photo_id === payload.cover_photo_id);
+            clusters: old.clusters.map((cluster) => {
+              if (cluster.id !== clusterId) return cluster;
+              const updated = { ...cluster };
+              if (payload.cover_photo_id !== undefined) {
+                const photo = items.find((i) => i.photo_id === payload.cover_photo_id);
                 if (photo) {
                   updated.thumb_url = photo.thumb_url;
                   updated.photo_url = photo.photo_url;
                 }
               }
-              if (payload.cover_crop !== undefined) {
-                updated.cover_crop = payload.cover_crop;
-              }
-              if (payload.avatar_detection_id !== undefined && detail) {
-                const det = detail.items.find((i) => i.id === payload.avatar_detection_id);
-                if (det) {
-                  updated.avatar = det.chip || det.thumb_url || det.photo_url;
-                }
+              if (payload.cover_crop !== undefined) updated.cover_crop = payload.cover_crop;
+              if (payload.avatar_detection_id !== undefined) {
+                const detection = items.find((i) => i.id === payload.avatar_detection_id);
+                if (detection) updated.avatar = faceThumb(detection);
               }
               return updated;
             }),
           };
-        }
+        },
       );
+      invalidateSummaries();
     },
   });
 
-  const handleRemoveDetections = async (detectionIds: string[]) => {
-    const idSet = new Set(detectionIds);
-    qc.setQueryData<ClusterDetail>(
-      ["cluster-detail", category, clusterId],
-      (old) => {
-        if (!old) return old;
-        return { ...old, items: old.items.filter((i) => !idSet.has(i.id)) };
-      }
-    );
-    fetch(`${BACKEND}/clusters/remove-detections`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        category: backendCat,
-        cluster_id: clusterId,
-        detection_ids: detectionIds,
-      }),
-    }).then(() => {
-      qc.invalidateQueries({ queryKey: ["clusters-summary"] });
-    });
-  };
-
-  const handleSetAvatar = (detectionId: string) => {
-    setAvatarMutation.mutate({ avatar_detection_id: detectionId });
-  };
-
-  const handleClearAvatar = () => {
-    setAvatarMutation.mutate({ avatar_detection_id: null });
-  };
-
   const handleSetCover = (photoId: string) => {
-    // Find the best detection from this photo to use as the avatar
-    const bestDet = items
+    const best = items
       .filter((i) => i.photo_id === photoId)
       .sort((a, b) => b.det_score - a.det_score)[0];
-    setAvatarMutation.mutate({
-      cover_photo_id: photoId,
-      avatar_detection_id: bestDet?.id || undefined,
-    });
+    setAvatarMutation.mutate({ cover_photo_id: photoId, avatar_detection_id: best?.id });
     setCoverPickMode(false);
     setFocalPickPhoto(photoId);
   };
@@ -173,275 +282,500 @@ export default function ClusterDetailPage() {
     setFocalPickPhoto(null);
   };
 
-  const items = detail?.items || [];
-  const uniquePhotos = getUniquePhotos(items);
-  const name = detail?.label || cluster?.label || (isLoading ? "" : "Unnamed");
+  /* ── Detections ────────────────────────────────────────────────────── */
 
-  // Determine current avatar detection — custom or highest det_score
-  const avatarDetectionId = detail?.avatar_detection_id || null;
-  const coverPhotoId = detail?.cover_photo_id || null;
-  const coverCrop = detail?.cover_crop || null;
+  const handleRemoveDetection = useCallback(
+    (detectionId: string) => {
+      queryClient.setQueryData<ClusterDetail>(
+        ["cluster-detail", category, clusterId],
+        (old) => old && { ...old, items: old.items.filter((i) => i.id !== detectionId) },
+      );
+      void fetch(`${BACKEND}/clusters/remove-detections`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category: backendCat,
+          cluster_id: clusterId,
+          detection_ids: [detectionId],
+        }),
+      }).then(invalidateSummaries);
+    },
+    [queryClient, category, clusterId, backendCat, invalidateSummaries],
+  );
 
-  // Resolve cover photo URL from items
-  const coverPhoto = coverPhotoId
-    ? items.find((i) => i.photo_id === coverPhotoId)
-    : null;
-  const coverUrl = coverPhoto?.photo_url || coverPhoto?.thumb_url || null;
+  /* ── Naming, merging, dismissing ───────────────────────────────────── */
 
-  // Resolve avatar chip
-  const avatarDet = avatarDetectionId
-    ? items.find((i) => i.id === avatarDetectionId)
-    : items.length > 0
-    ? [...items].sort((a, b) => b.det_score - a.det_score)[0]
-    : null;
+  const post = useCallback(async (path: string, body: unknown) => {
+    setBusy(true);
+    try {
+      const response = await fetch(`${BACKEND}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) throw new Error("That could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  const nameValue = draft ?? label ?? "";
+  const nameChanged = nameValue.trim().length > 0 && nameValue.trim() !== (label ?? "");
+
+  const saveName = useCallback(async () => {
+    const next = nameValue.trim();
+    if (!next || busy) return;
+    await post("/clusters/label", {
+      category: backendCat,
+      cluster_id: clusterId,
+      name: next,
+    });
+    queryClient.setQueryData<ClusterDetail>(
+      ["cluster-detail", category, clusterId],
+      (old) => old && { ...old, label: next },
+    );
+    setDraft(null);
+    invalidateSummaries();
+  }, [nameValue, busy, post, backendCat, clusterId, queryClient, category, invalidateSummaries]);
+
+  const confirmMerge = useCallback(async () => {
+    if (!mergeTarget) return;
+    await post("/clusters/merge", {
+      category: backendCat,
+      source_id: clusterId,
+      target_id: mergeTarget.id,
+    });
+    setMergeTarget(null);
+    invalidateSummaries();
+    router.push(`/${category}/${mergeTarget.id}`);
+  }, [mergeTarget, post, backendCat, clusterId, invalidateSummaries, router, category]);
+
+  const dismissGroup = useCallback(async () => {
+    await post("/clusters/dismiss", { category: backendCat, cluster_id: clusterId });
+    invalidateSummaries();
+    router.push(`/${category}`);
+  }, [post, backendCat, clusterId, invalidateSummaries, router, category]);
+
+  /* ── Render ────────────────────────────────────────────────────────── */
+
+  const mergeCandidates = useMemo<ClusterSummary[]>(
+    () =>
+      (named ?? [])
+        .filter((person) => person.id !== clusterId)
+        .map((person) => ({
+          id: person.id,
+          label: person.label,
+          det_count: 0,
+          photo_count: 0,
+          avatar: person.avatar,
+        })),
+    [named, clusterId],
+  );
+
+  const reuseNames = (named ?? []).filter((person) => person.id !== clusterId).slice(0, 6);
+
+  /** The group is on screen and can be acted on. */
+  const loaded = !isPending && !error;
 
   return (
-    <div className="app-shell">
-      <main className="page">
-        {/* Cover photo hero */}
-        {coverUrl && (
-          <div
-            onClick={() => {
-              const el = document.querySelector(`[data-photo-id="${coverPhotoId}"]`);
-              if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-            }}
-            style={{
-              position: "relative",
-              width: "100%",
-              height: 220,
-              borderRadius: 12,
-              overflow: "hidden",
-              marginBottom: -32,
-              cursor: "pointer",
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={coverUrl}
-              alt=""
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                objectPosition: coverCrop
-                  ? `${coverCrop.x}% ${coverCrop.y}%`
-                  : "center",
-              }}
-            />
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                background: "linear-gradient(transparent 40%, rgba(18,18,24,.5))",
-              }}
-            />
+    <main className="kx-page">
+      <div className="kx-pagehead">
+        <div className="kx-pagehead-copy">
+          <Link className="kx-backlink" href={`/${category}`}>
+            ← All {copy.plural}
+          </Link>
+          <span className="kx-eyebrow">{copy.eyebrow}</span>
+          {/* Until the group has actually loaded the heading says nothing about
+              it: "Unnamed person" on a request that failed is a claim, not a
+              placeholder. */}
+          <h1 className="kx-title">{error ? "This group" : name || "…"}</h1>
+          <p className="kx-lede">
+            {error
+              ? "It could not be loaded just now. Retry below, or go back to the grid."
+              : isPending
+                ? "Fetching the group."
+                : label
+                  ? `Every photo ${label} turns up in, with the tools to keep the group honest.`
+                  : "Nobody has named this group yet. Give it a name and every photo comes with it."}
+          </p>
+        </div>
+        {loaded && (
+          <div className="kx-pagehead-pills">
+            {/* Worded as the browse grid words it: a group is counted in photos. */}
+            <span className="kx-pill">{fmt.format(photos.length)} photos</span>
+            <span className="kx-pill">
+              {fmt.format(items.length)} {copy.detections}
+            </span>
           </div>
         )}
+      </div>
 
-        <div className="full-view-header">
-          <div>
-            <Link href={`/${category}`} className="back-link">
-              &larr; Back
-            </Link>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
-              {avatarDet && (
-                <div style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 10,
-                  overflow: "hidden",
-                  border: "2px solid var(--line)",
-                  flexShrink: 0,
-                }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={faceThumb(avatarDet)}
-                    alt=""
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  />
-                </div>
-              )}
-              <div>
-                <h2 style={{ margin: 0 }}>{name}</h2>
-                <p style={{ margin: "2px 0 0" }}>
-                  {fmt.format(items.length)} detections across{" "}
-                  {fmt.format(uniquePhotos.length)} photos
-                </p>
-              </div>
-            </div>
+      {error && (
+        <KxErrorBanner detail={(error as Error).message} onRetry={() => void refetch()} />
+      )}
+
+      {mergeTarget && (
+        <div className="kx-banner danger" role="alert">
+          <AlertIcon />
+          <span className="kx-banner-copy">
+            <strong>
+              Merge {name} into {mergeTarget.label || `an unnamed ${copy.singular}`}?
+            </strong>
+            <span className="kx-mono">
+              Every photo in this group moves across. This cannot be undone.
+            </span>
+          </span>
+          <span className="kx-banner-actions">
+            <button className="kx-button" onClick={() => setMergeTarget(null)}>
+              Cancel
+            </button>
+            <button className="kx-button primary" disabled={busy} onClick={() => void confirmMerge()}>
+              Merge
+            </button>
+          </span>
+        </div>
+      )}
+
+      {/* Grid-shaped, never a spinner: the placeholder is the shape of the
+          thing it stands in for, so nothing jumps when the group lands. */}
+      {isPending && (
+        <>
+          <KxSkeletonRows count={1} height={116} />
+          <KxSkeletonGrid count={18} />
+        </>
+      )}
+
+      {/* ── Identity: the picture, the name, and the four group-level tools ── */}
+      <section className="kx-card" hidden={!loaded}>
+        <div className="kx-cardhead">
+          {heroSrc ? (
+            <img
+              className={`kx-clustercover ${category === "people" ? "" : "square"}`.trim()}
+              src={heroSrc}
+              alt=""
+              style={
+                coverPhoto && coverCrop
+                  ? { objectPosition: `${coverCrop.x}% ${coverCrop.y}%` }
+                  : undefined
+              }
+            />
+          ) : (
+            <span className="kx-clustercover blank" aria-hidden="true">
+              ?
+            </span>
+          )}
+          <div className="kx-row-info">
+            <h2>{name || "…"}</h2>
+            <span className="kx-mono">
+              {fmt.format(photos.length)} photos · {fmt.format(items.length)} {copy.detections}
+              {coverPhotoId ? " · cover chosen" : ""}
+            </span>
+          </div>
+          <div className="kx-cardhead-actions">
+            <button
+              className={`kx-button ${coverPickMode ? "primary" : ""}`.trim()}
+              aria-pressed={coverPickMode}
+              onClick={() => {
+                setCoverPickMode(!coverPickMode);
+                if (coverPickMode) setFocalPickPhoto(null);
+              }}
+            >
+              {coverPickMode ? "Done picking" : "Set cover"}
+            </button>
+            {coverPhotoId && (
+              <button className="kx-button" onClick={handleClearCover}>
+                Reset cover
+              </button>
+            )}
+            <button
+              className="kx-button"
+              disabled={mergeCandidates.length === 0}
+              onClick={() => setMergeOpen(true)}
+            >
+              Merge into…
+            </button>
+            <ConfirmButton
+              className="kx-button danger"
+              label={`Not a ${copy.singular}`}
+              question="Remove this group from the library?"
+              disabled={busy}
+              onConfirm={() => void dismissGroup()}
+            />
           </div>
         </div>
 
-        {isLoading ? (
-          <div className="cluster-grid" style={{ padding: "0 16px" }}>
-            {Array.from({ length: 9 }).map((_, i) => (
-              <div key={i} className="skeleton-card" style={{ aspectRatio: "1", borderRadius: 6 }} />
-            ))}
-          </div>
-        ) : (
-          <>
-            {/* Face detection chips */}
-            <details className="full-view-chips">
-              <summary>
-                <h3 style={{ display: "inline" }}>
-                  Face detections ({items.length})
-                </h3>
-              </summary>
-              <div
-                className="chip-row"
-                style={{ flexWrap: "wrap", marginTop: 12 }}
-              >
-                {items.map((item) => {
-                  const isAvatar = avatarDetectionId === item.id;
-                  return (
-                    <ChipWithMenu
+        <div className="kx-row">
+          <span className="kx-eyebrow quiet">Name</span>
+          <form
+            className="kx-nameform"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveName();
+            }}
+          >
+            <input
+              className="kx-input"
+              value={nameValue}
+              placeholder={`Name this ${copy.singular}`}
+              aria-label={`Name this ${copy.singular}`}
+              onChange={(event) => setDraft(event.target.value)}
+            />
+            <button className="kx-button primary" type="submit" disabled={!nameChanged || busy}>
+              {label ? "Save name" : "Name them"}
+            </button>
+            {draft !== null && draft !== (label ?? "") && (
+              <button className="kx-button" type="button" onClick={() => setDraft(null)}>
+                Cancel
+              </button>
+            )}
+          </form>
+          {reuseNames.length > 0 && (
+            <div className="kx-namerow">
+              <span className="kx-eyebrow quiet">Or reuse</span>
+              {reuseNames.map((person) => (
+                <button
+                  key={person.id}
+                  className="kx-namechip"
+                  type="button"
+                  onClick={() => setDraft(person.label)}
+                >
+                  {person.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ── Detections, folded away ──────────────────────────────────────
+          646 face chips are 646 base64 images. They cost no requests, but
+          decoding them all is what turns a page into a stutter — so they stay
+          behind the disclosure, and even open they arrive a screenful at a
+          time. */}
+      {/* A button and a panel rather than <details>: a controlled `open` prop
+          fights the element's own state, and an uncontrolled one cannot be
+          reset when the route changes to another group. */}
+      <section className="kx-disclosure" data-open={facesOpen} hidden={items.length === 0}>
+        <button
+          className="kx-disclosure-summary"
+          aria-expanded={facesOpen}
+          aria-controls="cluster-detections"
+          onClick={() => setFacesOpen((current) => !current)}
+        >
+          <span className="kx-eyebrow quiet">{copy.faces}</span>
+          <span className="kx-mono">{fmt.format(items.length)}</span>
+        </button>
+        {facesOpen && (
+          <div className="kx-disclosure-body" id="cluster-detections">
+            {isPending ? (
+              <KxSkeletonCards count={8} minWidth={62} height={62} />
+            ) : (
+              <>
+                <div className="kx-facestrip">
+                  {items.slice(0, faceLimit).map((item) => (
+                    <FaceChip
                       key={item.id}
                       item={item}
-                      isAvatar={isAvatar}
-                      onSetAvatar={() => handleSetAvatar(item.id)}
-                      onClearAvatar={handleClearAvatar}
-                      onRemove={() => handleRemoveDetections([item.id])}
-                    />
-                  );
-                })}
-              </div>
-            </details>
-
-            {/* Photos section */}
-            <div className="full-view-photos">
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                <h3 style={{ margin: 0 }}>Photos</h3>
-                <button
-                  onClick={() => {
-                    setCoverPickMode(!coverPickMode);
-                    if (coverPickMode) setFocalPickPhoto(null);
-                  }}
-                  style={{
-                    padding: "3px 10px",
-                    border: coverPickMode
-                      ? "1.5px solid var(--gold)"
-                      : "1px solid var(--line)",
-                    borderRadius: 5,
-                    background: coverPickMode
-                      ? "rgba(233, 184, 93, 0.12)"
-                      : "transparent",
-                    color: coverPickMode ? "var(--gold)" : "var(--mist)",
-                    fontSize: 11,
-                    fontFamily: "var(--mono)",
-                    fontWeight: 600,
-                    letterSpacing: ".04em",
-                    cursor: "pointer",
-                    transition: "all .15s",
-                  }}
-                >
-                  {coverPickMode ? "Done" : "Set cover"}
-                </button>
-                {coverPhotoId && (
-                  <button
-                    onClick={handleClearCover}
-                    style={{
-                      padding: "3px 8px",
-                      border: "1px solid var(--line)",
-                      borderRadius: 5,
-                      background: "transparent",
-                      color: "var(--mist)",
-                      fontSize: 11,
-                      fontFamily: "var(--mono)",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Reset cover
-                  </button>
-                )}
-              </div>
-
-              {coverPickMode && (
-                <div
-                  style={{
-                    padding: "8px 14px",
-                    marginBottom: 12,
-                    borderRadius: 6,
-                    background: "rgba(233, 184, 93, 0.08)",
-                    border: "1px solid rgba(233, 184, 93, 0.2)",
-                    color: "var(--mist)",
-                    fontSize: 12,
-                  }}
-                >
-                  Click a photo to set it as the cover image for this person&apos;s card.
-                </div>
-              )}
-
-              <div className="full-thumb-grid">
-                {uniquePhotos.map((item) => {
-                  const isCover = coverPhotoId === item.photo_id;
-
-                  return (
-                    <PhotoThumb
-                      key={item.photo_id}
-                      item={item}
-                      isCover={isCover}
-                      coverPickMode={coverPickMode}
-                      onSetCover={() => handleSetCover(item.photo_id)}
-                      onToggleFocalPick={() =>
-                        setFocalPickPhoto(item.photo_id)
+                      isAvatar={avatarDetectionId === item.id}
+                      onSetAvatar={() =>
+                        setAvatarMutation.mutate({ avatar_detection_id: item.id })
                       }
-                      onTagPhoto={() => setTagPhotoId(item.photo_id)}
-                      onOpenLightbox={() => {
-                        const lbPhotos: LightboxPhoto[] = uniquePhotos.map((p) => ({
-                          photo_id: p.photo_id,
-                          thumb_url: p.thumb_url || p.photo_url,
-                          flickr_url: p.flickr_url,
-                          photo_url: p.photo_url,
-                          photo_title: p.photo_title,
-                        }));
-                        openLightbox(item.photo_id, lbPhotos);
-                      }}
+                      onClearAvatar={() =>
+                        setAvatarMutation.mutate({ avatar_detection_id: null })
+                      }
+                      onRemove={() => handleRemoveDetection(item.id)}
                     />
-                  );
-                })}
-              </div>
-            </div>
-
-            {category === "people" && clusterId && (
-              <AppearsWithSection clusterId={clusterId} />
+                  ))}
+                </div>
+                {faceLimit < items.length && (
+                  <div className="kx-loadmore">
+                    <button
+                      className="kx-button"
+                      onClick={() => setFaceLimit((current) => current + FACE_PAGE)}
+                    >
+                      Show {fmt.format(Math.min(FACE_PAGE, items.length - faceLimit))} more
+                    </button>
+                  </div>
+                )}
+              </>
             )}
-          </>
+          </div>
+        )}
+      </section>
+
+      {/* ── Photographs ─────────────────────────────────────────────────── */}
+      <section className="kx-clusterphotos" hidden={!loaded}>
+        <div className="kx-sectionhead">
+          <span className="kx-eyebrow quiet">
+            {coverPickMode ? "Pick the picture that represents them" : "Where they show up"}
+          </span>
+          <span className="kx-mono">{fmt.format(photos.length)} photos</span>
+        </div>
+
+        {coverPickMode && (
+          <div className="kx-banner" role="status">
+            <span className="kx-banner-copy">
+              <strong>Choose a cover.</strong>
+              <span className="kx-mono">
+                Click a photo to put it on this {copy.singular}&rsquo;s card.
+              </span>
+            </span>
+            <button className="kx-button" onClick={() => setCoverPickMode(false)}>
+              Cancel
+            </button>
+          </div>
         )}
 
-        {/* Photo tag dialog */}
-        {tagPhotoId && (
-          <PhotoTagDialog
-            photoId={tagPhotoId}
-            onClose={() => setTagPhotoId(null)}
-            preselectedClusterId={clusterId}
-            preselectedCategory={backendCat}
+        {loaded && photos.length === 0 && (
+          <KxEmpty
+            title="Nothing in this group."
+            body="Every detection has been taken out of it. Run a scan and it will fill again, or set the group aside."
+            action={{ label: `All ${copy.plural}`, href: `/${category}`, primary: true }}
           />
         )}
 
-        {/* Focal point dialog */}
-        {focalPickPhoto && (() => {
-          const photo = uniquePhotos.find((p) => p.photo_id === focalPickPhoto);
+        <div className="kx-daygrid">
+          {shown.map((photo, index) => (
+            <PhotoTile
+              key={photo.photo_id}
+              item={photo}
+              span={tileSpan(index)}
+              isCover={coverPhotoId === photo.photo_id}
+              coverPickMode={coverPickMode}
+              onSetCover={() => handleSetCover(photo.photo_id)}
+              onAdjustCrop={() => setFocalPickPhoto(photo.photo_id)}
+              onTag={() => setTagPhotoId(photo.photo_id)}
+              onOpen={() => openLightbox(photo.photo_id, lightboxPhotos)}
+            />
+          ))}
+        </div>
+
+        {/* An explicit control as well as the observer: infinite scroll fails
+            silently if the sentinel never enters the viewport. */}
+        {hasMore && (
+          <div className="kx-loadmore">
+            <button className="kx-button" onClick={() => setVisible((c) => c + PHOTO_PAGE)}>
+              Load {fmt.format(Math.min(PHOTO_PAGE, photos.length - visible))} more photos
+            </button>
+          </div>
+        )}
+        {!hasMore && photos.length > PHOTO_PAGE && (
+          <p className="kx-status">That&rsquo;s all {fmt.format(photos.length)}.</p>
+        )}
+        <div ref={sentinel} aria-hidden="true" style={{ height: 1 }} />
+      </section>
+
+      {category === "people" && clusterId && <AppearsWith clusterId={clusterId} />}
+
+      <MergeDialog
+        open={mergeOpen}
+        onClose={() => setMergeOpen(false)}
+        onSelect={(targetId) => {
+          setMergeOpen(false);
+          setMergeTarget(mergeCandidates.find((c) => c.id === targetId) ?? null);
+        }}
+        sourceCluster={{
+          id: clusterId,
+          label,
+          det_count: items.length,
+          photo_count: photos.length,
+          avatar: heroSrc,
+        }}
+        clusters={mergeCandidates}
+      />
+
+      {tagPhotoId && (
+        <PhotoTagDialog
+          photoId={tagPhotoId}
+          onClose={() => setTagPhotoId(null)}
+          preselectedClusterId={clusterId}
+          preselectedCategory={backendCat}
+        />
+      )}
+
+      {focalPickPhoto &&
+        (() => {
+          const photo = photos.find((p) => p.photo_id === focalPickPhoto);
           if (!photo) return null;
           return (
             <FocalPointDialog
-              photoUrl={photo.photo_url || photo.thumb_url}
+              photoUrl={photoThumb(photo, "b")}
               photoTitle={photo.photo_title || ""}
               initialCrop={coverCrop}
-              onSetFocalPoint={(crop) =>
-                setAvatarMutation.mutate({ cover_crop: crop })
-              }
+              onSetFocalPoint={(crop) => setAvatarMutation.mutate({ cover_crop: crop })}
               onClose={() => setFocalPickPhoto(null)}
             />
           );
         })()}
-      </main>
-    </div>
+    </main>
   );
 }
 
-/* ── Chip with hover menu ──────────────────────────────────────────── */
+/* ── A destructive button that asks first ───────────────────────────── */
 
-function ChipWithMenu({
+/**
+ * Two clicks, not one, and the second one says what it will do. It disarms
+ * itself after a few seconds so a half-pressed Dismiss does not lie in wait.
+ */
+function ConfirmButton({
+  label,
+  question,
+  className,
+  disabled,
+  onConfirm,
+}: {
+  label: string;
+  question: string;
+  className: string;
+  disabled?: boolean;
+  onConfirm: () => void;
+}) {
+  const [armed, setArmed] = useState(false);
+
+  useEffect(() => {
+    if (!armed) return;
+    const timer = setTimeout(() => setArmed(false), 6000);
+    return () => clearTimeout(timer);
+  }, [armed]);
+
+  if (!armed) {
+    return (
+      <button className={className} disabled={disabled} onClick={() => setArmed(true)}>
+        {label}
+      </button>
+    );
+  }
+
+  return (
+    <span className="kx-confirm" role="group" aria-label={question}>
+      <span className="kx-mono">{question}</span>
+      <button
+        className={className}
+        disabled={disabled}
+        aria-label={`Yes — ${label.toLowerCase()}`}
+        onClick={() => {
+          setArmed(false);
+          onConfirm();
+        }}
+      >
+        Yes
+      </button>
+      <button className="kx-button compact" onClick={() => setArmed(false)}>
+        Cancel
+      </button>
+    </span>
+  );
+}
+
+/* ── One detection ──────────────────────────────────────────────────── */
+
+/**
+ * A face chip is a claim that this detection belongs to the group. The menu is
+ * where that claim can be withdrawn, or promoted to the group's avatar. It
+ * opens on click rather than right-click, which was the old page's only route
+ * to it and reachable from no keyboard at all.
+ */
+function FaceChip({
   item,
   isAvatar,
   onSetAvatar,
@@ -454,336 +788,145 @@ function ChipWithMenu({
   onClearAvatar: () => void;
   onRemove: () => void;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!menuOpen) return;
-    const close = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
+    if (!open) return;
+    const close = (event: MouseEvent) => {
+      if (wrap.current && !wrap.current.contains(event.target as Node)) setOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
     };
     document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [menuOpen]);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
 
   return (
-    <div
-      ref={wrapRef}
-      className="chip-wrap"
-      onContextMenu={(e) => {
-        e.preventDefault();
-        setMenuOpen(true);
-      }}
-      style={{ position: "relative" }}
-    >
-      <img
-        src={faceThumb(item)}
-        alt=""
-        onClick={() =>
-          window.open(item.flickr_url || item.photo_url, "_blank")
+    <div className="kx-facewrap" ref={wrap}>
+      <button
+        className={`kx-facechip ${isAvatar ? "is-avatar" : ""}`.trim()}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={
+          isAvatar
+            ? "The group's chosen face — open its options"
+            : "One face in this group — open its options"
         }
-        style={isAvatar ? {
-          boxShadow: "0 0 0 2px var(--gold)",
-          borderColor: "var(--gold)",
-        } : undefined}
-      />
+        onClick={() => setOpen((current) => !current)}
+      >
+        <img src={faceThumb(item)} alt="" loading="lazy" />
+      </button>
 
-      {/* Avatar star badge */}
       {isAvatar && (
-        <span
-          style={{
-            position: "absolute",
-            bottom: -3,
-            left: -3,
-            width: 18,
-            height: 18,
-            borderRadius: "50%",
-            background: "var(--gold)",
-            display: "grid",
-            placeItems: "center",
-            fontSize: 10,
-            lineHeight: 1,
-            color: "#fff",
-            boxShadow: "0 1px 4px rgba(0,0,0,.2)",
-            zIndex: 3,
-          }}
-          title="Current avatar"
-        >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+        <span className="kx-facebadge" aria-hidden="true">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
           </svg>
         </span>
       )}
 
-      {/* Remove button (shows on hover) */}
-      <button
-        className="chip-remove"
-        title="Remove from this group"
-        onClick={(e) => {
-          e.stopPropagation();
-          onRemove();
-        }}
-      >
-        &times;
-      </button>
-
-      {/* Context menu */}
-      {menuOpen && (
-        <div
-          style={{
-            position: "absolute",
-            top: "100%",
-            left: 0,
-            marginTop: 4,
-            zIndex: 50,
-            minWidth: 150,
-            background: "#fff",
-            border: "1px solid var(--line)",
-            borderRadius: 8,
-            boxShadow: "0 4px 20px rgba(42, 32, 27, .12), 0 1px 4px rgba(42, 32, 27, .08)",
-            overflow: "hidden",
-            animation: "rise .15s ease",
-          }}
-        >
-          {isAvatar ? (
-            <button
-              onClick={() => { onClearAvatar(); setMenuOpen(false); }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                width: "100%",
-                padding: "9px 14px",
-                border: "none",
-                background: "transparent",
-                fontSize: 12,
-                fontWeight: 600,
-                color: "var(--mist)",
-                cursor: "pointer",
-                textAlign: "left",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(42, 32, 27, .04)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-              </svg>
-              Remove as avatar
-            </button>
-          ) : (
-            <button
-              onClick={() => { onSetAvatar(); setMenuOpen(false); }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                width: "100%",
-                padding: "9px 14px",
-                border: "none",
-                background: "transparent",
-                fontSize: 12,
-                fontWeight: 600,
-                color: "var(--gold)",
-                cursor: "pointer",
-                textAlign: "left",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(233, 184, 93, .06)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-              </svg>
-              Set as avatar
-            </button>
-          )}
-          <button
-            onClick={() => { onRemove(); setMenuOpen(false); }}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              width: "100%",
-              padding: "9px 14px",
-              border: "none",
-              borderTop: "1px solid var(--line)",
-              background: "transparent",
-              fontSize: 12,
-              fontWeight: 600,
-              color: "#b73e57",
-              cursor: "pointer",
-              textAlign: "left",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(183, 62, 87, .04)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+      {open && (
+        <div className="kx-menu face" role="menu">
+          <a
+            className="kx-menu-item"
+            role="menuitem"
+            href={item.flickr_url || item.photo_url || photoThumb(item)}
+            target="_blank"
+            rel="noreferrer"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-            Remove detection
+            Open the photo
+          </a>
+          <button
+            className="kx-menu-item"
+            role="menuitem"
+            onClick={() => {
+              if (isAvatar) onClearAvatar();
+              else onSetAvatar();
+              setOpen(false);
+            }}
+          >
+            {isAvatar ? "Stop using this face" : "Use this face on the card"}
           </button>
+          <div className="kx-menu-divider" />
+          <ConfirmButton
+            className="kx-menu-item danger"
+            label="Not them — remove"
+            question="Take this one out?"
+            onConfirm={() => {
+              onRemove();
+              setOpen(false);
+            }}
+          />
         </div>
       )}
     </div>
   );
 }
 
-/* ── Photo thumbnail with cover selection + focal point ─────────── */
+/* ── One photograph ─────────────────────────────────────────────────── */
 
-function PhotoThumb({
+function PhotoTile({
   item,
+  span,
   isCover,
   coverPickMode,
   onSetCover,
-  onToggleFocalPick,
-  onTagPhoto,
-  onOpenLightbox,
+  onAdjustCrop,
+  onTag,
+  onOpen,
 }: {
   item: Detection;
+  span: string;
   isCover: boolean;
   coverPickMode: boolean;
   onSetCover: () => void;
-  onToggleFocalPick: () => void;
-  onTagPhoto: () => void;
-  onOpenLightbox: () => void;
+  onAdjustCrop: () => void;
+  onTag: () => void;
+  onOpen: () => void;
 }) {
+  const title = item.photo_title || "Untitled";
+
   return (
     <div
-      className="thumb"
+      className={`kx-clustertile ${span} ${isCover ? "is-cover" : ""}`.trim()}
       data-photo-id={item.photo_id}
-      onClick={() => {
-        if (coverPickMode) {
-          onSetCover();
-        } else {
-          onOpenLightbox();
-        }
-      }}
-      title={
-        coverPickMode
-          ? "Set as cover photo"
-          : item.photo_title || "Open photo"
-      }
-      style={{
-        position: "relative",
-        border: isCover ? "2px solid var(--gold)" : undefined,
-        cursor: coverPickMode ? "pointer" : "pointer",
-      }}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={photoThumb(item)}
-        alt={item.photo_title || ""}
-      />
+      <button
+        className="kx-tile"
+        aria-label={coverPickMode ? `Use “${title}” as the cover` : `Open “${title}”`}
+        onClick={coverPickMode ? onSetCover : onOpen}
+      >
+        <img src={photoThumb(item)} alt="" loading="lazy" draggable={false} />
+      </button>
 
-      {/* Cover badge */}
-      {isCover && (
-        <span
-          style={{
-            position: "absolute",
-            top: 6,
-            left: 6,
-            padding: "2px 7px",
-            borderRadius: 4,
-            background: "var(--gold)",
-            color: "#fff",
-            fontSize: 9,
-            fontFamily: "var(--mono)",
-            fontWeight: 700,
-            letterSpacing: ".06em",
-            textTransform: "uppercase",
-            zIndex: 3,
-            boxShadow: "0 1px 4px rgba(0,0,0,.15)",
-          }}
-        >
-          Cover
-        </span>
-      )}
+      {isCover && <span className="kx-tilebadge">Cover</span>}
 
-      {/* Tag button (shows on hover) */}
       {!coverPickMode && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onTagPhoto();
-          }}
-          style={{
-            position: "absolute",
-            top: 6,
-            right: 6,
-            padding: "3px 8px",
-            borderRadius: 4,
-            border: "none",
-            background: "rgba(0, 0, 0, .55)",
-            color: "#fff",
-            fontSize: 10,
-            fontFamily: "var(--mono)",
-            fontWeight: 600,
-            cursor: "pointer",
-            opacity: 0,
-            transition: "opacity .15s",
-            zIndex: 3,
-          }}
-          className="focal-btn"
-          title="Tag faces in this photo"
-        >
+        <button className="kx-tileaction tag" onClick={onTag} aria-label={`Tag faces in “${title}”`}>
           Tag
         </button>
       )}
 
-      {/* Focal point adjust button (for current cover) */}
       {isCover && !coverPickMode && (
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleFocalPick();
-          }}
-          style={{
-            position: "absolute",
-            bottom: 6,
-            right: 6,
-            padding: "3px 8px",
-            borderRadius: 4,
-            border: "none",
-            background: "rgba(0, 0, 0, .55)",
-            color: "#fff",
-            fontSize: 10,
-            fontFamily: "var(--mono)",
-            fontWeight: 600,
-            cursor: "pointer",
-            opacity: 0,
-            transition: "opacity .15s",
-            zIndex: 3,
-          }}
-          className="focal-btn"
+          className="kx-tileaction crop"
+          onClick={onAdjustCrop}
+          aria-label="Adjust how the cover is cropped"
         >
           Adjust crop
         </button>
-      )}
-
-      {/* Hover overlay in cover pick mode */}
-      {coverPickMode && !isCover && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: "rgba(233, 184, 93, .08)",
-            borderRadius: "inherit",
-            display: "grid",
-            placeItems: "center",
-            opacity: 0,
-            transition: "opacity .15s",
-            pointerEvents: "none",
-          }}
-          className="cover-pick-overlay"
-        />
       )}
     </div>
   );
 }
 
-/* ── Appears-with section ──────────────────────────────────────────── */
+/* ── Who else is in the frame ───────────────────────────────────────── */
 
 interface AppearsWithPerson {
   cluster_id: string;
@@ -801,109 +944,129 @@ interface TogetherPhoto {
   photo_title: string;
 }
 
-function SharedPhotos({ clusterId, otherClusterId }: { clusterId: string; otherClusterId: string }) {
+function SharedPhotos({
+  clusterId,
+  otherClusterId,
+}: {
+  clusterId: string;
+  otherClusterId: string;
+}) {
   const { openLightbox } = useLightbox();
-  const { data, isLoading } = useQuery<{ photos: TogetherPhoto[] }>({
+  const { data, isPending } = useQuery<{ photos: TogetherPhoto[] }>({
     queryKey: ["together", clusterId, otherClusterId],
-    queryFn: () => fetch(`${BACKEND}/photos/together?people=${clusterId},${otherClusterId}&limit=30`).then((r) => r.json()),
+    queryFn: async () => {
+      const response = await fetch(
+        `${BACKEND}/photos/together?people=${clusterId},${otherClusterId}&limit=30`,
+      );
+      if (!response.ok) throw new Error("Those photos could not be loaded.");
+      return response.json();
+    },
   });
 
-  if (isLoading) return <div style={{ padding: 12 }}><Spinner /></div>;
+  if (isPending) return <KxSkeletonGrid count={8} tile={104} gap={6} />;
 
-  const photos = data?.photos || [];
-  if (photos.length === 0) return <p style={{ color: "var(--mist)", fontSize: 12, padding: "8px 0" }}>No shared photos found.</p>;
+  const photos = data?.photos ?? [];
+  if (photos.length === 0) return <p className="kx-status">No shared photos found.</p>;
 
-  const lbPhotos: LightboxPhoto[] = photos.map((p) => ({
-    photo_id: p.photo_id,
-    thumb_url: p.thumb_url || p.photo_url,
-    flickr_url: p.flickr_url,
-    photo_url: p.photo_url,
-    photo_title: p.photo_title,
+  const lightboxPhotos: LightboxPhoto[] = photos.map((photo) => ({
+    photo_id: photo.photo_id,
+    thumb_url: photoThumb(photo),
+    photo_url: photo.photo_url,
+    flickr_url: photo.flickr_url,
+    photo_title: photo.photo_title,
   }));
 
   return (
-    <div className="clip-results-grid" style={{ marginTop: 8, marginBottom: 12 }}>
+    /* The mosaic again, at a smaller step: fixed rows, so the track height
+       comes from the grid rather than from whatever shape the source frame
+       happens to be. */
+    <div
+      className="kx-daygrid"
+      style={{ ["--tile" as string]: "104px", ["--gap" as string]: "6px", marginBottom: 0 }}
+    >
       {photos.map((photo) => (
-        <button key={photo.photo_id} className="clip-result-card" onClick={() => openLightbox(photo.photo_id, lbPhotos)} style={{ border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
-          <img src={photoThumb(photo)} alt={photo.photo_title || ""} />
+        <button
+          key={photo.photo_id}
+          className="kx-tile"
+          aria-label={photo.photo_title || "Open photo"}
+          onClick={() => openLightbox(photo.photo_id, lightboxPhotos)}
+        >
+          <img src={photoThumb(photo)} alt="" loading="lazy" />
         </button>
       ))}
     </div>
   );
 }
 
-function AppearsWithSection({ clusterId }: { clusterId: string }) {
+function AppearsWith({ clusterId }: { clusterId: string }) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery<{ appears_with: AppearsWithPerson[] }>({
+  const { data, isPending } = useQuery<{ appears_with: AppearsWithPerson[] }>({
     queryKey: ["appears-with", clusterId],
-    queryFn: () => fetch(`${BACKEND}/photos/appears-with?cluster_id=${clusterId}`).then((r) => r.json()),
+    queryFn: async () => {
+      const response = await fetch(`${BACKEND}/photos/appears-with?cluster_id=${clusterId}`);
+      if (!response.ok) throw new Error("That could not be loaded.");
+      return response.json();
+    },
   });
 
-  const people = (data?.appears_with || []).filter((p) => p.label || p.category === "pets" || p.category === "animals");
+  const people = (data?.appears_with ?? []).filter(
+    (person) => person.label || person.category === "pets" || person.category === "animals",
+  );
 
-  if (isLoading || people.length === 0) return null;
+  if (isPending || people.length === 0) return null;
 
   return (
-    <div style={{ marginTop: 32 }}>
-      <h3 style={{ fontSize: 13, color: "var(--mist)", textTransform: "uppercase", letterSpacing: ".08em", margin: "0 0 12px" }}>
-        Often appears with
-      </h3>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        {people.map((person) => (
-          <div key={person.cluster_id}>
-            <button
-              className="appears-with-card"
-              onClick={() => setExpanded(expanded === person.cluster_id ? null : person.cluster_id)}
-              style={{ width: "100%", border: "none", cursor: "pointer", textAlign: "left" }}
-            >
+    <section className="kx-card">
+      <div className="kx-cardhead">
+        <h2>Often in the same frame</h2>
+        <span className="kx-mono">{fmt.format(people.length)}</span>
+      </div>
+      {people.map((person) => {
+        const isOpen = expanded === person.cluster_id;
+        const route = person.category === "pets" || person.category === "animals" ? "animals" : "people";
+        const label = person.label || (route === "animals" ? "An animal" : "Someone unnamed");
+        return (
+          <div key={person.cluster_id} className="kx-row kx-appearsrow">
+            <div className="kx-appearsrow-head">
               {person.avatar ? (
-                <img src={person.avatar} alt="" className="appears-with-avatar" />
+                <img className="kx-avatar" src={person.avatar} alt="" loading="lazy" />
               ) : (
-                <span className="appears-with-avatar appears-with-fallback">?</span>
+                <span className="kx-avatar" aria-hidden="true">
+                  ?
+                </span>
               )}
-              <span className="appears-with-name">
-                {person.label || (person.category === "pets" ? "Animal" : "Unknown")}
-                {person.category === "pets" && (
-                  <span style={{ fontSize: 9, color: "var(--mist)", marginLeft: 4, textTransform: "uppercase", letterSpacing: ".05em" }}>animal</span>
-                )}
+              <span className="kx-row-info">
+                <strong>{label}</strong>
+                <span className="kx-mono">
+                  {fmt.format(person.shared_photos)} photos together
+                </span>
               </span>
-              <span className="appears-with-count">{fmt.format(person.shared_photos)} shared</span>
-              <span style={{
-                marginLeft: "auto",
-                fontSize: 11,
-                fontWeight: 600,
-                color: expanded === person.cluster_id ? "var(--pine)" : "var(--mist)",
-                padding: "4px 10px",
-                borderRadius: 6,
-                background: expanded === person.cluster_id ? "rgba(35,96,106,.08)" : "rgba(18,18,24,.04)",
-              }}>
-                {expanded === person.cluster_id ? "Hide" : "Preview"}
+              <span className="kx-row-actions">
+                <button
+                  className="kx-button compact"
+                  aria-expanded={isOpen}
+                  onClick={() => setExpanded(isOpen ? null : person.cluster_id)}
+                >
+                  {isOpen ? "Hide" : "Preview"}
+                </button>
+                <Link className="kx-button compact" href={`/${route}/${person.cluster_id}`}>
+                  Their page
+                </Link>
+                <Link
+                  className="kx-button compact"
+                  href={`/together?people=${clusterId},${person.cluster_id}`}
+                >
+                  All {fmt.format(person.shared_photos)}
+                </Link>
               </span>
-            </button>
-            <Link
-              href={`/together?people=${clusterId},${person.cluster_id}`}
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: "var(--pine)",
-                padding: "4px 10px",
-                borderRadius: 6,
-                background: "rgba(35,96,106,.06)",
-                textDecoration: "none",
-                marginLeft: 4,
-                marginBottom: 4,
-                display: "inline-block",
-              }}
-            >
-              View all {fmt.format(person.shared_photos)}{" "}photos &rarr;
-            </Link>
-            {expanded === person.cluster_id && (
+            </div>
+            {isOpen && (
               <SharedPhotos clusterId={clusterId} otherClusterId={person.cluster_id} />
             )}
           </div>
-        ))}
-      </div>
-    </div>
+        );
+      })}
+    </section>
   );
 }
