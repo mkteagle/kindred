@@ -168,6 +168,10 @@ data class FlickrLoginRequest(
 data class UploadResponse(
     @SerializedName("photo_id") val photoId: String,
     val status: String,
+    @SerializedName("kindred_photo_id") val kindredPhotoId: String? = null,
+    @SerializedName("nas_status") val nasStatus: String? = null,
+    @SerializedName("flickr_status") val flickrStatus: String? = null,
+    val deduplicated: Boolean? = null,
 )
 
 // MARK: - Category Enum

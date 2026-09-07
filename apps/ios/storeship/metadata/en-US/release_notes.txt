@@ -1,0 +1,7 @@
+Welcome to Kindred Photos.
+
+• Back up photos and large videos with resumable uploads
+• Recover cleanly from interrupted background transfers
+• Browse people, pets, places, objects, scenes, and memories
+• Search your library and find loved ones together
+• Explore the complete experience without an account in demo mode

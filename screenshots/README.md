@@ -6,10 +6,19 @@ Automated pipeline for capturing, framing, and producing App Store-ready screens
 
 ```bash
 # From the project root
-./tools/take-screenshots.sh
+storeship ship --config storeship.yml --platform ios --dry-run
+
+# Regenerate the full iPhone + iPad screenshot set without publishing
+storeship capture --config storeship.yml --platform ios --out /tmp/kindred-storeship
 ```
 
-This will:
+StoreShip is the canonical App Store pipeline for Kindred. It invokes the
+project's branded screenshot renderer, validates the generated Apple display
+sizes, and publishes metadata, screenshots, and builds from `storeship.yml`.
+The local renderer can still be run directly with `./tools/screenshot-pipeline.sh`,
+but it never uploads to App Store Connect on its own.
+
+The capture command will:
 1. Run UI tests on the iPhone 15 Pro Max simulator to capture screenshots
 2. Extract raw screenshots from the test results
 3. Frame them with device bezels and marketing text

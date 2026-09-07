@@ -7,9 +7,11 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: L2T2KBN2GC
     GENERATE_INFOPLIST_FILE: true
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: 1
+    # App Store Connect already contains builds through 154.
+    CURRENT_PROJECT_VERSION: 155
     INFOPLIST_FILE: Kindred/Info.plist
 targets:
   Kindred:
@@ -20,7 +22,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.kindlingsignal.kindred
-        PRODUCT_NAME: Kindred
+        PRODUCT_NAME: "Kindred Photos"
+        INFOPLIST_KEY_CFBundleDisplayName: "Kindred Photos"
         INFOPLIST_FILE: Kindred/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -32,6 +35,9 @@ targets:
     info:
       path: Kindred/Info.plist
       properties:
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         CFBundleURLTypes:
           - CFBundleURLSchemes:
@@ -42,6 +48,18 @@ targets:
         UIBackgroundModes:
           - fetch
           - processing
+          - remote-notification
+        UIAppFonts:
+          - SpaceGrotesk-Medium.ttf
+          - SpaceGrotesk-SemiBold.ttf
+          - SpaceGrotesk-Bold.ttf
+          - InstrumentSans-Regular.ttf
+          - InstrumentSans-Medium.ttf
+          - InstrumentSans-SemiBold.ttf
+          - InstrumentSans-Bold.ttf
+          - IBMPlexMono-Regular.ttf
+          - IBMPlexMono-Medium.ttf
+          - IBMPlexMono-SemiBold.ttf
         BGTaskSchedulerPermittedIdentifiers:
           - com.kindlingsignal.kindred.sync
 
@@ -57,3 +75,32 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.kindlingsignal.kindred.screenshots
         TEST_TARGET_NAME: Kindred
         GENERATE_INFOPLIST_FILE: true
+
+schemes:
+  Kindred:
+    build:
+      targets:
+        Kindred: all
+        KindredScreenshots: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - KindredScreenshots
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+
+  KindredScreenshots:
+    build:
+      targets:
+        Kindred: all
+        KindredScreenshots: [test]
+    test:
+      config: Debug
+      targets:
+        - KindredScreenshots

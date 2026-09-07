@@ -1,0 +1,93 @@
+# StoreShip release configuration for Kindred Photos.
+# Store credentials live in .env.local and ~/.appstoreconnect; never commit them.
+#
+# Validate without publishing:
+#   storeship ship --config storeship.yml --platform ios --dry-run
+#
+# Refresh screenshots and publish the listing (no binary):
+#   storeship ship --config storeship.yml --platform ios --shoot
+#
+# Build and upload only after the release checklist passes:
+#   storeship ship --config storeship.yml --platform ios --build --tag 1.0.0
+
+name: Kindred Photos
+repo: .
+locales: [en-US]
+
+ios:
+  bundle_id: com.kindlingsignal.kindred
+  app_id: "6763926175"
+  scheme: Kindred
+  configuration: Release
+  project_path: apps/ios/Kindred.xcodeproj
+  screenshot_test: KindredScreenshots/KindredScreenshots
+  # Kindred owns a richer, device-aware screenshot renderer. StoreShip invokes
+  # it for `ship --shoot`, then publishes the generated StoreShip-configured dirs.
+  screenshot_command: ["./tools/screenshot-pipeline.sh"]
+  devices: ["iPhone 17 Pro Max", "iPad Pro 13-inch (M5)"]
+  metadata_dir: apps/ios/storeship/metadata/en-US
+  screenshots:
+    - screenshots/appstore/iphone69
+    - screenshots/appstore/ipad
+  asc:
+    key_id: "${ASC_KEY_ID}"
+    issuer_id: "${ASC_ISSUER_ID}"
+    key_path: ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+  copyright: "2026 Kindling Signal"
+  privacy_policy_url: https://kindredphotos.app/privacy
+  beta:
+    contact_first_name: Michael
+    contact_last_name: Teagle
+    contact_email: mkteagle@gmail.com
+    contact_phone: "${APP_REVIEW_PHONE}"
+    demo_account_name: "${REVIEW_ACCOUNT_EMAIL}"
+    demo_account_password: "${REVIEW_ACCOUNT_PASSWORD}"
+    demo_account_required: true
+    privacy_policy_url: https://kindredphotos.app/privacy
+    marketing_url: https://kindredphotos.app
+    description: >-
+      Sign in with the supplied App Review account to explore Kindred with
+      representative family photos, people, pets, places, search results, and
+      household settings. The review account cannot access a private library.
+    notes: >-
+      Sign in with the supplied App Review credentials. This special account
+      opens an isolated, bundled sample library and cannot read or upload any
+      household photos. No server setup or photo-library permission is needed.
+  app_store_review:
+    contact_first_name: Michael
+    contact_last_name: Teagle
+    contact_email: mkteagle@gmail.com
+    contact_phone: "${APP_REVIEW_PHONE}"
+    demo_account_name: "${REVIEW_ACCOUNT_EMAIL}"
+    demo_account_password: "${REVIEW_ACCOUNT_PASSWORD}"
+    demo_account_required: true
+    notes: >-
+      Sign in with the supplied App Review credentials. The account opens an
+      isolated, bundled sample library and cannot access or upload private
+      household photos. Kindred is a self-hosted household photo application;
+      connecting a real library requires a user-operated Kindred server.
+  what_to_test: >-
+    Sign in with the supplied review account and browse the home feed, people
+    and pet collections,
+    natural-language search, Together results, photo details, and household
+    settings. This build also improves resumable background uploads for large
+    photos and videos, including recovery after interruptions.
+
+brand:
+  paper: "#FBF4E7"
+  paper2: "#F7EBD4"
+  ink: "#2A201B"
+  accent: "#C9551C"
+  headline_font: apps/ios/Kindred/Fonts/SpaceGrotesk-Bold.ttf
+  eyebrow_font: apps/ios/Kindred/Fonts/IBMPlexMono-SemiBold.ttf
+  captions:
+    01_home_feed.png: { eyebrow: "Your memories", headline: "A calmer home for family photos." }
+    02_library_people.png: { eyebrow: "People", headline: "Everyone you love, organized." }
+    03_person_detail.png: { eyebrow: "Every detail", headline: "See the story behind every photo." }
+    04_library_pets.png: { eyebrow: "Pets too", headline: "They're family. We know that." }
+    05_library_vehicles.png: { eyebrow: "Road trips", headline: "Every car and every adventure." }
+    06_search_results.png: { eyebrow: "Find anything", headline: "Search the way you remember." }
+    07_together_picker.png: { eyebrow: "Together", headline: "Find the people who matter together." }
+    08_settings.png: { eyebrow: "Your household", headline: "Private, shared, and under your control." }
+    09_login.png: { eyebrow: "Your server", headline: "Your library lives at home." }
+    10_onboarding.png: { eyebrow: "Welcome home", headline: "Private. Warm. Completely yours." }

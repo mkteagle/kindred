@@ -1,0 +1,17 @@
+Kindred Photos gives your household a private, welcoming home for the photos and videos that matter most.
+
+Back up your library to your own Kindred server, then rediscover it through people, pets, places, scenes, objects, colors, and the moments you remember. Kindred groups related photos and makes your collection searchable without turning your family history into an advertising profile.
+
+WITH KINDRED, YOU CAN:
+
+• Back up photos and large videos with resumable uploads
+• Browse a warm home feed built around recent and meaningful memories
+• Find photos of the people and pets in your life
+• Search by place, scene, object, color, or text found inside an image
+• See every photo of selected family members together
+• Share one household library across iPhone and iPad
+• Keep control of the server and storage behind your library
+
+Kindred is built for self-hosting. A Kindred server is required to connect and back up a real photo library. Not ready to connect one? Tap Try the demo to explore the complete experience with representative local data.
+
+Your memories should feel like yours. With Kindred, they are.

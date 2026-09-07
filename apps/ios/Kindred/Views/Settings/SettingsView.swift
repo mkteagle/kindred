@@ -695,9 +695,11 @@ struct BackupDetailView: View {
                         Text("Free up device space")
                             .font(.kindredLabel)
                             .foregroundStyle(KindredTheme.ash)
-                        Text(uploadVM.photoManager.uploadedCount > 0
-                            ? "Remove \(uploadVM.photoManager.uploadedCount) backed-up items · save \(uploadVM.formattedSavings)"
-                            : "No backed-up photos to remove")
+                        Text(uploadVM.photoManager.cleanupEligibleCount > 0
+                            ? "Remove \(uploadVM.photoManager.cleanupEligibleCount) verified items · save \(uploadVM.formattedSavings)"
+                            : uploadVM.photoManager.uploadedCount > 0
+                                ? "Verify \(uploadVM.photoManager.uploadedCount) backups before removal"
+                                : "No backed-up photos to remove")
                             .font(.kindredMeta)
                             .foregroundStyle(KindredTheme.mist)
                     }
@@ -711,6 +713,15 @@ struct BackupDetailView: View {
             .contentShape(Rectangle())
             .buttonStyle(.plain)
             .disabled(uploadVM.photoManager.uploadedCount == 0)
+
+            if let cleanupError = uploadVM.cleanupError {
+                Text(cleanupError)
+                    .font(.kindredMicro)
+                    .foregroundStyle(KindredTheme.rosehip)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 12)
+            }
         }
         .kindredGroupedCard()
         .padding(.horizontal, 16)

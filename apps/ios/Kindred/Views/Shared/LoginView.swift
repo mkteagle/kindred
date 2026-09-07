@@ -253,7 +253,11 @@ struct LoginView: View {
                 ]
                 let response: AuthResponse = try await APIClient.shared.postPublic("/auth/flickr-login", body: body)
                 await MainActor.run {
-                    session.restoreSession(token: response.session.token, user: response.user)
+                    session.restoreSession(
+                        token: response.session.token,
+                        user: response.user,
+                        expiresAt: response.session.expires_at
+                    )
                 }
                 await APIClient.shared.setSessionToken(response.session.token)
             } catch {

@@ -61,6 +61,11 @@ actor APIClient {
             throw APIError.invalidResponse
         }
 
+        if httpResponse.statusCode == 401 {
+            NotificationCenter.default.post(name: .kindredSessionUnauthorized, object: nil)
+            throw APIError.unauthorized
+        }
+
         guard (200...299).contains(httpResponse.statusCode) else {
             throw APIError.httpError(httpResponse.statusCode)
         }
@@ -111,9 +116,15 @@ actor APIClient {
         }
 
         let (_, response) = try await session.data(for: req)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.invalidResponse
+        }
+        if httpResponse.statusCode == 401 {
+            NotificationCenter.default.post(name: .kindredSessionUnauthorized, object: nil)
+            throw APIError.unauthorized
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.httpError(httpResponse.statusCode)
         }
     }
 
@@ -303,6 +314,10 @@ actor APIClient {
     struct UploadResponse: Codable {
         let photo_id: String
         let status: String
+        let kindred_photo_id: String?
+        let nas_status: String?
+        let flickr_status: String?
+        let deduplicated: Bool?
     }
 
     struct BatchUploadResult: Codable {
@@ -316,6 +331,106 @@ actor APIClient {
         let results: [BatchUploadResult]
         let uploaded: Int
         let failed: Int
+    }
+
+    struct BackupStatus: Codable, Sendable {
+        let flickr_photo_id: String
+        let kindred_photo_id: String?
+        let nas_status: String
+        let flickr_status: String
+        let cleanup_safe: Bool
+    }
+
+    struct BackupStatusResponse: Codable, Sendable {
+        let items: [BackupStatus]
+    }
+
+    struct ResumableUploadRequest: Codable, Sendable {
+        let client_upload_id: String
+        let filename: String
+        let content_type: String
+        let byte_size: Int64
+        let title: String
+        let description: String
+        let taken_at_unix: Int64?
+        let latitude: Double?
+        let longitude: Double?
+    }
+
+    struct ResumableUploadResponse: Codable, Sendable {
+        let upload_id: String
+        let status: String
+        let next_offset: Int64
+        let receipt: UploadReceipt?
+    }
+
+    func verifyBackupStatus(flickrPhotoIDs: [String]) async throws -> BackupStatusResponse {
+        try await postJSON(
+            "/photos/backup-status",
+            body: ["flickr_photo_ids": flickrPhotoIDs]
+        )
+    }
+
+    func startResumableUpload(
+        _ upload: ResumableUploadRequest
+    ) async throws -> ResumableUploadResponse {
+        try await postJSON("/uploads/resumable", body: upload)
+    }
+
+    func uploadResumableChunk(
+        uploadID: String,
+        offset: Int64,
+        data: Data
+    ) async throws -> ResumableUploadResponse {
+        guard var components = URLComponents(
+            string: "\(baseURL)/uploads/resumable/\(uploadID)"
+        ) else {
+            throw APIError.invalidURL
+        }
+        components.queryItems = [URLQueryItem(name: "offset", value: String(offset))]
+        guard let url = components.url else { throw APIError.invalidURL }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "PUT"
+        req.httpBody = data
+        req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 120
+        if let token = sessionToken {
+            req.setValue(token, forHTTPHeaderField: "X-Session-Token")
+        }
+        return try await performResumableRequest(req)
+    }
+
+    func completeResumableUpload(uploadID: String) async throws -> ResumableUploadResponse {
+        guard let url = URL(
+            string: "\(baseURL)/uploads/resumable/\(uploadID)/complete"
+        ) else {
+            throw APIError.invalidURL
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 60
+        if let token = sessionToken {
+            req.setValue(token, forHTTPHeaderField: "X-Session-Token")
+        }
+        return try await performResumableRequest(req)
+    }
+
+    private func performResumableRequest(
+        _ request: URLRequest
+    ) async throws -> ResumableUploadResponse {
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        if httpResponse.statusCode == 401 {
+            NotificationCenter.default.post(name: .kindredSessionUnauthorized, object: nil)
+            throw APIError.unauthorized
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.httpError(httpResponse.statusCode)
+        }
+        return try decoder.decode(ResumableUploadResponse.self, from: data)
     }
 
     /// Upload a single photo/video through the backend proxy to Flickr.
@@ -358,10 +473,15 @@ actor APIClient {
         req.httpBody = body
 
         let (responseData, response) = try await session.data(for: req)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
-            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            throw APIError.httpError(code)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        if httpResponse.statusCode == 401 {
+            NotificationCenter.default.post(name: .kindredSessionUnauthorized, object: nil)
+            throw APIError.unauthorized
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.httpError(httpResponse.statusCode)
         }
         return try decoder.decode(UploadResponse.self, from: responseData)
     }
@@ -384,13 +504,27 @@ actor APIClient {
     enum APIError: LocalizedError {
         case invalidURL
         case invalidResponse
+        case unauthorized
         case httpError(Int)
 
         var errorDescription: String? {
             switch self {
             case .invalidURL: return "Invalid URL"
             case .invalidResponse: return "Invalid response from server"
+            case .unauthorized: return "Your session expired. Please sign in again."
             case .httpError(let code): return "HTTP error \(code)"
+            }
+        }
+
+        var isRetryable: Bool {
+            switch self {
+            case .invalidResponse:
+                return true
+            case .httpError(let code):
+                return code == 408 || code == 409 || code == 425
+                    || code == 429 || code >= 500
+            case .invalidURL, .unauthorized:
+                return false
             }
         }
     }

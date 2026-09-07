@@ -1,6 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
+# App Store publishing is intentionally centralized in StoreShip. Xcode Cloud
+# builds must never upload screenshots or metadata as an implicit post-action.
+echo "Kindred App Store publishing is managed by StoreShip; skipping legacy Xcode Cloud post-build actions."
+exit 0
+
 # ---------------------------------------------------------------------------
 # ci_post_xcodebuild.sh — Xcode Cloud post-build script
 #
@@ -14,6 +19,9 @@ set -euo pipefail
 #   APP_STORE_CONNECT_API_KEY       — base64-encoded .p8 key content (Secret)
 #   APP_STORE_CONNECT_KEY_ID        — API Key ID
 #   APP_STORE_CONNECT_ISSUER_ID     — Issuer ID
+#
+# Uploads are disabled by default. For an intentional manual release, set:
+#   ALLOW_APP_STORE_UPLOAD=true
 # ---------------------------------------------------------------------------
 
 echo "=== Kindred Photos — Screenshot Upload ==="
@@ -23,6 +31,11 @@ echo ""
 WORKFLOW_LOWER=$(echo "${CI_WORKFLOW:-}" | tr '[:upper:]' '[:lower:]')
 if [ "$WORKFLOW_LOWER" != "screenshots" ]; then
     echo "Not the Screenshots workflow (CI_WORKFLOW=${CI_WORKFLOW:-unset}). Skipping."
+    exit 0
+fi
+
+if [ "${ALLOW_APP_STORE_UPLOAD:-false}" != "true" ]; then
+    echo "App Store uploads are disabled (ALLOW_APP_STORE_UPLOAD is not true)."
     exit 0
 fi
 

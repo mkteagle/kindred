@@ -77,11 +77,12 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --upload)
-            DO_UPLOAD=true
-            shift
+            echo "Uploads are managed by StoreShip. Run:"
+            echo "  storeship ship --config storeship.yml --platform ios"
+            exit 2
             ;;
         --help|-h)
-            echo "Usage: $0 [--skip-tests] [--skip-frames] [--iphone-only] [--ipad-only] [--upload]"
+            echo "Usage: $0 [--skip-tests] [--skip-frames] [--iphone-only] [--ipad-only]"
             echo ""
             echo "Options:"
             echo "  --skip-tests    Skip running iOS UI tests (use existing raw screenshots)"
@@ -499,6 +500,7 @@ if [ "$DO_UPLOAD" = true ]; then
     echo ""
 else
     echo ""
-    echo -e "${YELLOW}Tip:${RESET} To upload to App Store Connect, re-run with --upload"
-    echo "  $0 --skip-tests --skip-frames --upload"
+    echo -e "${YELLOW}Publishing is handled by StoreShip:${RESET}"
+    echo "  storeship ship --config storeship.yml --platform ios --dry-run"
+    echo "  storeship ship --config storeship.yml --platform ios"
 fi

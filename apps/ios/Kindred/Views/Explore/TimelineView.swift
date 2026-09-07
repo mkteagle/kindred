@@ -4,6 +4,9 @@ struct TimelineView: View {
     @Bindable var viewModel: ExploreViewModel
     @State private var selectedPhoto: PhotoGridItem?
     @State private var scrollTarget: String?
+    @State private var visiblePhotoCounts: [String: Int] = [:]
+
+    private let pageSize = 30
 
     var body: some View {
         VStack(spacing: 0) {
@@ -95,10 +98,15 @@ struct TimelineView: View {
                         .foregroundStyle(KindredTheme.mist)
                 }
                 Spacer()
-                Text("SEE ALL")
+                if visibleCount(for: month) < month.photos.count {
+                    Button("LOAD MORE") {
+                        loadMore(month)
+                    }
                     .font(.kindredMicro)
                     .tracking(1.4)
                     .foregroundStyle(KindredTheme.pine)
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.horizontal, 20)
 
@@ -121,7 +129,7 @@ struct TimelineView: View {
                 ],
                 spacing: 3
             ) {
-                ForEach(items.prefix(6)) { item in
+                ForEach(items.prefix(visibleCount(for: month))) { item in
                     AsyncImage(url: URL(string: item.thumbURL ?? item.photoURL)) { phase in
                         switch phase {
                         case .success(let image):
@@ -137,7 +145,33 @@ struct TimelineView: View {
                 }
             }
             .padding(.horizontal, 14)
+
+            let remaining = max(0, month.photos.count - visibleCount(for: month))
+            if remaining > 0 {
+                Button {
+                    loadMore(month)
+                } label: {
+                    Text("+\(remaining.formatted()) more photo\(remaining == 1 ? "" : "s")")
+                        .font(.kindredMeta)
+                        .foregroundStyle(KindredTheme.pine)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
+            }
         }
+    }
+
+    private func visibleCount(for month: TimelineMonth) -> Int {
+        min(visiblePhotoCounts[month.id] ?? pageSize, month.photos.count)
+    }
+
+    private func loadMore(_ month: TimelineMonth) {
+        visiblePhotoCounts[month.id] = min(
+            visibleCount(for: month) + pageSize,
+            month.photos.count
+        )
     }
 
     private var currentWeekRange: String {

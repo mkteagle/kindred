@@ -240,6 +240,12 @@ struct UploadView: View {
                 .buttonStyle(.bordered)
                 .tint(.orange)
             }
+
+            if let cleanupError = viewModel.cleanupError {
+                Text(cleanupError)
+                    .font(.kindredMeta)
+                    .foregroundStyle(.red)
+            }
         }
         .padding()
         .background(KindredTheme.warmCardBackground)

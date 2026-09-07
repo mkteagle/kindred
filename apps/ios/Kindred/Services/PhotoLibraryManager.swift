@@ -2,8 +2,9 @@ import Foundation
 import Photos
 
 /// Manages interaction with the device photo library using PhotoKit.
-/// Tracks which photos have been uploaded to Flickr.
+/// Tracks server-confirmed backup copies for the current Kindred account.
 @Observable
+@MainActor
 final class PhotoLibraryManager {
     static let shared = PhotoLibraryManager()
 
@@ -15,9 +16,32 @@ final class PhotoLibraryManager {
     private(set) var estimatedSavingsBytes: Int64 = 0
     private(set) var isLoading = false
 
-    /// Maps local asset identifier -> Flickr photo ID
-    private var uploadedMap: [String: String] = [:]
-    private let uploadedMapKey = "kindred_uploaded_photos"
+    var cleanupEligibleCount: Int {
+        let accountID = currentAccountID
+        return lock.withLock {
+            uploadedMap.values.filter {
+                $0.accountID == accountID && $0.isSafeForCleanup
+            }.count
+        }
+    }
+
+    struct BackupRecord: Codable, Sendable {
+        let accountID: String
+        let localIdentifier: String
+        let flickrPhotoID: String
+        let kindredPhotoID: String?
+        var nasStatus: String?
+        var flickrStatus: String?
+
+        var isSafeForCleanup: Bool {
+            nasStatus == "available" && flickrStatus == "available"
+        }
+    }
+
+    /// Composite accountID|localIdentifier -> durable backup receipt.
+    private var uploadedMap: [String: BackupRecord] = [:]
+    private let uploadedMapKey = "kindred_uploaded_photos_v2"
+    private let legacyUploadedMapKey = "kindred_uploaded_photos"
 
     // Serializes access to uploadedMap and notUploadedPhotos. markAsUploaded
     // is called concurrently from background upload tasks and the URLSession
@@ -61,13 +85,20 @@ final class PhotoLibraryManager {
 
         // Prune the uploaded map — remove entries for photos no longer on the device
         let currentIDs = Set(assets.map(\.localIdentifier))
+        let accountID = currentAccountID
         let (mapKeys, newUploadedCount) = lock.withLock { () -> (Set<String>, Int) in
-            let staleKeys = uploadedMap.keys.filter { !currentIDs.contains($0) }
+            let accountRecords = uploadedMap.values.filter { $0.accountID == accountID }
+            let staleKeys = accountRecords
+                .filter { !currentIDs.contains($0.localIdentifier) }
+                .map(\.localIdentifier)
             if !staleKeys.isEmpty {
-                for key in staleKeys { uploadedMap.removeValue(forKey: key) }
+                for localIdentifier in staleKeys {
+                    uploadedMap.removeValue(forKey: recordKey(localIdentifier, accountID: accountID))
+                }
                 saveUploadedMap()
             }
-            return (Set(uploadedMap.keys), uploadedMap.count)
+            let remaining = uploadedMap.values.filter { $0.accountID == accountID }
+            return (Set(remaining.map(\.localIdentifier)), remaining.count)
         }
 
         self.uploadedCount = newUploadedCount
@@ -81,24 +112,39 @@ final class PhotoLibraryManager {
 
     // MARK: - Upload Tracking
 
-    func markAsUploaded(localIdentifier: String, flickrPhotoId: String) {
+    func markAsUploaded(
+        localIdentifier: String,
+        flickrPhotoId: String,
+        kindredPhotoId: String? = nil,
+        nasStatus: String? = nil,
+        flickrStatus: String? = "available",
+        accountID: String? = nil
+    ) {
+        let resolvedAccountID = accountID ?? currentAccountID
+        let key = recordKey(localIdentifier, accountID: resolvedAccountID)
         lock.lock()
-        uploadedMap[localIdentifier] = flickrPhotoId
+        uploadedMap[key] = BackupRecord(
+            accountID: resolvedAccountID,
+            localIdentifier: localIdentifier,
+            flickrPhotoID: flickrPhotoId,
+            kindredPhotoID: kindredPhotoId,
+            nasStatus: nasStatus,
+            flickrStatus: flickrStatus ?? "available"
+        )
         saveUploadedMap()
-        let newCount = uploadedMap.count
+        let newCount = uploadedMap.values.filter { $0.accountID == resolvedAccountID }.count
         lock.unlock()
 
-        // Mutate @Observable state on MainActor so SwiftUI observation is consistent.
-        Task { @MainActor in
-            self.uploadedCount = newCount
-            self.notUploadedPhotos.removeAll { $0.localIdentifier == localIdentifier }
-        }
+        guard resolvedAccountID == currentAccountID else { return }
+        uploadedCount = newCount
+        notUploadedPhotos.removeAll { $0.localIdentifier == localIdentifier }
     }
 
     func isUploaded(localIdentifier: String) -> Bool {
+        let key = recordKey(localIdentifier, accountID: currentAccountID)
         lock.lock()
         defer { lock.unlock() }
-        return uploadedMap[localIdentifier] != nil
+        return uploadedMap[key] != nil
     }
 
     // MARK: - Delete Local Copies
@@ -120,10 +166,51 @@ final class PhotoLibraryManager {
     }
 
     func getUploadedAssets() -> [PHAsset] {
+        let accountID = currentAccountID
         lock.lock()
-        let mapKeys = Set(uploadedMap.keys)
+        let mapKeys = Set(uploadedMap.values.compactMap { record in
+            record.accountID == accountID && record.isSafeForCleanup
+                ? record.localIdentifier
+                : nil
+        })
         lock.unlock()
         return allPhotos.filter { mapKeys.contains($0.localIdentifier) }
+    }
+
+    func getTrackedAssets() -> [PHAsset] {
+        let accountID = currentAccountID
+        let mapKeys = lock.withLock {
+            Set(uploadedMap.values.compactMap { record in
+                record.accountID == accountID ? record.localIdentifier : nil
+            })
+        }
+        return allPhotos.filter { mapKeys.contains($0.localIdentifier) }
+    }
+
+    func backupRecords(for assets: [PHAsset]) -> [BackupRecord] {
+        let accountID = currentAccountID
+        let identifiers = Set(assets.map(\.localIdentifier))
+        return lock.withLock {
+            uploadedMap.values.filter {
+                $0.accountID == accountID && identifiers.contains($0.localIdentifier)
+            }
+        }
+    }
+
+    func reconcileBackupStatuses(_ statuses: [APIClient.BackupStatus]) {
+        let accountID = currentAccountID
+        let byFlickrID = Dictionary(uniqueKeysWithValues: statuses.map { ($0.flickr_photo_id, $0) })
+        lock.withLock {
+            let keys = uploadedMap.keys.filter { uploadedMap[$0]?.accountID == accountID }
+            for key in keys {
+                guard var record = uploadedMap[key] else { continue }
+                guard let status = byFlickrID[record.flickrPhotoID] else { continue }
+                record.nasStatus = status.nas_status
+                record.flickrStatus = status.flickr_status
+                uploadedMap[key] = record
+            }
+            saveUploadedMap()
+        }
     }
 
     // MARK: - Storage Estimation
@@ -153,8 +240,27 @@ final class PhotoLibraryManager {
 
     private func loadUploadedMap() {
         if let data = UserDefaults.standard.data(forKey: uploadedMapKey),
-           let map = try? JSONDecoder().decode([String: String].self, from: data) {
+           let map = try? JSONDecoder().decode([String: BackupRecord].self, from: data) {
             uploadedMap = map
+            return
+        }
+
+        // One-time migration of the old device-global Flickr map. It remains
+        // ineligible for cleanup until the server confirms a NAS copy.
+        if let data = UserDefaults.standard.data(forKey: legacyUploadedMapKey),
+           let legacy = try? JSONDecoder().decode([String: String].self, from: data) {
+            let accountID = currentAccountID
+            for (localIdentifier, flickrPhotoID) in legacy {
+                uploadedMap[recordKey(localIdentifier, accountID: accountID)] = BackupRecord(
+                    accountID: accountID,
+                    localIdentifier: localIdentifier,
+                    flickrPhotoID: flickrPhotoID,
+                    kindredPhotoID: nil,
+                    nasStatus: nil,
+                    flickrStatus: "available"
+                )
+            }
+            saveUploadedMap()
         }
     }
 
@@ -164,14 +270,25 @@ final class PhotoLibraryManager {
         }
     }
 
+    private var currentAccountID: String {
+        SessionManager.shared.currentUser?.id ?? "unknown"
+    }
+
+    private func recordKey(_ localIdentifier: String, accountID: String) -> String {
+        "\(accountID)|\(localIdentifier)"
+    }
+
     enum PhotoError: LocalizedError {
         case deleteFailed
         case notAuthorized
+        case noVerifiedBackups
 
         var errorDescription: String? {
             switch self {
             case .deleteFailed: return "Failed to delete photos"
             case .notAuthorized: return "Photo library access not authorized"
+            case .noVerifiedBackups:
+                return "No items have both a verified NAS copy and a verified Flickr copy yet."
             }
         }
     }

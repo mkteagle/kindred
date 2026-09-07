@@ -1,160 +1,251 @@
 import Foundation
 
-/// Manages a background URLSession for photo uploads to the Kindred backend.
-/// Uploads survive the app being suspended — iOS transfers them in the background
-/// and wakes the app via AppDelegate.handleEventsForBackgroundURLSession when done.
-final class BackgroundUploadSession: NSObject {
+struct UploadReceipt: Codable, Sendable {
+    let photo_id: String
+    let status: String
+    let kindred_photo_id: String?
+    let nas_status: String?
+    let flickr_status: String?
+    let deduplicated: Bool?
+}
+
+enum BackgroundUploadError: LocalizedError, Sendable {
+    case invalidResponse
+    case http(status: Int, message: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidResponse:
+            return "Kindred returned an unreadable upload response."
+        case let .http(status, message):
+            if status == 401 { return "Your session expired. Please sign in again." }
+            if status == 413 { return "This item is larger than the server allows." }
+            return message.isEmpty ? "Upload failed (HTTP \(status))." : message
+        }
+    }
+
+    var isRetryable: Bool {
+        switch self {
+        case .invalidResponse:
+            return true
+        case let .http(status, _):
+            return status == 408 || status == 429 || status >= 500
+        }
+    }
+}
+
+/// Owns the background URLSession used by every manual and automatic upload.
+/// Request bodies live on disk, and task metadata survives process termination.
+final class BackgroundUploadSession: NSObject, @unchecked Sendable {
     static let shared = BackgroundUploadSession()
     static let sessionIdentifier = "com.kindlingsignal.kindred.upload"
 
-    private let metadataKey = "kindred_bg_upload_tasks"
+    private let metadataKey = "kindred_bg_upload_tasks_v2"
+    private let lock = NSLock()
+    private let completionWork = DispatchGroup()
 
-    /// Called by AppDelegate after all background events are delivered.
-    var backgroundCompletionHandler: (() -> Void)?
+    private var completionHandler: (() -> Void)?
+    var backgroundCompletionHandler: (() -> Void)? {
+        get { lock.withLock { completionHandler } }
+        set { lock.withLock { completionHandler = newValue } }
+    }
 
     private lazy var session: URLSession = {
         let config = URLSessionConfiguration.background(withIdentifier: Self.sessionIdentifier)
         config.isDiscretionary = false
         config.sessionSendsLaunchEvents = true
-        config.httpMaximumConnectionsPerHost = 3
-        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
+        config.httpMaximumConnectionsPerHost = 1
+        config.waitsForConnectivity = true
+
+        let delegateQueue = OperationQueue()
+        delegateQueue.name = "com.kindlingsignal.kindred.upload.delegate"
+        delegateQueue.maxConcurrentOperationCount = 1
+        return URLSession(configuration: config, delegate: self, delegateQueue: delegateQueue)
     }()
 
-    // Continuations for tasks started in the current process lifetime
-    private var continuations: [Int: CheckedContinuation<String, Error>] = [:]
-    // Accumulated response body per task
+    private var continuations: [Int: CheckedContinuation<UploadReceipt, Error>] = [:]
     private var responseBuffers: [Int: Data] = [:]
-    // Persisted metadata so we can mark uploads done after a kill+relaunch
-    // [taskIdentifier (as String): TaskMeta]
     private var taskMeta: [String: TaskMeta] = [:]
 
-    struct TaskMeta: Codable {
-        let localIdentifier: String  // PHAsset.localIdentifier
+    struct TaskMeta: Codable, Sendable {
+        let localIdentifier: String
         let filename: String
+        let bodyFilePath: String
+        let accountID: String
     }
 
     override private init() {
         super.init()
         loadTaskMeta()
-        // Touch the session to register the delegate — this drains any pending
-        // background events from a previous process run.
         _ = session
     }
 
-    // MARK: - Public API
-
-    /// Enqueue a background upload. Returns the Flickr photo_id on success.
-    /// If the app is suspended mid-upload, iOS finishes the transfer and the
-    /// result is delivered via the delegate when the app next runs.
     func upload(
         request: URLRequest,
-        body: Data,
+        bodyFileURL: URL,
         localIdentifier: String,
-        filename: String
-    ) async throws -> String {
-        let fileURL = try writeTempFile(body, filename: filename)
-
-        return try await withCheckedThrowingContinuation { continuation in
-            let task = session.uploadTask(with: request, fromFile: fileURL)
-            let key = String(task.taskIdentifier)
-            continuations[task.taskIdentifier] = continuation
-            responseBuffers[task.taskIdentifier] = Data()
-            taskMeta[key] = TaskMeta(localIdentifier: localIdentifier, filename: filename)
-            saveTaskMeta()
-            task.resume()
+        filename: String,
+        accountID: String
+    ) async throws -> UploadReceipt {
+        let task = session.uploadTask(with: request, fromFile: bodyFileURL)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let meta = TaskMeta(
+                    localIdentifier: localIdentifier,
+                    filename: filename,
+                    bodyFilePath: bodyFileURL.path,
+                    accountID: accountID
+                )
+                lock.withLock {
+                    continuations[task.taskIdentifier] = continuation
+                    responseBuffers[task.taskIdentifier] = Data()
+                    taskMeta[String(task.taskIdentifier)] = meta
+                    saveTaskMetaLocked()
+                }
+                if Task.isCancelled {
+                    task.cancel()
+                } else {
+                    task.resume()
+                }
+            }
+        } onCancel: {
+            task.cancel()
         }
     }
 
-    // MARK: - Temp file
-
-    private func writeTempFile(_ data: Data, filename: String) throws -> URL {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("kindred_uploads", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = dir.appendingPathComponent(UUID().uuidString + "_" + filename)
-        try data.write(to: url)
-        return url
+    func activeLocalIdentifiers() async -> Set<String> {
+        let tasks = await session.allTasks
+        let ids = Set(tasks.map { String($0.taskIdentifier) })
+        return lock.withLock {
+            Set(ids.compactMap { taskMeta[$0]?.localIdentifier })
+        }
     }
-
-    // MARK: - Task metadata persistence
 
     private func loadTaskMeta() {
         guard let data = UserDefaults.standard.data(forKey: metadataKey),
-              let decoded = try? JSONDecoder().decode([String: TaskMeta].self, from: data) else { return }
+              let decoded = try? JSONDecoder().decode([String: TaskMeta].self, from: data) else {
+            return
+        }
         taskMeta = decoded
     }
 
-    private func saveTaskMeta() {
+    private func saveTaskMetaLocked() {
         guard let data = try? JSONEncoder().encode(taskMeta) else { return }
         UserDefaults.standard.set(data, forKey: metadataKey)
     }
-}
 
-// MARK: - URLSessionDelegate
+    private static func serverMessage(from data: Data) -> String {
+        guard !data.isEmpty else { return "" }
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let detail = json["detail"] as? String {
+            return detail
+        }
+        return String(data: data.prefix(500), encoding: .utf8) ?? ""
+    }
+
+    private func persistFailure(_ meta: TaskMeta?, error: String) {
+        guard let meta else { return }
+        completionWork.enter()
+        Task {
+            await UploadQueueStore.shared.markFailed(
+                meta.localIdentifier,
+                accountID: meta.accountID,
+                error: error
+            )
+            completionWork.leave()
+        }
+    }
+
+    private func persistSuccess(_ meta: TaskMeta?, receipt: UploadReceipt) {
+        guard let meta else { return }
+        completionWork.enter()
+        Task { @MainActor in
+            PhotoLibraryManager.shared.markAsUploaded(
+                localIdentifier: meta.localIdentifier,
+                flickrPhotoId: receipt.photo_id,
+                kindredPhotoId: receipt.kindred_photo_id,
+                nasStatus: receipt.nas_status,
+                flickrStatus: receipt.flickr_status,
+                accountID: meta.accountID
+            )
+            await UploadQueueStore.shared.markSucceeded(
+                meta.localIdentifier,
+                accountID: meta.accountID,
+                receipt: receipt
+            )
+            completionWork.leave()
+        }
+    }
+}
 
 extension BackgroundUploadSession: URLSessionDelegate {
     func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
-        DispatchQueue.main.async {
+        completionWork.notify(queue: .main) {
             self.backgroundCompletionHandler?()
             self.backgroundCompletionHandler = nil
         }
     }
 }
 
-// MARK: - URLSessionDataDelegate
-
 extension BackgroundUploadSession: URLSessionDataDelegate {
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-        responseBuffers[dataTask.taskIdentifier, default: Data()].append(data)
+        lock.withLock {
+            responseBuffers[dataTask.taskIdentifier, default: Data()].append(data)
+        }
     }
 }
-
-// MARK: - URLSessionTaskDelegate
 
 extension BackgroundUploadSession: URLSessionTaskDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         let id = task.taskIdentifier
-        let key = String(id)
-        let data = responseBuffers.removeValue(forKey: id) ?? Data()
-        let meta = taskMeta.removeValue(forKey: key)
-        saveTaskMeta()
-
-        // Clean up temp file
-        if let upload = task as? URLSessionUploadTask,
-           let originalRequest = task.originalRequest,
-           let fileURL = originalRequest.url {
-            // The file URL is stored in the task; best-effort delete
-            _ = try? FileManager.default.removeItem(at: fileURL)
+        let result = lock.withLock { () -> (Data, TaskMeta?, CheckedContinuation<UploadReceipt, Error>?) in
+            let data = responseBuffers.removeValue(forKey: id) ?? Data()
+            let meta = taskMeta.removeValue(forKey: String(id))
+            let continuation = continuations.removeValue(forKey: id)
+            saveTaskMetaLocked()
+            return (data, meta, continuation)
         }
 
-        let continuation = continuations.removeValue(forKey: id)
+        if let path = result.1?.bodyFilePath {
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: path))
+        }
 
         if let error {
-            continuation?.resume(throwing: error)
+            if result.2 == nil { persistFailure(result.1, error: error.localizedDescription) }
+            result.2?.resume(throwing: error)
             return
         }
 
-        guard let http = task.response as? HTTPURLResponse,
-              (200...299).contains(http.statusCode) else {
-            let code = (task.response as? HTTPURLResponse)?.statusCode ?? 0
-            continuation?.resume(throwing: URLError(.badServerResponse))
+        guard let http = task.response as? HTTPURLResponse else {
+            if result.2 == nil {
+                persistFailure(result.1, error: BackgroundUploadError.invalidResponse.localizedDescription)
+            }
+            result.2?.resume(throwing: BackgroundUploadError.invalidResponse)
             return
         }
 
-        struct UploadResponse: Decodable { let photo_id: String }
-        guard let response = try? JSONDecoder().decode(UploadResponse.self, from: data) else {
-            continuation?.resume(throwing: URLError(.cannotParseResponse))
-            return
-        }
-
-        if let continuation {
-            continuation.resume(returning: response.photo_id)
-        } else if let meta {
-            // App was killed while upload was in flight — mark it done now
-            PhotoLibraryManager.shared.markAsUploaded(
-                localIdentifier: meta.localIdentifier,
-                flickrPhotoId: response.photo_id
+        guard (200...299).contains(http.statusCode) else {
+            let uploadError = BackgroundUploadError.http(
+                status: http.statusCode,
+                message: Self.serverMessage(from: result.0)
             )
+            if http.statusCode == 401 {
+                NotificationCenter.default.post(name: .kindredSessionUnauthorized, object: nil)
+            }
+            if result.2 == nil { persistFailure(result.1, error: uploadError.localizedDescription) }
+            result.2?.resume(throwing: uploadError)
+            return
         }
+
+        guard let receipt = try? JSONDecoder().decode(UploadReceipt.self, from: result.0) else {
+            if result.2 == nil {
+                persistFailure(result.1, error: BackgroundUploadError.invalidResponse.localizedDescription)
+            }
+            result.2?.resume(throwing: BackgroundUploadError.invalidResponse)
+            return
+        }
+
+        if result.2 == nil { persistSuccess(result.1, receipt: receipt) }
+        result.2?.resume(returning: receipt)
     }
 }
