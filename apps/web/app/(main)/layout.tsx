@@ -1,5 +1,6 @@
 import { Providers } from "./providers";
-import { Topbar } from "./topbar";
+import { KxAppShell } from "@/components/kx/app-shell";
+import { THEME_BOOT_SCRIPT } from "@/components/kx/theme";
 import { SyncProgress } from "@/components/sync-progress";
 import "./globals.css";
 
@@ -10,10 +11,14 @@ export default function MainLayout({
 }) {
   return (
     <div className="main-app">
+      {/* Sets <html data-theme> before first paint so the shell never flashes
+          the wrong ground. Has to be inline and synchronous. */}
+      <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       <Providers>
-        <Topbar />
-        <SyncProgress />
-        {children}
+        <KxAppShell>
+          <SyncProgress />
+          {children}
+        </KxAppShell>
       </Providers>
     </div>
   );
