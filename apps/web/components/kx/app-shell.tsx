@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import type { User } from "@/types";
+import { KxSearchOverlay } from "./search-overlay";
 import { KxSidebar } from "./sidebar";
 import { KxTopbar } from "./topbar";
 import { KxUiProvider, useKxUi } from "./ui-state";
@@ -54,15 +55,7 @@ function ShellFrame({ user, children }: { user: User | null; children: React.Rea
     setDrawerOpen(false);
   }, [pathname]);
 
-  // TODO(step 4/5): replace these route hops with the ⌘K overlay and the
-  // upload dialog. The shell already owns both flags.
-  useEffect(() => {
-    if (searchOpen) {
-      setSearchOpen(false);
-      router.push("/search");
-    }
-  }, [searchOpen, setSearchOpen, router]);
-
+  // TODO: replace this route hop with the upload dialog.
   useEffect(() => {
     if (uploadOpen) {
       setUploadOpen(false);
@@ -83,6 +76,7 @@ function ShellFrame({ user, children }: { user: User | null; children: React.Rea
         <KxTopbar user={user} onOpenDrawer={() => setDrawerOpen(true)} />
         {children}
       </div>
+      {searchOpen && <KxSearchOverlay onClose={() => setSearchOpen(false)} />}
     </div>
   );
 }
