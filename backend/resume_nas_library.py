@@ -10,6 +10,7 @@ from pathlib import Path
 import sys
 import time
 
+import capture_date
 import main
 import staged_import
 
@@ -50,9 +51,15 @@ def reconcile(relative: str, receipt: dict, source_root: Path) -> bool:
         "latitude": None, "longitude": None,
     }
     checksum = main._file_sha256(str(original))
-    taken_at = None
-    if metadata["taken_at_unix"]:
+    # Read the durable NAS original, which is always present here, rather than
+    # the staged source: a quarantined duplicate or a pruned import tree must
+    # not turn a known capture date back into a null.
+    capture = capture_date.extract(original, original_filename=source.name)
+    taken_at = capture.taken_at
+    if taken_at is None and metadata["taken_at_unix"]:
         taken_at = main.datetime.fromtimestamp(metadata["taken_at_unix"], tz=main.timezone.utc)
+    if capture.latitude is not None:
+        metadata = dict(metadata, latitude=capture.latitude, longitude=capture.longitude)
     main.db_query(
         """
         INSERT INTO photos (
@@ -66,9 +73,12 @@ def reconcile(relative: str, receipt: dict, source_root: Path) -> bool:
             byte_size = EXCLUDED.byte_size,
             title = EXCLUDED.title,
             description = EXCLUDED.description,
-            taken_at = EXCLUDED.taken_at,
-            latitude = EXCLUDED.latitude,
-            longitude = EXCLUDED.longitude,
+            -- COALESCE, not EXCLUDED: this upsert runs again on every worker
+            -- restart, and a source file that has since been quarantined or
+            -- pruned yields no metadata. Overwriting would erase a good date.
+            taken_at = COALESCE(photos.taken_at, EXCLUDED.taken_at),
+            latitude = COALESCE(photos.latitude, EXCLUDED.latitude),
+            longitude = COALESCE(photos.longitude, EXCLUDED.longitude),
             updated_at = now()
         """,
         (

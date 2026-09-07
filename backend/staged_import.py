@@ -27,6 +27,11 @@ import shutil
 import sys
 import time
 
+import capture_date
+# One definition of where a Takeout sidecar lives, shared with every ingest
+# path. Re-exported because callers and tests have always imported it here.
+from capture_date import sidecar_for
+
 
 SUPPORTED_EXTENSIONS = {
     ".jpg", ".jpeg", ".jfif", ".png", ".gif", ".heic", ".heif",
@@ -55,15 +60,12 @@ def scan_media(root: Path) -> list[Path]:
     return list(iter_media(root))
 
 
-def sidecar_for(path: Path) -> Path | None:
-    """Find either common Google Takeout JSON sidecar naming convention."""
-    for candidate in (path.with_name(path.name + ".json"), path.with_suffix(".json")):
-        if candidate.is_file():
-            return candidate
-    return None
-
-
 def read_metadata(path: Path) -> dict:
+    """Title, description and the sidecar's own view of when and where.
+
+    The date and coordinates here are only a starting point: they travel into
+    `_store_nas_original`, which reads the file itself and overrules them.
+    """
     result = {
         "title": path.stem,
         "description": "",
@@ -78,17 +80,16 @@ def read_metadata(path: Path) -> dict:
         data = json.loads(sidecar.read_text(encoding="utf-8"))
         result["title"] = data.get("title") or result["title"]
         result["description"] = data.get("description") or ""
-        timestamp = (data.get("photoTakenTime") or {}).get("timestamp")
-        if timestamp:
-            result["taken_at_unix"] = int(timestamp)
-        geo = data.get("geoData") or data.get("geoDataExif") or {}
-        latitude = geo.get("latitude")
-        longitude = geo.get("longitude")
-        if latitude or longitude:
-            result["latitude"] = float(latitude)
-            result["longitude"] = float(longitude)
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
         print(f"[import] unreadable sidecar {sidecar}: {exc}", flush=True)
+        return result
+    # Shared with every other ingest path, so an implausible epoch or a
+    # half-written geo block is rejected here exactly as it is there.
+    capture = capture_date.read_sidecar(sidecar)
+    if capture.taken_at:
+        result["taken_at_unix"] = int(capture.taken_at.timestamp())
+    result["latitude"] = capture.latitude
+    result["longitude"] = capture.longitude
     return result
 
 
@@ -159,6 +160,10 @@ async def import_one(
     )
     if not nas_copy:
         raise RuntimeError("PHOTO_STORAGE_ROOT is not configured")
+    # _store_nas_original read the original's EXIF or container metadata, so
+    # its answer outranks the sidecar's for the Flickr mirror too.
+    metadata = dict(metadata, taken_at_unix=nas_copy["taken_at_unix"],
+                    latitude=nas_copy["latitude"], longitude=nas_copy["longitude"])
 
     flickr_id = main._existing_flickr_copy(nas_copy["kindred_photo_id"])
     replication_job_id = None

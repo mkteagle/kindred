@@ -2574,6 +2574,55 @@ def _file_sha256(path: str) -> str:
     return digest.hexdigest()
 
 
+def _resolve_capture_metadata(
+    file_path: str,
+    filename: str,
+    content_type: str,
+    taken_at_unix: int | None,
+    latitude: float | None,
+    longitude: float | None,
+):
+    """When this file was taken and where, read from the file itself.
+
+    A client is not a trustworthy source for a capture date and demonstrably
+    does not supply one consistently — the iOS app sends `taken_at_unix`, the
+    web uploader never has, and neither do the NAS import paths. So the file
+    wins and the client's value is only a fallback, ranked above the filename
+    heuristic because an iOS PHAsset creation date is a real observation.
+
+    Returns `(taken_at, latitude, longitude, source)`; every element may be
+    None. Extraction never raises: a photo that cannot be parsed is still a
+    photo worth storing.
+    """
+    import capture_date
+
+    try:
+        found = capture_date.extract(
+            Path(file_path), original_filename=filename, media_type=content_type,
+            allow_filename=False,
+        )
+    except Exception as exc:  # pragma: no cover - defence in depth
+        print(f"[capture] extraction failed for {filename}: {exc}", flush=True)
+        found = capture_date.Capture()
+    if found.error:
+        print(f"[capture] {filename}: {found.error}", flush=True)
+
+    taken_at, source = found.taken_at, found.taken_at_source
+    if taken_at is None and taken_at_unix:
+        taken_at = capture_date.parse_epoch(taken_at_unix)
+        source = "client" if taken_at else None
+    if taken_at is None:
+        taken_at = capture_date.parse_filename_datetime(filename)
+        source = "filename" if taken_at else None
+
+    if found.latitude is not None:
+        latitude, longitude = found.latitude, found.longitude
+    else:
+        client_location = capture_date.valid_coordinates(latitude, longitude)
+        latitude, longitude = client_location if client_location else (None, None)
+    return taken_at, latitude, longitude, source
+
+
 def _store_nas_original(
     file_path: str,
     filename: str,
@@ -2585,9 +2634,19 @@ def _store_nas_original(
     longitude: float | None,
     client_upload_id: str | None,
 ) -> dict | None:
-    """Commit an original to NAS storage before attempting its Flickr mirror."""
+    """Commit an original to NAS storage before attempting its Flickr mirror.
+
+    The capture date and GPS are extracted from the file here rather than
+    trusted from the caller, so every ingest path — web, iOS, resumable and
+    the NAS importers — gets a real `taken_at` from the one place they share.
+    """
     if not PHOTO_STORAGE_ROOT:
         return None
+
+    taken_at, latitude, longitude, capture_source = _resolve_capture_metadata(
+        file_path, filename, content_type, taken_at_unix, latitude, longitude,
+    )
+    taken_at_unix = int(taken_at.timestamp()) if taken_at else None
 
     checksum = _file_sha256(file_path)
     provider = LocalStorageProvider(PHOTO_STORAGE_ROOT)
@@ -2612,10 +2671,6 @@ def _store_nas_original(
                 row = cur.fetchone()
             kindred_photo_id = str(row["id"]) if row else str(uuid.uuid4())
             if not row:
-                taken_at = (
-                    datetime.fromtimestamp(taken_at_unix, tz=timezone.utc)
-                    if taken_at_unix else None
-                )
                 cur.execute(
                     """
                     INSERT INTO photos (
@@ -2631,11 +2686,28 @@ def _store_nas_original(
                         client_upload_id,
                     ),
                 )
-            elif client_upload_id and not row.get("client_upload_id"):
-                cur.execute(
-                    "UPDATE photos SET client_upload_id = %s, updated_at = now() WHERE id = %s",
-                    (client_upload_id, kindred_photo_id),
-                )
+            else:
+                if client_upload_id and not row.get("client_upload_id"):
+                    cur.execute(
+                        "UPDATE photos SET client_upload_id = %s, updated_at = now() WHERE id = %s",
+                        (client_upload_id, kindred_photo_id),
+                    )
+                if taken_at or latitude is not None:
+                    # Re-uploading a file whose row predates server-side
+                    # extraction fills the gaps. COALESCE, so a date already
+                    # recorded is never overwritten by a worse guess.
+                    cur.execute(
+                        """
+                        UPDATE photos
+                        SET taken_at = COALESCE(taken_at, %s),
+                            latitude = COALESCE(latitude, %s),
+                            longitude = COALESCE(longitude, %s),
+                            updated_at = now()
+                        WHERE id = %s
+                          AND (taken_at IS NULL OR latitude IS NULL OR longitude IS NULL)
+                        """,
+                        (taken_at, latitude, longitude, kindred_photo_id),
+                    )
 
             cur.execute(
                 """
@@ -2654,6 +2726,10 @@ def _store_nas_original(
                     "sha256": existing["sha256"],
                     "byte_size": existing["byte_size"],
                     "deduplicated": True,
+                    "taken_at_unix": taken_at_unix,
+                    "taken_at_source": capture_source,
+                    "latitude": latitude,
+                    "longitude": longitude,
                 }
 
             stored = provider.store_file(kindred_photo_id, Path(file_path), filename)
@@ -2686,6 +2762,10 @@ def _store_nas_original(
             "sha256": stored.sha256,
             "byte_size": stored.byte_size,
             "deduplicated": False,
+            "taken_at_unix": taken_at_unix,
+            "taken_at_source": capture_source,
+            "latitude": latitude,
+            "longitude": longitude,
         }
     except Exception:
         conn.rollback()
@@ -3176,6 +3256,10 @@ async def _finalize_resumable_upload(upload_id: str, row: dict, creds: dict) -> 
         )
         if not nas_copy:
             raise RuntimeError("NAS photo storage is not configured")
+        # What the file itself said, with the session's client-supplied values
+        # as the fallback _store_nas_original already folded in.
+        row = dict(row, taken_at_unix=nas_copy["taken_at_unix"],
+                   latitude=nas_copy["latitude"], longitude=nas_copy["longitude"])
 
         photo_id = _existing_flickr_copy(nas_copy["kindred_photo_id"])
         is_video = Path(row['original_filename']).suffix.lower() in VIDEO_EXTENSIONS
@@ -3410,6 +3494,11 @@ async def upload_photo(
             description, taken_at_unix, latitude, longitude,
             client_upload_id,
         )
+        if nas_copy:
+            # Prefer what the file said over what the client claimed, so the
+            # Flickr mirror carries the same date the catalog now holds.
+            taken_at_unix = nas_copy["taken_at_unix"]
+            latitude, longitude = nas_copy["latitude"], nas_copy["longitude"]
         if nas_copy and Path(filename).suffix.lower() in VIDEO_EXTENSIONS:
             photo_id = _existing_flickr_copy(nas_copy['kindred_photo_id'])
             if not photo_id:
