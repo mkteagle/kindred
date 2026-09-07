@@ -10877,3 +10877,13 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
     padding: 70px 16px 48vh;
   }
 }
+
+/* Theme toggle is an icon button now, sized to match the zoom controls it
+   sits beside rather than the mono text pill it replaced. */
+.kx-themetoggle {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+}

@@ -1,18 +1,24 @@
 "use client";
 
 import type { User } from "@/types";
-import { MenuIcon, SearchIcon, ZoomInIcon, ZoomOutIcon } from "./icons";
+import { MenuIcon, MoonIcon, SearchIcon, SunIcon, ZoomInIcon, ZoomOutIcon } from "./icons";
 import { useTheme } from "./theme";
 import { useKxUi, TILE_MAX, TILE_MIN } from "./ui-state";
 import { KxUserMenu } from "./user-menu";
 
 function ThemeToggle() {
   const { theme, toggle } = useTheme();
-  // The label names the theme you would switch to, not the one you are in.
-  const next = theme === "dark" ? "Light" : "Dark";
+  // The glyph shows the theme you would switch to, not the one you are in — a
+  // sun offers daylight. With no text label the button needs an explicit name.
+  const next = theme === "dark" ? "light" : "dark";
   return (
-    <button className="kx-themetoggle" onClick={toggle} title="Light or dark" aria-label={`Switch to ${next.toLowerCase()} theme`}>
-      {next}
+    <button
+      className="kx-iconbtn kx-themetoggle"
+      onClick={toggle}
+      title={`Switch to ${next} theme`}
+      aria-label={`Switch to ${next} theme`}
+    >
+      {theme === "dark" ? <SunIcon /> : <MoonIcon />}
     </button>
   );
 }

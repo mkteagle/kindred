@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { BACKEND } from "@/lib/constants";
 import type { User } from "@/types";
-import { DocsIcon, EyeIcon, PersonIcon, QrIcon, SignOutIcon } from "./icons";
+import { DocsIcon, EyeIcon, MoonIcon, PersonIcon, QrIcon, SignOutIcon, SunIcon } from "./icons";
+import { useTheme } from "./theme";
 import { MobileSetupDialog } from "./mobile-setup-dialog";
 
 const API = "/api";
@@ -23,6 +24,7 @@ export function displayNameOf(user: User | null | undefined): string {
  * entries still gated on the real server role.
  */
 export function KxUserMenu({ user }: { user: User | null }) {
+  const { theme, toggle: toggleTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const [signOutOpen, setSignOutOpen] = useState(false);
@@ -137,6 +139,11 @@ export function KxUserMenu({ user }: { user: User | null }) {
               <DocsIcon />
               Documentation
             </Link>
+            {/* Same hook as the topbar button, so the two never disagree. */}
+            <button className="kx-menu-item" role="menuitem" onClick={toggleTheme}>
+              {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+              {theme === "dark" ? "Light theme" : "Dark theme"}
+            </button>
 
             {user.role === "admin" && (
               <>
