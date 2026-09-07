@@ -9966,3 +9966,172 @@ button.kx-avatar { cursor: pointer; }
   .kx-dayhead { top: 57px; }
   .kx-floatbar { flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 32px); }
 }
+
+/* ── Filter chip row ─────────────────────────────────────────────────── */
+
+.kx-chiprow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 26px;
+}
+
+/* ── Videos ──────────────────────────────────────────────────────────── */
+
+.kx-videogrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-auto-rows: 190px;
+  gap: 10px;
+}
+
+.kx-videocard {
+  position: relative;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--tile-bg);
+  text-align: left;
+  cursor: pointer;
+}
+
+.kx-videocard img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.kx-videocard:hover {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.kx-videocard.wide { grid-column: span 2; }
+.kx-videocard.big { grid-column: span 2; grid-row: span 2; }
+
+.kx-videocard-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(12, 14, 12, 0) 45%, rgba(12, 14, 12, .78));
+}
+
+.kx-videocard-play {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--scrim-chip);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: #f1f1ec;
+}
+
+.kx-videocard-date {
+  position: absolute;
+  top: 14px;
+  right: 12px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .06em;
+  color: rgba(241, 241, 236, .72);
+}
+
+.kx-videocard-foot {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 11px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.kx-videocard-title {
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 600;
+  color: #f1f1ec;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kx-videocard-duration {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: rgba(241, 241, 236, .72);
+}
+
+/* ── People / animals / vehicles browse ──────────────────────────────── */
+
+.kx-peoplegrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 22px 16px;
+}
+
+.kx-personcard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 11px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.kx-personcard img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 999px;
+  background: var(--tile-bg);
+}
+
+.kx-personcard-name {
+  font-family: var(--display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.kx-personcard:hover .kx-personcard-name { color: var(--accent); }
+
+.kx-personcard-count {
+  margin-top: -7px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+/* An unnamed cluster leads with the invitation to name it. */
+.kx-personcard.unnamed img { opacity: .82; }
+
+.kx-personcard.unnamed .kx-personcard-name {
+  font-family: var(--body);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--ink-4);
+}
+
+.kx-personcard-fallback {
+  width: 100%;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--tile-bg);
+  font-family: var(--display);
+  font-size: 28px;
+  color: var(--ink-3);
+}
