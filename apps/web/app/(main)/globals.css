@@ -12440,3 +12440,345 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
   line-height: 1.5;
   color: var(--ink-3, #9ba095);
 }
+/* ══════════════════════════════════════════════════════════════════════
+   Cluster detail — /people/{id}, /animals/{id}, /vehicles/{id}
+   ────────────────────────────────────────────────────────────────────────
+   The one screen the handoff never drew. Built out of the pieces it did:
+   the page header block, the card treatment shared by the twelve browse
+   screens, the library's own mosaic tiles, and the review screen's face
+   chips. Nothing here is a new visual language — it is the same one,
+   arranged around the question this screen answers: who is this, and is
+   the group right?
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Back to the grid you came from. Mono, quiet, above the eyebrow. */
+.kx-backlink {
+  display: inline-block;
+  margin-bottom: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  text-decoration: none;
+}
+
+.kx-backlink:hover { color: var(--accent); }
+
+/* The group's picture: a circle for a face, a rectangle for a shape a
+   circle would crop away — the same rule the browse grid follows. */
+.kx-clustercover {
+  width: 58px;
+  height: 58px;
+  flex: none;
+  display: block;
+  border-radius: 999px;
+  object-fit: cover;
+  background: var(--tile-bg);
+}
+
+.kx-clustercover.square {
+  width: 76px;
+  height: 58px;
+  border-radius: 10px;
+}
+
+.kx-clustercover.blank {
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  font-family: var(--display);
+  font-size: 20px;
+}
+
+/* The name row wraps rather than crushing the reuse chips. */
+.kx-card > .kx-row { flex-wrap: wrap; }
+
+.kx-nameform {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kx-nameform .kx-input { min-width: 220px; }
+
+.kx-namerow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A destructive action, mid-question. */
+.kx-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kx-menu-item.danger { color: var(--danger-ink); }
+.kx-menu-item.danger:hover { background: var(--danger-fill); }
+
+.kx-menu .kx-confirm {
+  padding: 4px 6px;
+  flex-wrap: wrap;
+}
+
+/* Detections, folded away. Opening it is a decision, because 600 face chips
+   is a decision. */
+.kx-disclosure {
+  margin-bottom: 18px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--fill-1);
+}
+
+.kx-disclosure-summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kx-disclosure-summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-right: 1.6px solid var(--ink-3);
+  border-bottom: 1.6px solid var(--ink-3);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform .18s ease;
+}
+
+.kx-disclosure[data-open="true"] .kx-disclosure-summary::after {
+  transform: rotate(-135deg) translate(-2px, -2px);
+}
+
+.kx-disclosure-summary:hover .kx-eyebrow { color: var(--ink-2); }
+
+.kx-disclosure-body { padding: 0 16px 16px; }
+
+/* The chosen face wears the amber mark; every chip opens its own menu. */
+.kx-facewrap { position: relative; }
+
+.kx-facechip.is-avatar {
+  outline: 2px solid var(--amber);
+  outline-offset: -2px;
+}
+
+.kx-facebadge {
+  position: absolute;
+  left: -3px;
+  bottom: -3px;
+  width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--amber);
+  color: var(--on-accent);
+  pointer-events: none;
+}
+
+/* The face chip's menu hangs below its own 62px chip, not the topbar. */
+.kx-menu.face {
+  top: 66px;
+  left: 0;
+  right: auto;
+  width: 216px;
+}
+
+/* ── The photographs ─────────────────────────────────────────────────── */
+
+.kx-sectionhead {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 26px 0 12px;
+}
+
+.kx-sectionhead .kx-mono { margin-left: auto; }
+
+.kx-clusterphotos .kx-banner { margin-bottom: 12px; }
+
+/* A mosaic tile that also carries controls. The button stays the tile, so
+   the hover outline and the focus ring are unchanged; the badge and the two
+   actions sit beside it rather than inside it, because a button inside a
+   button is neither valid nor reachable. */
+.kx-clustertile {
+  position: relative;
+  min-width: 0;
+}
+
+.kx-clustertile.wide { grid-column: span 2; }
+.kx-clustertile.big { grid-column: span 2; grid-row: span 2; }
+
+.kx-clustertile > .kx-tile {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.kx-clustertile.is-cover > .kx-tile {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.kx-tilebadge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.kx-tileaction {
+  position: absolute;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--scrim-badge);
+  color: #f1f1ec;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .15s ease;
+}
+
+.kx-tileaction.tag { top: 6px; right: 6px; }
+.kx-tileaction.crop { bottom: 6px; right: 6px; }
+
+.kx-clustertile:hover .kx-tileaction,
+.kx-tileaction:focus-visible { opacity: 1; }
+
+.kx-tileaction:hover { background: var(--accent); color: var(--on-accent); }
+
+/* Touch has no hover, so the controls would never appear. */
+@media (hover: none) {
+  .kx-tileaction { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kx-tileaction,
+  .kx-disclosure-summary::after { transition: none; }
+  /* Every kx screen enters on `rise`; nothing had switched it off. */
+  .kx-page { animation: none; }
+}
+
+/* ── Often in the same frame ─────────────────────────────────────────── */
+
+.kx-appearsrow {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.kx-appearsrow-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+@media (max-width: 700px) {
+  .kx-appearsrow-head { flex-wrap: wrap; }
+  .kx-cardhead { flex-wrap: wrap; }
+  .kx-cardhead-actions { margin-left: 0; }
+}
+
+/* Two buttons on a banner — a question and its answer — travel together,
+   rather than each claiming the auto margin and drifting apart. */
+.kx-banner-actions {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kx-banner-actions .kx-button { margin-left: 0; }
+
+/* The focus ring is drawn inside the disclosure header rather than around it,
+   so a full-width control does not push a 3px halo past the card's own edge. */
+.kx .kx-disclosure-summary:focus-visible { outline-offset: -3px; }
+
+/* ── The merge picker, inside the new chrome ─────────────────────────────
+   `dialogs.tsx` is a parchment-era component the redesign has not reached.
+   Its card is painted `#fffdf8` with `color: var(--ash)`, and the shell
+   aliases `--ash` to the dark theme's cream ink — so inside `.kx` it was
+   white text on a white card: the names were rendered, and invisible.
+   Repaint it with the panel tokens until the dialog itself is ported.
+   Reached from both this screen's "Merge into…" and the review screen's M. */
+
+.kx dialog.confirm {
+  border: 1px solid var(--line-3);
+  border-radius: 14px;
+  background: var(--panel-2);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  color: var(--ink);
+  box-shadow: var(--shadow-dialog);
+}
+
+.kx dialog.confirm::backdrop {
+  background: var(--scrim-dialog);
+  backdrop-filter: blur(5px);
+}
+
+.kx .confirm-body h3 { color: var(--ink); }
+.kx .confirm-body p { color: var(--ink-4); }
+
+.kx .merge-search {
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--fill-1);
+  color: var(--ink);
+  font-family: inherit;
+}
+
+.kx .merge-search::placeholder { color: var(--ink-3); }
+.kx .merge-search:focus { border-color: var(--accent); }
+
+.kx .merge-option { border-radius: 8px; color: var(--ink); }
+.kx .merge-option:hover { background: var(--fill-2); }
+.kx .merge-option-avatar { border-color: var(--line-2); background: var(--tile-bg); }
+.kx .merge-option-name { color: var(--ink); }
+
+.kx .merge-option-count {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--ink-3);
+}
+
+/* The dialog's own footer button is the parchment `.button`, which paints
+   itself on `--paper` — the page ground, not the panel's. */
+.kx .confirm-actions .button {
+  border: 1px solid var(--line-3);
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.kx .confirm-actions .button:hover:not(:disabled) {
+  background: var(--fill-2);
+  box-shadow: none;
+}
