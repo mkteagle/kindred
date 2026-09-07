@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# The repository root's .gitignore has a bare `package.json` line, which
+# swallows this app's manifest and leaves a fresh clone unable to install or
+# build. Re-include it here — a nested .gitignore wins over the parent.
+!package.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

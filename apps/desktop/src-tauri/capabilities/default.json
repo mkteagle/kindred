@@ -1,12 +1,17 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main"],
+  "description": "Library, viewer, review, settings and the bulk uploader. Torn-off windows are matched by glob so a new viewer inherits the same capability as the first.",
+  "windows": ["main", "viewer-*", "review-*", "settings", "uploader"],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-is-fullscreen",
     "opener:default",
+    "opener:allow-reveal-item-in-dir",
     "dialog:default",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "drag:default"
   ]
 }
