@@ -153,11 +153,23 @@ pub fn open(
     });
 
     let remembered = settings.get().windows.get(kind).copied();
+    #[allow(unused_mut)]
     let mut builder =
         WebviewWindowBuilder::new(app, label.as_str(), WebviewUrl::App("index.html".into()))
-        .title(title)
-        .min_inner_size(min_width, min_height)
-        .resizable(true);
+            .title(title)
+            .min_inner_size(min_width, min_height)
+            .resizable(true);
+
+    // The design draws one 40px bar carrying the traffic lights, a centred mono
+    // title and the build tag — not an OS title bar with our bar underneath it.
+    // Overlay puts the real traffic lights over the webview; `.k-title-bar`
+    // leaves a 68px gutter for them and takes the drag region itself.
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true);
+    }
 
     builder = match remembered {
         Some(geometry) if geometry.width > 400 && geometry.height > 300 => builder

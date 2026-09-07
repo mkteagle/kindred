@@ -5,6 +5,7 @@
   "windows": ["main", "viewer-*", "review-*", "settings", "uploader"],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
     "core:window:allow-set-fullscreen",
     "core:window:allow-is-fullscreen",
     "opener:default",

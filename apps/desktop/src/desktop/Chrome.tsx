@@ -27,11 +27,20 @@ import { desktop } from "../lib/desktop";
 export function TitleBar({ title, children }: { title: string; children?: ReactNode }) {
   const version = useAppVersion();
   return (
-    <header className="k-title-bar">
-      <span className="k-title-bar-lights" aria-hidden="true" />
-      <h1 className="k-title-bar-title">{title}</h1>
+    // `data-tauri-drag-region` is what actually moves the window: WKWebView
+    // does not implement `-webkit-app-region`, so the CSS in styles.css is only
+    // a hint for the platforms that do. Tauri's shim fires on the element
+    // carrying the attribute, never on a descendant, so the controls inside
+    // stay clickable.
+    <header className="k-title-bar" data-tauri-drag-region>
+      <span className="k-title-bar-lights" aria-hidden="true" data-tauri-drag-region />
+      <h1 className="k-title-bar-title" data-tauri-drag-region>
+        {title}
+      </h1>
       {children}
-      <span className="k-title-bar-build">{version} · rust + tauri</span>
+      <span className="k-title-bar-build" data-tauri-drag-region>
+        {version} · rust + tauri
+      </span>
     </header>
   );
 }
