@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { BACKEND, fmt } from "@/lib/constants";
 import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
 import { PlayIcon } from "@/components/kx/icons";
@@ -9,6 +9,8 @@ import { useKxUi } from "@/components/kx/ui-state";
 import { useLibraryCounts, useStats } from "@/components/kx/use-library";
 import { KxEmptyLibrary, KxErrorBanner, KxSkeletonGrid } from "@/components/kx/states";
 import { KxSelectBar } from "@/components/kx/select-bar";
+import { KxDayHeader } from "@/components/kx/day-header";
+import { useDayLabels } from "@/components/kx/day-labels";
 import { formatDuration, groupByDay, thumbUrl, tileSpan, type LibraryPhoto } from "@/components/kx/photos";
 
 type Page = { photos: LibraryPhoto[]; next_cursor: string | null };
@@ -28,6 +30,7 @@ export default function LibraryPage() {
   const { openLightbox } = useLightbox();
   const { data: counts } = useLibraryCounts();
   const { data: stats } = useStats();
+  const dayLabels = useDayLabels();
 
   const sentinel = useRef<HTMLDivElement>(null);
   const columnRef = useRef<HTMLDivElement>(null);
@@ -96,16 +99,28 @@ export default function LibraryPage() {
 
   /* ── Year scrubber ───────────────────────────────────────────────── */
 
-  // TODO: the years shown are the ones paged in so far. A `/library/years`
-  // endpoint (min/max plus the years that actually hold photos) would let the
-  // scrubber show the whole span up front instead of growing as you scroll.
+  // The whole span up front. Deriving it from the pages fetched so far would
+  // give a scrubber that grows as you scroll, which is the one thing a
+  // scrubber exists to avoid; /library/years answers it in a single group-by.
+  const { data: yearRows } = useQuery<{ years: { year: number; count: number }[] }>({
+    queryKey: ["library-years"],
+    queryFn: async () => {
+      const response = await fetch(`${BACKEND}/library/years?media=all`);
+      if (!response.ok) throw new Error("The year list could not be loaded.");
+      return response.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
   const years = useMemo(() => {
+    if (yearRows?.years?.length) return yearRows.years.map((row) => row.year);
+    // Until it lands, the years already on screen are better than none.
     const seen: number[] = [];
     for (const section of sections) {
       if (section.year && !seen.includes(section.year)) seen.push(section.year);
     }
     return seen;
-  }, [sections]);
+  }, [yearRows, sections]);
 
   // Highlight the year of the topmost day header under the topbar.
   useEffect(() => {
@@ -268,26 +283,18 @@ export default function LibraryPage() {
             const allSelected = ids.every((id) => selected.has(id));
             return (
               <section key={section.key}>
-                <div
-                  className="kx-dayhead"
-                  ref={(node) => {
+                <KxDayHeader
+                  label={section.label}
+                  count={section.photos.length}
+                  day={dayLabels.get(section.key) ?? null}
+                  allSelected={allSelected}
+                  onSelectDay={() => selectDay(ids)}
+                  year={section.year}
+                  headerRef={(node) => {
                     if (node) sectionNodes.current.set(section.key, node);
                     else sectionNodes.current.delete(section.key);
                   }}
-                  data-year={section.year}
-                >
-                  <h2>{section.label}</h2>
-                  {/* TODO: the design pairs the count with the day's place
-                      ("Campfire at the lake · 214 photos"). Nothing in the API
-                      names a day yet — /events is the closest, and it groups
-                      differently. */}
-                  <span className="kx-mono">
-                    {fmt.format(section.photos.length)} {section.photos.length === 1 ? "photo" : "photos"}
-                  </span>
-                  <button className="kx-selectday" data-selectday onClick={() => selectDay(ids)}>
-                    {allSelected ? "Deselect" : "Select all"} {fmt.format(ids.length)}
-                  </button>
-                </div>
+                />
 
                 <div className="kx-daygrid">
                   {section.photos.map((photo, index) => {

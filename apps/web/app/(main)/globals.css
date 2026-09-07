@@ -11123,6 +11123,65 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
 .kx-menu-item img { flex: none; }
 .kx-menu-item > span:first-of-type { flex: 1 1 auto; min-width: 0; }
 
+/* ── Day header: label provenance and naming ─────────────────────────── */
+
+/* A name a member typed and a place a machine guessed are different claims,
+   so the header always says which one it is showing. */
+.kx-provenance {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+/* Dashed, because it is an invitation rather than a statement. */
+.kx-nameday {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px dashed var(--line-5);
+  border-radius: 999px;
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--ink-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.kx-nameday:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.kx-nameday-input {
+  min-height: 28px;
+  min-width: 180px;
+  padding: 0 10px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--fill-1);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+@media (max-width: 900px) {
+  /* The chip and the invitation both drop out before the date and count do. */
+  .kx-provenance,
+  .kx-nameday { display: none; }
+}
+
 /* ── Date facet popover ──────────────────────────────────────────────── */
 
 .kx-datepop {
