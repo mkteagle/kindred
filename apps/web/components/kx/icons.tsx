@@ -52,6 +52,45 @@ export function NavIcon({ d, size = 18 }: { d: string; size?: number }) {
   );
 }
 
+/**
+ * LIBRARY nav glyphs, in the same space-separated multi-path format `NavIcon`
+ * already takes for the WAYS IN rows — so both sidebar groups draw their icons
+ * through one renderer and inherit the same 24×24 / 1.8 stroke / round-cap
+ * house style. Circles and ellipses are written as arc pairs rather than
+ * <circle>/<ellipse> because that format carries paths only.
+ *
+ * The handoff gave LIBRARY rows no icon; these exist because a collapsed rail
+ * has nothing else to show, and there the glyph is the row's only label.
+ */
+export const LIBRARY_ICON_PATHS = {
+  /* Photo frame with a horizon and a sun — the library, whole. */
+  allPhotos:
+    "M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z M3 16.4l4.6-4.6 3.4 3.4 3.2-3.2L21 18 M10.2 9.4a1.6 1.6 0 1 1 -3.2 0 1.6 1.6 0 1 1 3.2 0z",
+  /* One person. The group glyph is already spoken for by WAYS IN → Together. */
+  people:
+    "M20 20.5v-1.2a5.3 5.3 0 00-5.3-5.3H9.3A5.3 5.3 0 004 19.3v1.2 M15.6 7.4a3.6 3.6 0 1 1 -7.2 0 3.6 3.6 0 1 1 7.2 0z",
+  /* Paw print: four toes over a pad. */
+  animals:
+    "M8.1 11a1.6 2 0 1 1 -3.2 0 1.6 2 0 1 1 3.2 0z M11.5 7.6a1.7 2.1 0 1 1 -3.4 0 1.7 2.1 0 1 1 3.4 0z M15.9 7.6a1.7 2.1 0 1 1 -3.4 0 1.7 2.1 0 1 1 3.4 0z M19.1 11a1.6 2 0 1 1 -3.2 0 1.6 2 0 1 1 3.2 0z M12 12.4c2.6 0 4.6 2 4.6 4.4 0 1.9-1.4 3.2-3.2 3.2-.6 0-1-.2-1.4-.2s-.8.2-1.4.2c-1.8 0-3.2-1.3-3.2-3.2 0-2.4 2-4.4 4.6-4.4z",
+  /* Car in profile: cabin, waistline, two wheels. */
+  vehicles:
+    "M3.5 16.2v-3l1.9-4.7A2 2 0 017.3 7.2h9.4a2 2 0 011.9 1.3l1.9 4.7v3 M3.5 13.2h17 M8 16.2a2 2 0 1 1 -4 0 2 2 0 1 1 4 0z M20 16.2a2 2 0 1 1 -4 0 2 2 0 1 1 4 0z",
+  /* Screen with a play triangle — deliberately unlike the photo frame above. */
+  videos:
+    "M4 5h16a1.5 1.5 0 011.5 1.5v11A1.5 1.5 0 0120 19H4a1.5 1.5 0 01-1.5-1.5v-11A1.5 1.5 0 014 5z M10.2 9.1l5.2 2.9-5.2 2.9z",
+  /* Clock — the same library, in the order it happened. */
+  timeline: "M21 12a9 9 0 1 1 -18 0 9 9 0 1 1 18 0z M12 7.1V12l3.3 2",
+  /* Map pin. */
+  locations:
+    "M20 10.4c0 5.4-8 11.8-8 11.8s-8-6.4-8-11.8a8 8 0 1 1 16 0z M15 10.2a3 3 0 1 1 -6 0 3 3 0 1 1 6 0z",
+  /* Three nodes joined — something handed on to someone else. */
+  shared:
+    "M15.9 6.4l-8.4 4.2 M7.5 13.4l8.4 4.2 M21 5.2a2.7 2.7 0 1 1 -5.4 0 2.7 2.7 0 1 1 5.4 0z M7.7 12a2.7 2.7 0 1 1 -5.4 0 2.7 2.7 0 1 1 5.4 0z M21 18.8a2.7 2.7 0 1 1 -5.4 0 2.7 2.7 0 1 1 5.4 0z",
+  /* The outline `HeartIcon` draws, so the rail and the photo tiles agree. */
+  favorites:
+    "M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 00-7.8 7.8L12 21.2l8.8-8.8a5.5 5.5 0 000-7.8z",
+} as const;
+
 export const SearchIcon = (p: IconProps) => (
   <Stroke {...p}>
     <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
