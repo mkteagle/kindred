@@ -322,4 +322,68 @@ object DemoDataProvider {
             ),
         ),
     )
+
+    // MARK: - Library, counts and years (redesign screens)
+
+    private val demoTitles = mapOf(
+        "family-campfire-1" to "Campfire evening",
+        "couple-sunset" to "Golden hour",
+        "family-holiday-1" to "Holiday gathering",
+        "dog-retriever" to "Buddy at the park",
+        "family-campervan" to "Road trip",
+        "mom-child-joy" to "Afternoon light",
+    )
+
+    /**
+     * A page of the mosaic backed by the bundled photos. Ids are `demo://`
+     * URLs so `MediaUrls` hands them straight to the drawable loader.
+     */
+    fun getLibraryPage(media: MediaFilter = MediaFilter.ALL): LibraryPage {
+        val rows = demoKeys.mapIndexed { index, key ->
+            // Every third demo row poses as a video so the video chips and the
+            // duration badge have something to render against.
+            val isVideo = index % 3 == 2
+            LibraryPhoto(
+                photoId = "demo://file_$key",
+                photoTitle = demoTitles[key] ?: key.replace("-", " "),
+                dateTaken = "2024-12-${20 - index}T18:${10 + index}:00",
+                mediaKind = if (isVideo) "video" else "photo",
+                durationSeconds = if (isVideo) 42.0 + index * 18 else null,
+                flickrUrl = null,
+            )
+        }
+        val filtered = when (media) {
+            MediaFilter.ALL -> rows
+            MediaFilter.PHOTO -> rows.filterNot { it.isVideo }
+            MediaFilter.VIDEO -> rows.filter { it.isVideo }
+        }
+        return LibraryPage(photos = filtered, nextCursor = null)
+    }
+
+    fun getLibraryCounts(): LibraryCounts {
+        val page = getLibraryPage()
+        return LibraryCounts(
+            totalFiles = page.photos.size,
+            photos = page.photos.count { !it.isVideo },
+            videos = page.photos.count { it.isVideo },
+            onNas = page.photos.size,
+            onFlickr = 0,
+            indexedPhotos = page.photos.count { !it.isVideo },
+            pendingIndex = 0,
+        )
+    }
+
+    fun getYears(): List<YearBucket> = listOf(
+        YearBucket(year = 2024, count = 18),
+        YearBucket(year = 2022, count = 12),
+    )
+
+    fun getNamedClusters(): List<NamedCluster> = demoPeopleClusters.map {
+        NamedCluster(id = it.id, category = "people", label = it.label, avatar = it.avatar)
+    }
+
+    fun getAlbums(): List<Album> = listOf(
+        Album(id = "demo_album_1", name = "Lake Verity, June", slug = "lake-verity-june", photoCount = 214),
+        Album(id = "demo_album_2", name = "Road trip", slug = "road-trip", photoCount = 88),
+    )
 }

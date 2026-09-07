@@ -63,27 +63,37 @@ data class CategoryStats(
 
 data class SearchResult(
     @SerializedName("photo_id") val photoId: String,
-    val distance: Float,
-    @SerializedName("photo_url") val photoUrl: String,
-    @SerializedName("thumb_url") val thumbUrl: String?,
-    @SerializedName("flickr_url") val flickrUrl: String?,
-    @SerializedName("photo_title") val photoTitle: String?,
-    val owner: String?,
-    @SerializedName("match_type") val matchType: String?,
-    @SerializedName("match_name") val matchName: String?,
-    @SerializedName("match_cluster_id") val matchClusterId: String?,
-    @SerializedName("match_category") val matchCategory: String?,
-)
+    val distance: Float? = null,
+    @SerializedName("photo_url") val photoUrl: String? = null,
+    @SerializedName("thumb_url") val thumbUrl: String? = null,
+    @SerializedName("flickr_url") val flickrUrl: String? = null,
+    @SerializedName("photo_title") val photoTitle: String? = null,
+    @SerializedName("date_taken") val dateTaken: String? = null,
+    @SerializedName("media_kind") val mediaKind: String? = null,
+    @SerializedName("duration_seconds") val durationSeconds: Double? = null,
+    val owner: String? = null,
+    @SerializedName("match_type") val matchType: String? = null,
+    @SerializedName("match_name") val matchName: String? = null,
+    @SerializedName("match_cluster_id") val matchClusterId: String? = null,
+    @SerializedName("match_category") val matchCategory: String? = null,
+) {
+    val isVideo: Boolean get() = mediaKind == "video"
+}
 
 // MARK: - Timeline
 
 data class TimelinePhoto(
     @SerializedName("photo_id") val photoId: String,
     @SerializedName("thumb_url") val thumbUrl: String?,
+    @SerializedName("clip_url") val clipUrl: String? = null,
     @SerializedName("flickr_url") val flickrUrl: String?,
     @SerializedName("photo_title") val photoTitle: String?,
     @SerializedName("date_taken") val dateTaken: String?,
-)
+    @SerializedName("media_kind") val mediaKind: String? = null,
+    @SerializedName("duration_seconds") val durationSeconds: Double? = null,
+) {
+    val isVideo: Boolean get() = mediaKind == "video"
+}
 
 data class TimelineMonth(
     val month: String,
@@ -93,6 +103,8 @@ data class TimelineMonth(
 
 data class TimelineResponse(
     val months: List<TimelineMonth>,
+    /** Pass back as `before` to page further into the past. */
+    @SerializedName("next_before") val nextBefore: String? = null,
 )
 
 // MARK: - Together

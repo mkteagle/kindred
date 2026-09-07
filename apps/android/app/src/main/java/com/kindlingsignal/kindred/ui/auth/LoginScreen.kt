@@ -64,7 +64,7 @@ fun LoginScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(KindredColors.Paper)
+            .background(KindredColors.Bg)
             .verticalScroll(rememberScrollState())
             .statusBarsPadding()
             .navigationBarsPadding()
@@ -77,15 +77,15 @@ fun LoginScreen(
         Box(
             modifier = Modifier
                 .size(74.dp)
-                .shadow(15.dp, RoundedCornerShape(18.dp), ambientColor = KindredColors.CardShadow, spotColor = KindredColors.CardShadow)
+                .shadow(15.dp, RoundedCornerShape(18.dp), ambientColor = KindredColors.Bg, spotColor = KindredColors.Bg)
                 .clip(RoundedCornerShape(18.dp))
-                .background(KindredColors.Ember),
+                .background(KindredColors.Terracotta),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = "K",
                 style = KindredType.display(36),
-                color = KindredColors.Card,
+                color = KindredColors.OnAccentInk,
             )
         }
 
@@ -93,14 +93,14 @@ fun LoginScreen(
         Text(
             text = "Welcome back.",
             style = KindredType.display(26, FontWeight.Bold),
-            color = KindredColors.Ash,
+            color = KindredColors.InkPrimary,
             modifier = Modifier.padding(top = 18.dp),
         )
 
         Text(
             text = "Sign in to your household.",
             style = KindredType.Body,
-            color = KindredColors.Pine,
+            color = KindredColors.InkBody,
             modifier = Modifier.padding(top = 6.dp),
         )
 
@@ -155,12 +155,12 @@ fun LoginScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
                 .padding(top = 20.dp)
-                .clip(KindredShape.RadiusSM)
+                .clip(KindredShape.Small)
                 .background(
                     if (username.isNotBlank() && password.isNotBlank() && !uiState.isLoggingIn)
-                        KindredColors.Ember
+                        KindredColors.Terracotta
                     else
-                        KindredColors.Ember.copy(alpha = 0.5f)
+                        KindredColors.Terracotta.copy(alpha = 0.5f)
                 )
                 .clickable(enabled = username.isNotBlank() && password.isNotBlank() && !uiState.isLoggingIn) {
                     viewModel.login(username, password)
@@ -170,7 +170,7 @@ fun LoginScreen(
         ) {
             if (uiState.isLoggingIn) {
                 CircularProgressIndicator(
-                    color = KindredColors.Paper,
+                    color = KindredColors.OnAccentInk,
                     modifier = Modifier.size(20.dp),
                     strokeWidth = 2.dp,
                 )
@@ -178,7 +178,7 @@ fun LoginScreen(
                 Text(
                     text = "Sign in",
                     style = KindredType.Button,
-                    color = KindredColors.Paper,
+                    color = KindredColors.OnAccentInk,
                 )
             }
         }
@@ -187,8 +187,8 @@ fun LoginScreen(
         if (uiState.error != null) {
             Text(
                 text = uiState.error!!,
-                style = KindredType.Caption,
-                color = KindredColors.Rosehip,
+                style = KindredType.BodySmall,
+                color = KindredColors.DangerInk,
                 modifier = Modifier.padding(top = 8.dp, start = 24.dp, end = 24.dp),
             )
         }
@@ -205,18 +205,18 @@ fun LoginScreen(
                 modifier = Modifier
                     .weight(1f)
                     .height(1.dp)
-                    .background(KindredColors.Line),
+                    .background(KindredColors.Hairline),
             )
             Text(
                 text = "OR",
                 style = KindredType.Micro,
-                color = KindredColors.Mist,
+                color = KindredColors.InkMeta,
             )
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .height(1.dp)
-                    .background(KindredColors.Line),
+                    .background(KindredColors.Hairline),
             )
         }
 
@@ -225,9 +225,9 @@ fun LoginScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
-                .clip(KindredShape.RadiusSM)
-                .background(KindredColors.Card)
-                .border(1.dp, KindredColors.LineDark, KindredShape.RadiusSM)
+                .clip(KindredShape.Small)
+                .background(KindredColors.SurfaceFill)
+                .border(1.dp, KindredColors.HairlineStrong, KindredShape.Small)
                 .clickable(enabled = !uiState.isFlickrLoggingIn) {
                     viewModel.startFlickrLogin(context)
                 }
@@ -240,7 +240,7 @@ fun LoginScreen(
             ) {
                 if (uiState.isFlickrLoggingIn) {
                     CircularProgressIndicator(
-                        color = KindredColors.Ash,
+                        color = KindredColors.InkPrimary,
                         modifier = Modifier.size(16.dp),
                         strokeWidth = 2.dp,
                     )
@@ -263,7 +263,7 @@ fun LoginScreen(
                 Text(
                     text = "Continue with Flickr",
                     style = KindredType.body(14, FontWeight.Bold),
-                    color = KindredColors.Ash,
+                    color = KindredColors.InkPrimary,
                 )
             }
         }
@@ -277,13 +277,13 @@ fun LoginScreen(
         ) {
             Text(
                 text = "New to Kindred?",
-                style = KindredType.Caption,
-                color = KindredColors.Pine,
+                style = KindredType.BodySmall,
+                color = KindredColors.InkBody,
             )
             Text(
                 text = "Join with code",
                 style = KindredType.body(13, FontWeight.Bold),
-                color = KindredColors.Ember,
+                color = KindredColors.Terracotta,
             )
         }
 
@@ -293,8 +293,8 @@ fun LoginScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
                 .padding(top = 12.dp)
-                .clip(KindredShape.RadiusSM)
-                .background(KindredColors.Forest.copy(alpha = 0.08f))
+                .clip(KindredShape.Small)
+                .background(KindredColors.SageInk.copy(alpha = 0.08f))
                 .clickable(enabled = !uiState.isDemoLoading) {
                     viewModel.enterDemo()
                 }
@@ -308,13 +308,13 @@ fun LoginScreen(
                 Icon(
                     imageVector = Icons.Filled.PlayCircleFilled,
                     contentDescription = null,
-                    tint = KindredColors.Forest,
+                    tint = KindredColors.SageInk,
                     modifier = Modifier.size(16.dp),
                 )
                 Text(
                     text = "Try the demo",
                     style = KindredType.Label,
-                    color = KindredColors.Forest,
+                    color = KindredColors.SageInk,
                 )
             }
         }
@@ -332,10 +332,10 @@ fun KindredInputField(
     placeholder: String,
     value: String,
     onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
     isPassword: Boolean = false,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
-    modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier,
@@ -344,28 +344,28 @@ fun KindredInputField(
         Text(
             text = label,
             style = KindredType.Micro,
-            color = KindredColors.Mist,
+            color = KindredColors.InkMeta,
         )
 
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(KindredShape.RadiusSM)
-                .background(KindredColors.Card)
-                .border(1.dp, KindredColors.Line, KindredShape.RadiusSM)
+                .clip(KindredShape.Small)
+                .background(KindredColors.SurfaceFill)
+                .border(1.dp, KindredColors.Hairline, KindredShape.Small)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
         ) {
             if (value.isEmpty() && placeholder.isNotEmpty()) {
                 Text(
                     text = placeholder,
                     style = KindredType.Body,
-                    color = KindredColors.Mist,
+                    color = KindredColors.InkMeta,
                 )
             }
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
-                textStyle = KindredType.Body.copy(color = KindredColors.Ash),
+                textStyle = KindredType.Body.copy(color = KindredColors.InkPrimary),
                 singleLine = true,
                 visualTransformation = if (isPassword) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
                 keyboardOptions = keyboardOptions,

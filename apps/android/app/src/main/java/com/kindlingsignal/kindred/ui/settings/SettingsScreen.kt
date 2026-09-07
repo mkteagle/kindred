@@ -3,597 +3,297 @@ package com.kindlingsignal.kindred.ui.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kindlingsignal.kindred.ui.components.KindredAvatar
-import com.kindlingsignal.kindred.ui.components.KindredEyebrow
-import com.kindlingsignal.kindred.ui.theme.KindredColors
+import com.kindlingsignal.kindred.ui.components.KindredHairline
+import com.kindlingsignal.kindred.ui.components.KindredMeta
+import com.kindlingsignal.kindred.ui.components.KindredPillButton
+import com.kindlingsignal.kindred.ui.components.KindredTopAppBar
 import com.kindlingsignal.kindred.ui.theme.KindredShape
+import com.kindlingsignal.kindred.ui.theme.KindredTheme
 import com.kindlingsignal.kindred.ui.theme.KindredType
-import java.util.Calendar
+import com.kindlingsignal.kindred.util.formatCount
 
 /**
- * Settings screen with profile card, household members, library settings,
- * privacy section, sign out, and footer.
- * Matches iOS SettingsView.
+ * Screen 11 — Settings.
+ *
+ * 18dp-radius grouped surfaces: the profile card, a Household group and a This
+ * device group, with terracotta Material switches.
  */
 @Composable
 fun SettingsScreen(
-    onEnterDemo: () -> Unit = {},
-    onSignOut: () -> Unit = {},
-    onUploadClick: () -> Unit = {},
+    onSignOut: () -> Unit,
+    onOpenFavorites: () -> Unit,
+    onOpenShares: () -> Unit,
     modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val syncState by viewModel.syncState.collectAsStateWithLifecycle()
+    val wifiOnly by viewModel.wifiOnly.collectAsStateWithLifecycle()
     val backendOnline by viewModel.backendOnline.collectAsStateWithLifecycle()
-    val scrollState = rememberScrollState()
-    var autoBackupEnabled by remember { mutableStateOf(true) }
+    val favorites by viewModel.favoritesCount.collectAsStateWithLifecycle()
+    val shares by viewModel.shareCount.collectAsStateWithLifecycle()
+    val colors = KindredTheme.colors
+    val context = LocalContext.current
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(KindredColors.Paper)
-            .verticalScroll(scrollState)
-            .statusBarsPadding(),
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = contentPadding,
     ) {
-        // Page header
-        Column(
-            modifier = Modifier
-                .padding(horizontal = 20.dp)
-                .padding(top = 10.dp, bottom = 4.dp),
-        ) {
-            KindredEyebrow(text = "Settings")
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Your household.",
-                style = KindredType.H2,
-                color = KindredColors.Ash,
-            )
-        }
+        item("bar") { KindredTopAppBar(title = "Settings") }
 
-        // Profile / Household card
-        HouseholdCard(
-            displayName = uiState.displayName,
-            username = uiState.username,
-            role = uiState.role,
-            avatarUrl = uiState.avatarUrl,
-            isDemoMode = uiState.isDemoMode,
-        )
-
-        // Members section
-        MembersSection(
-            displayName = uiState.displayName,
-            role = uiState.role,
-        )
-
-        // Library section
-        LibrarySection(
-            autoBackupEnabled = autoBackupEnabled,
-            onAutoBackupChange = { autoBackupEnabled = it },
-            onUploadClick = onUploadClick,
-        )
-
-        // Privacy section
-        PrivacySection(
-            isDemoMode = uiState.isDemoMode,
-            backendOnline = backendOnline,
-        )
-
-        // Developer section (demo mode)
-        if (!uiState.isDemoMode) {
-            DemoSection(onEnterDemo = {
-                viewModel.enterDemoMode()
-                onEnterDemo()
-            })
-        }
-
-        // Sign Out button
-        SignOutButton(onSignOut = {
-            viewModel.signOut { onSignOut() }
-        })
-
-        // Footer
-        SettingsFooter()
-
-        // Bottom spacer
-        Spacer(modifier = Modifier.height(120.dp))
-    }
-}
-
-@Composable
-private fun HouseholdCard(
-    displayName: String,
-    username: String,
-    role: String,
-    avatarUrl: String?,
-    isDemoMode: Boolean,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .padding(top = 16.dp)
-            .shadow(
-                elevation = 13.dp,
-                shape = KindredShape.RadiusMD,
-                ambientColor = KindredColors.CardShadow,
-                spotColor = KindredColors.CardShadow,
-            )
-            .clip(KindredShape.RadiusMD)
-            .background(KindredColors.Card)
-            .border(1.dp, KindredColors.Line, KindredShape.RadiusMD)
-            .padding(16.dp),
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Avatar
-            KindredAvatar(
-                url = if (isDemoMode) "demo://file_family-campfire-1" else avatarUrl,
-                size = 44.dp,
-                borderWidth = 2.dp,
-            )
-
-            Column {
-                Text(
-                    text = displayName,
-                    style = KindredType.display(17),
-                    color = KindredColors.Ash,
-                )
-                Text(
-                    text = "@$username \u00b7 $role",
-                    style = KindredType.Meta,
-                    color = KindredColors.Mist,
-                )
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-        }
-
-        // Unlimited storage
-        Row(
-            modifier = Modifier.padding(top = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "\u221e",
-                style = KindredType.body(14, FontWeight.Medium),
-                color = KindredColors.Forest,
-            )
-            Text(
-                text = "Unlimited storage via Flickr",
-                style = KindredType.Meta,
-                color = KindredColors.Mist,
-            )
-        }
-    }
-}
-
-@Composable
-private fun MembersSection(
-    displayName: String,
-    role: String,
-) {
-    Column(
-        modifier = Modifier.padding(top = 20.dp),
-    ) {
-        KindredEyebrow(
-            text = "Household",
-            modifier = Modifier
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 6.dp),
-        )
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .clip(KindredShape.RadiusMD)
-                .background(KindredColors.Card)
-                .border(1.dp, KindredColors.Line, KindredShape.RadiusMD),
-        ) {
+        item("profile") {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                    .padding(horizontal = 16.dp)
+                    .clip(KindredShape.Large)
+                    .background(colors.fillSoft)
+                    .border(1.dp, colors.hairline, KindredShape.Large)
+                    .padding(15.dp)
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = "${state.displayName}, ${state.role}"
+                    },
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(13.dp),
             ) {
-                // Member avatar
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(KindredColors.Canvas),
-                    contentAlignment = Alignment.Center,
-                ) {
+                KindredAvatar(
+                    url = state.avatarUrl,
+                    contentDescription = null,
+                    size = 48.dp,
+                    initial = state.displayName,
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
-                        text = displayName.firstOrNull()?.uppercase() ?: "?",
-                        style = KindredType.display(14),
-                        color = KindredColors.Pine,
+                        text = state.displayName,
+                        style = KindredType.display(17, androidx.compose.ui.text.font.FontWeight.SemiBold),
+                        color = colors.inkPrimary,
                     )
+                    KindredMeta("@${state.username} · ${state.role}")
                 }
-
-                Text(
-                    text = displayName,
-                    style = KindredType.Label,
-                    color = KindredColors.Ash,
-                )
-
-                Spacer(modifier = Modifier.weight(1f))
-
-                Text(
-                    text = role.uppercase(),
-                    style = KindredType.Micro,
-                    color = KindredColors.Mist,
+                Spacer(Modifier.weight(1f))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = colors.inkMeta,
+                    modifier = Modifier.size(15.dp),
                 )
             }
         }
-    }
-}
 
-@Composable
-private fun LibrarySection(
-    autoBackupEnabled: Boolean,
-    onAutoBackupChange: (Boolean) -> Unit,
-    onUploadClick: () -> Unit = {},
-) {
-    Column(
-        modifier = Modifier.padding(top = 20.dp),
-    ) {
-        KindredEyebrow(
-            text = "Library",
-            modifier = Modifier
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 6.dp),
-        )
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .clip(KindredShape.RadiusMD)
-                .background(KindredColors.Card)
-                .border(1.dp, KindredColors.Line, KindredShape.RadiusMD),
-        ) {
-            // Backup & storage (navigates to upload screen)
-            SettingsRow(
-                title = "Backup & storage",
-                modifier = Modifier.clickable { onUploadClick() },
-                trailing = {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "Connected",
-                            style = KindredType.Micro,
-                            color = KindredColors.Forest,
-                        )
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = KindredColors.Mist,
-                            modifier = Modifier.size(14.dp),
-                        )
-                    }
-                },
-            )
-
-            SettingsDivider()
-
-            // Auto-backup
-            SettingsRow(
-                title = "Auto-backup",
-                trailing = {
-                    Switch(
-                        checked = autoBackupEnabled,
-                        onCheckedChange = onAutoBackupChange,
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = KindredColors.Paper,
-                            checkedTrackColor = KindredColors.Forest,
-                            uncheckedThumbColor = KindredColors.Mist,
-                            uncheckedTrackColor = KindredColors.Canvas,
-                        ),
-                        modifier = Modifier.height(24.dp),
-                    )
-                },
-            )
-
-            SettingsDivider()
-
-            // Intelligence
-            SettingsRow(
-                title = "Intelligence",
-                trailing = {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "On",
-                            style = KindredType.Micro,
-                            color = KindredColors.Forest,
-                        )
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = KindredColors.Mist,
-                            modifier = Modifier.size(14.dp),
-                        )
-                    }
-                },
-            )
-
-            SettingsDivider()
-
-            // Notifications
-            SettingsRow(
-                title = "Notifications",
-                trailing = {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = KindredColors.Mist,
-                        modifier = Modifier.size(14.dp),
-                    )
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun PrivacySection(
-    isDemoMode: Boolean,
-    backendOnline: Boolean?,
-) {
-    Column(
-        modifier = Modifier.padding(top = 20.dp),
-    ) {
-        KindredEyebrow(
-            text = "Privacy",
-            modifier = Modifier
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 6.dp),
-        )
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .clip(KindredShape.RadiusMD)
-                .background(KindredColors.Card)
-                .border(1.dp, KindredColors.Line, KindredShape.RadiusMD),
-        ) {
-            // Library is private
-            SettingsRow(
-                title = "Library is private",
-                trailing = {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "Confirmed",
-                            style = KindredType.Micro,
-                            color = KindredColors.Forest,
-                        )
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = KindredColors.Mist,
-                            modifier = Modifier.size(14.dp),
-                        )
-                    }
-                },
-            )
-
-            SettingsDivider()
-
-            // Backend status
-            SettingsRow(
-                title = "Backend status",
-                trailing = {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        val statusColor = when {
-                            isDemoMode -> KindredColors.Gold
-                            backendOnline == true -> KindredColors.Forest
-                            backendOnline == false -> KindredColors.Rosehip
-                            else -> KindredColors.Mist
-                        }
-                        val statusText = when {
-                            isDemoMode -> "Demo Mode"
-                            backendOnline == true -> "Online"
-                            backendOnline == false -> "Offline"
-                            else -> "Checking..."
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(statusColor),
-                        )
-                        Text(
-                            text = statusText,
-                            style = KindredType.Micro,
-                            color = KindredColors.Mist,
-                        )
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = KindredColors.Mist,
-                            modifier = Modifier.size(14.dp),
-                        )
-                    }
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun DemoSection(onEnterDemo: () -> Unit) {
-    Column(
-        modifier = Modifier.padding(top = 20.dp),
-    ) {
-        KindredEyebrow(
-            text = "Developer",
-            modifier = Modifier
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 8.dp),
-        )
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .clip(KindredShape.RadiusMD)
-                .background(KindredColors.Card)
-                .border(1.dp, KindredColors.Line, KindredShape.RadiusMD)
-                .clickable { onEnterDemo() }
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.PlayCircle,
-                contentDescription = null,
-                tint = KindredColors.Forest,
-                modifier = Modifier.size(20.dp),
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Try the demo",
-                    style = KindredType.Label,
-                    color = KindredColors.Ash,
+        item("household") {
+            SettingsGroup(title = "Household") {
+                SettingsRow(
+                    title = "Members",
+                    // TODO: the handoff lists member names here. /users is
+                    // admin-only, so a member sees the group without a roster;
+                    // a member-safe household roster endpoint would close it.
+                    subtitle = "Everyone who shares this library",
+                    onClick = null,
                 )
-                Text(
-                    text = "Explore with sample data, no account needed",
-                    style = KindredType.Meta,
-                    color = KindredColors.Mist,
+                KindredHairline()
+                SettingsRow(
+                    title = "Invite codes",
+                    // TODO: /invites is admin-only too, so the count is not
+                    // readable from a member session.
+                    subtitle = "Ask an admin for a code",
+                    onClick = null,
+                )
+                KindredHairline()
+                SettingsRow(
+                    title = "Shared links",
+                    subtitle = if (shares == 1) "1 live share" else "${formatCount(shares)} live shares",
+                    onClick = onOpenShares,
+                )
+                KindredHairline()
+                SettingsRow(
+                    title = "Favorites",
+                    subtitle = "${formatCount(favorites)} of yours",
+                    onClick = onOpenFavorites,
                 )
             }
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = KindredColors.Ember,
-                modifier = Modifier.size(16.dp),
-            )
         }
+
+        item("device") {
+            SettingsGroup(title = "This device") {
+                SettingsToggleRow(
+                    title = "Back up my photos",
+                    checked = syncState.autoSyncEnabled,
+                    onCheckedChange = { viewModel.setBackupEnabled(context, it) },
+                )
+                KindredHairline()
+                SettingsToggleRow(
+                    title = "Only on Wi-Fi",
+                    checked = wifiOnly,
+                    onCheckedChange = { viewModel.setWifiOnly(context, it) },
+                )
+                KindredHairline()
+                SettingsRow(
+                    title = "Server",
+                    subtitle = buildString {
+                        append(state.serverUrl.ifBlank { "Not configured" })
+                        when (backendOnline) {
+                            true -> append(" · connected")
+                            false -> append(" · unreachable")
+                            null -> Unit
+                        }
+                    },
+                    onClick = viewModel::checkBackendStatus,
+                )
+            }
+        }
+
+        item("sign-out") {
+            Box(Modifier.padding(16.dp)) {
+                KindredPillButton(
+                    label = if (state.isDemoMode) "Leave demo mode" else "Sign out",
+                    onClick = { viewModel.signOut(onSignOut) },
+                    filled = false,
+                    danger = true,
+                    minHeight = 44.dp,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+
+        item("tail") { Spacer(Modifier.height(120.dp)) }
     }
 }
 
 @Composable
-private fun SignOutButton(onSignOut: () -> Unit = {}) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .padding(top = 20.dp)
-            .clip(KindredShape.RadiusMD)
-            .background(KindredColors.Ember)
-            .clickable { onSignOut() }
-            .padding(vertical = 14.dp),
-        contentAlignment = Alignment.Center,
-    ) {
+private fun SettingsGroup(
+    title: String,
+    content: @Composable () -> Unit,
+) {
+    val colors = KindredTheme.colors
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 18.dp)) {
         Text(
-            text = "Sign Out",
-            style = KindredType.Button,
-            color = KindredColors.Paper,
+            text = title.uppercase(),
+            style = KindredType.Eyebrow,
+            color = colors.inkMeta,
+            modifier = Modifier
+                .padding(start = 4.dp, bottom = 8.dp)
+                .semantics { heading() },
         )
-    }
-}
-
-@Composable
-private fun SettingsFooter() {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "Kindling Signal",
-                style = KindredType.Meta,
-                color = KindredColors.Mist,
-            )
-        }
-
-        Text(
-            text = "Kindred Photos \u00b7 v1.0",
-            style = KindredType.Micro,
-            color = KindredColors.Muted,
-        )
-
-        val year = Calendar.getInstance().get(Calendar.YEAR)
-        Text(
-            text = "\u00a9 $year Kindling Signal",
-            style = KindredType.Micro,
-            color = KindredColors.Muted,
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(KindredShape.Large)
+                .background(colors.fillSoft)
+                .border(1.dp, colors.hairline, KindredShape.Large),
+        ) { content() }
     }
 }
 
 @Composable
 private fun SettingsRow(
     title: String,
-    modifier: Modifier = Modifier,
-    trailing: @Composable () -> Unit = {},
+    subtitle: String?,
+    onClick: (() -> Unit)?,
 ) {
+    val colors = KindredTheme.colors
     Row(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .then(
+                if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick)
+                else Modifier
+            )
+            .defaultMinSize(minHeight = 56.dp)
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .semantics(mergeDescendants = true) { },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
+            Text(text = title, style = KindredType.Label, color = colors.inkPrimary)
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = KindredType.MetaSmall,
+                    color = colors.inkMeta,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (onClick != null) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = colors.inkMeta,
+                modifier = Modifier.size(15.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsToggleRow(
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    val colors = KindredTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 56.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = title,
             style = KindredType.Label,
-            color = KindredColors.Ash,
+            color = colors.inkPrimary,
             modifier = Modifier.weight(1f),
         )
-        trailing()
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = colors.onAccentInk,
+                checkedTrackColor = colors.terracotta,
+                checkedBorderColor = colors.terracotta,
+                uncheckedThumbColor = colors.inkMeta,
+                uncheckedTrackColor = colors.fillStrong,
+                uncheckedBorderColor = colors.hairlineStrong,
+            ),
+            // The row's own title is the label; Switch announces its state.
+            modifier = Modifier.semantics { contentDescription = title },
+        )
     }
-}
-
-@Composable
-private fun SettingsDivider() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 14.dp)
-            .height(0.5.dp)
-            .background(KindredColors.Line),
-    )
 }

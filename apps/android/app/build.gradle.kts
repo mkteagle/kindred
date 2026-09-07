@@ -42,6 +42,9 @@ android {
 
     buildFeatures {
         compose = true
+        // NetworkModule reads BuildConfig.DEBUG to decide whether to install
+        // the HTTP logging interceptor; without this the class is not generated.
+        buildConfig = true
     }
 }
 
@@ -63,6 +66,11 @@ dependencies {
 
     // Image loading
     implementation(libs.coil.compose)
+
+    // Video playback — /photos/{id}/local?variant=clip|original answers byte
+    // ranges, so Media3 can scrub without downloading the whole file.
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
 
     // Networking
     implementation(libs.retrofit)

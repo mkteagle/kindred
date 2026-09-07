@@ -50,7 +50,7 @@ fun ServerSetupScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(KindredColors.Paper)
+            .background(KindredColors.Bg)
             .verticalScroll(rememberScrollState())
             .statusBarsPadding()
             .navigationBarsPadding()
@@ -63,15 +63,15 @@ fun ServerSetupScreen(
         Box(
             modifier = Modifier
                 .size(80.dp)
-                .shadow(18.dp, RoundedCornerShape(20.dp), ambientColor = KindredColors.CardShadow, spotColor = KindredColors.CardShadow)
+                .shadow(18.dp, RoundedCornerShape(20.dp), ambientColor = KindredColors.Bg, spotColor = KindredColors.Bg)
                 .clip(RoundedCornerShape(20.dp))
-                .background(KindredColors.Ember),
+                .background(KindredColors.Terracotta),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = "K",
                 style = KindredType.display(42),
-                color = KindredColors.Card,
+                color = KindredColors.OnAccentInk,
             )
         }
 
@@ -80,13 +80,13 @@ fun ServerSetupScreen(
         Text(
             text = "Connect your server.",
             style = KindredType.display(26, FontWeight.Bold),
-            color = KindredColors.Ash,
+            color = KindredColors.InkPrimary,
         )
 
         Text(
             text = "Enter the URL of your Kindred backend\nto get started.",
             style = KindredType.Body,
-            color = KindredColors.Pine,
+            color = KindredColors.InkBody,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 8.dp),
         )
@@ -103,15 +103,15 @@ fun ServerSetupScreen(
             Text(
                 text = "SERVER URL",
                 style = KindredType.Micro,
-                color = KindredColors.Mist,
+                color = KindredColors.InkMeta,
             )
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(KindredShape.RadiusSM)
-                    .background(KindredColors.Card)
-                    .border(1.dp, KindredColors.Line, KindredShape.RadiusSM)
+                    .clip(KindredShape.Small)
+                    .background(KindredColors.SurfaceFill)
+                    .border(1.dp, KindredColors.Hairline, KindredShape.Small)
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -119,7 +119,7 @@ fun ServerSetupScreen(
                 Icon(
                     imageVector = Icons.Outlined.Cloud,
                     contentDescription = null,
-                    tint = KindredColors.Mist,
+                    tint = KindredColors.InkMeta,
                     modifier = Modifier.size(18.dp),
                 )
 
@@ -128,13 +128,13 @@ fun ServerSetupScreen(
                         Text(
                             text = "https://your-server.example.com",
                             style = KindredType.Body,
-                            color = KindredColors.Mist,
+                            color = KindredColors.InkMeta,
                         )
                     }
                     androidx.compose.foundation.text.BasicTextField(
                         value = serverUrl,
                         onValueChange = { serverUrl = it },
-                        textStyle = KindredType.Body.copy(color = KindredColors.Ash),
+                        textStyle = KindredType.Body.copy(color = KindredColors.InkPrimary),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Uri,
@@ -157,8 +157,8 @@ fun ServerSetupScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
                 .padding(top = 16.dp)
-                .clip(KindredShape.RadiusSM)
-                .background(if (canConnect) KindredColors.Ember else KindredColors.Ember.copy(alpha = 0.5f))
+                .clip(KindredShape.Small)
+                .background(if (canConnect) KindredColors.Terracotta else KindredColors.Terracotta.copy(alpha = 0.5f))
                 .clickable(enabled = canConnect) {
                     val url = if (!serverUrl.startsWith("http")) "https://$serverUrl" else serverUrl
                     viewModel.setServerUrl(url) { onSetupComplete() }
@@ -168,7 +168,7 @@ fun ServerSetupScreen(
         ) {
             if (uiState.isLoggingIn) {
                 CircularProgressIndicator(
-                    color = KindredColors.Paper,
+                    color = KindredColors.OnAccentInk,
                     modifier = Modifier.size(20.dp),
                     strokeWidth = 2.dp,
                 )
@@ -176,7 +176,7 @@ fun ServerSetupScreen(
                 Text(
                     text = "Connect",
                     style = KindredType.Button,
-                    color = KindredColors.Paper,
+                    color = KindredColors.OnAccentInk,
                 )
             }
         }
@@ -185,8 +185,8 @@ fun ServerSetupScreen(
         if (uiState.error != null) {
             Text(
                 text = uiState.error!!,
-                style = KindredType.Caption,
-                color = KindredColors.Rosehip,
+                style = KindredType.BodySmall,
+                color = KindredColors.DangerInk,
                 modifier = Modifier.padding(top = 8.dp, start = 24.dp, end = 24.dp),
             )
         }
@@ -196,9 +196,9 @@ fun ServerSetupScreen(
         // QR code hint
         Row(
             modifier = Modifier
-                .clip(KindredShape.RadiusSM)
-                .background(KindredColors.Canvas)
-                .border(1.dp, KindredColors.Line, KindredShape.RadiusSM)
+                .clip(KindredShape.Small)
+                .background(KindredColors.SurfaceFill)
+                .border(1.dp, KindredColors.Hairline, KindredShape.Small)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -206,19 +206,19 @@ fun ServerSetupScreen(
             Icon(
                 imageVector = Icons.Outlined.QrCodeScanner,
                 contentDescription = null,
-                tint = KindredColors.Pine,
+                tint = KindredColors.InkBody,
                 modifier = Modifier.size(20.dp),
             )
             Column {
                 Text(
                     text = "Have a QR code?",
                     style = KindredType.Label,
-                    color = KindredColors.Ash,
+                    color = KindredColors.InkPrimary,
                 )
                 Text(
                     text = "Open Settings on the web app to find it",
                     style = KindredType.Micro,
-                    color = KindredColors.Mist,
+                    color = KindredColors.InkMeta,
                 )
             }
         }
@@ -229,7 +229,7 @@ fun ServerSetupScreen(
         Text(
             text = "Just exploring? Try the demo",
             style = KindredType.body(13, FontWeight.Medium),
-            color = KindredColors.Forest,
+            color = KindredColors.SageInk,
             modifier = Modifier
                 .clickable { onSkipToDemo() }
                 .padding(bottom = 32.dp),

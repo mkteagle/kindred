@@ -45,8 +45,33 @@ class PhotoSyncManager @Inject constructor(
         val autoSyncEnabled: Boolean = false,
     )
 
+    /**
+     * One row of the upload sheet's queue.
+     *
+     * The sheet draws per-file progress, so the manager reports per file rather
+     * than only the aggregate: an overall percentage cannot say which photo is
+     * in flight or which one failed.
+     */
+    data class QueueItem(
+        val uri: String,
+        val name: String,
+        val sizeBytes: Long,
+        val status: Status = Status.WAITING,
+        /** The catalog id the server assigned, once the upload lands. */
+        val photoId: String? = null,
+    ) {
+        enum class Status { WAITING, UPLOADING, DONE, FAILED }
+    }
+
     private val _syncState = MutableStateFlow(SyncState())
     val syncState: StateFlow<SyncState> = _syncState.asStateFlow()
+
+    private val _queue = MutableStateFlow<List<QueueItem>>(emptyList())
+    val queue: StateFlow<List<QueueItem>> = _queue.asStateFlow()
+
+    private fun updateItem(uri: String, transform: (QueueItem) -> QueueItem) {
+        _queue.value = _queue.value.map { if (it.uri == uri) transform(it) else it }
+    }
 
     /**
      * Load saved sync preferences.
@@ -170,6 +195,9 @@ class PhotoSyncManager @Inject constructor(
                 totalToSync = toUpload.size,
                 progress = 0f,
             )
+            _queue.value = toUpload.map {
+                QueueItem(uri = it.uri, name = it.displayName, sizeBytes = it.size)
+            }
 
             if (toUpload.isEmpty()) {
                 _syncState.value = _syncState.value.copy(isSyncing = false)
@@ -180,6 +208,7 @@ class PhotoSyncManager @Inject constructor(
             var lastError: String? = null
 
             for (photo in toUpload) {
+                updateItem(photo.uri) { it.copy(status = QueueItem.Status.UPLOADING) }
                 try {
                     val bytes = readPhotoBytes(photo)
                     if (bytes != null) {
@@ -193,12 +222,23 @@ class PhotoSyncManager @Inject constructor(
                         if (result.isSuccess) {
                             markUploaded(photo.uri)
                             uploaded++
+                            val response = result.getOrNull()
+                            updateItem(photo.uri) {
+                                it.copy(
+                                    status = QueueItem.Status.DONE,
+                                    photoId = response?.kindredPhotoId ?: response?.photoId,
+                                )
+                            }
                         } else {
                             lastError = result.exceptionOrNull()?.message
+                            updateItem(photo.uri) { it.copy(status = QueueItem.Status.FAILED) }
                         }
+                    } else {
+                        updateItem(photo.uri) { it.copy(status = QueueItem.Status.FAILED) }
                     }
                 } catch (e: Exception) {
                     lastError = e.message
+                    updateItem(photo.uri) { it.copy(status = QueueItem.Status.FAILED) }
                 }
 
                 _syncState.value = _syncState.value.copy(

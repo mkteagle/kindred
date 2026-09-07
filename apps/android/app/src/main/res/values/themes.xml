@@ -1,17 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- Base application theme -->
-    <style name="Theme.Kindred" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:statusBarColor">@color/paper</item>
-        <item name="android:navigationBarColor">@color/paper</item>
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar">true</item>
+    <!--
+      Kindred ships dark first. The activity draws edge to edge, so the bars
+      are transparent and Compose paints underneath them; the window
+      background matters only for the frame before the first composition.
+    -->
+    <style name="Theme.Kindred" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/kindred_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!--
+          Light bar icons are not declared here: the flags are false by default,
+          they are only honoured from API 23/27 while minSdk is 26, and Compose
+          sets them through WindowInsetsController at runtime anyway.
+        -->
     </style>
 
     <!-- Splash screen theme -->
     <style name="Theme.Kindred.Splash" parent="Theme.Kindred">
-        <item name="android:windowBackground">@color/paper</item>
+        <item name="android:windowBackground">@color/kindred_bg</item>
     </style>
 
 </resources>

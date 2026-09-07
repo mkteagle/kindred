@@ -7,11 +7,11 @@
 
     <!-- Background circle -->
     <path
-        android:fillColor="#C9551C"
+        android:fillColor="#CC7F61"
         android:pathData="M54,54m-40,0a40,40 0,1 1,80 0a40,40 0,1 1,-80 0" />
 
     <!-- Stylized "K" letterform -->
     <path
-        android:fillColor="#FFFDF8"
+        android:fillColor="#14150F"
         android:pathData="M42,32 L42,76 L48,76 L48,58 L60,76 L68,76 L54,56 L66,32 L58,32 L48,52 L48,32 Z" />
 </vector>
