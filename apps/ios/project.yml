@@ -43,6 +43,7 @@ targets:
           - CFBundleURLSchemes:
               - kindred
             CFBundleURLName: com.kindlingsignal.kindred
+        NSCameraUsageDescription: Kindred uses the camera to scan the pairing code shown by your household's server, so this device can sign in without typing an address.
         NSPhotoLibraryUsageDescription: Kindred needs access to your photo library to upload and manage photos.
         NSPhotoLibraryAddUsageDescription: Kindred needs access to save photos to your library.
         UIBackgroundModes:

@@ -24,7 +24,11 @@ struct KindredApp: App {
         Analytics.configure()
         SyncManager.shared.configure()
         Task {
-            await OAuthHelper.loadConfig(from: "https://api.kindredphotos.app")
+            // A paired device must talk to its own household's server, so this
+            // has to happen before anything else makes a request.
+            await PairingService.restoreServerURL()
+            let server = await APIClient.shared.currentBaseURL()
+            await OAuthHelper.loadConfig(from: server)
         }
     }
 
@@ -32,10 +36,13 @@ struct KindredApp: App {
         WindowGroup {
             RootView()
                 .onOpenURL { url in
-                    if url.scheme == "kindred" {
-                        Task { @MainActor in
-                            FlickrAuth.shared.handleCallback(url: url)
-                        }
+                    guard url.scheme?.lowercased() == "kindred" else { return }
+                    Task { @MainActor in
+                        // Pairing and the Flickr OAuth callback share the
+                        // scheme, so dispatch on the host rather than handing
+                        // every kindred:// URL to Flickr.
+                        if PairingCoordinator.shared.handle(url: url) { return }
+                        FlickrAuth.shared.handleCallback(url: url)
                     }
                 }
         }
@@ -80,9 +87,21 @@ struct KindredApp: App {
 
 struct RootView: View {
     @State private var session = SessionManager.shared
+    @State private var pairing = PairingCoordinator.shared
     @State private var hasSeenOnboarding = UserDefaults.standard.bool(forKey: "hasSeenOnboarding")
 
     var body: some View {
+        content
+            // A pairing link can arrive signed in, signed out or mid-onboarding,
+            // so the sheet hangs off the root rather than any one screen.
+            .sheet(isPresented: $pairing.isPresenting) {
+                PairDeviceView(initialPairing: pairing.pending)
+                    .onDisappear { pairing.pending = nil }
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         if session.isAuthenticated {
             ContentView()
                 .task {

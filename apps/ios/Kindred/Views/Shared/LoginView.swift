@@ -75,6 +75,22 @@ struct LoginView: View {
                             .padding(.top, 8)
                     }
 
+                    // Pairing: a self-hosted household's server is not at the
+                    // default address, and its members should not have to know
+                    // the URL. Offered before the Flickr path because for a
+                    // self-hoster it is the only one that works.
+                    Button {
+                        PairingCoordinator.shared.isPresenting = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "qrcode.viewfinder")
+                            Text("Scan a pairing code")
+                        }
+                        .font(.kindredBody)
+                        .foregroundStyle(KindredTheme.pine)
+                    }
+                    .padding(.top, 16)
+
                     // Divider
                     HStack(spacing: 10) {
                         Rectangle().fill(KindredTheme.line).frame(height: 1)
