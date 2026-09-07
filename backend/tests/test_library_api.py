@@ -19,15 +19,19 @@ class CatalogTests(unittest.TestCase):
         self.db.row_factory = sqlite3.Row
         self.db.executescript('''
             CREATE TABLE photos (id TEXT, legacy_photo_id TEXT, media_type TEXT,
-                title TEXT, original_filename TEXT, taken_at TEXT, created_at TEXT);
+                title TEXT, original_filename TEXT, taken_at TEXT, created_at TEXT,
+                media_kind TEXT GENERATED ALWAYS AS (
+                    CASE WHEN media_type LIKE 'video/%' THEN 'video' ELSE 'photo' END) STORED,
+                duration_seconds REAL);
             CREATE TABLE photo_copies (photo_id TEXT, provider TEXT, status TEXT,
                 provider_key TEXT, remote_url TEXT);
             CREATE TABLE processed_photos (photo_id TEXT);
-            INSERT INTO photos VALUES
-                ('a',NULL,'image/heic','A','a.heic','2020','2024'),
-                ('b',NULL,'image/jpeg','B','b.jpg','2021','2024'),
-                ('c',NULL,'video/mp4','C','c.mp4','2022','2024'),
-                ('d',NULL,'image/jpeg','D','d.jpg','2023','2024');
+            INSERT INTO photos (id,legacy_photo_id,media_type,title,original_filename,
+                taken_at,created_at,duration_seconds) VALUES
+                ('a',NULL,'image/heic','A','a.heic','2020','2024',NULL),
+                ('b',NULL,'image/jpeg','B','b.jpg','2021','2024',NULL),
+                ('c',NULL,'video/mp4','C','c.mp4','2022','2024',12.5),
+                ('d',NULL,'image/jpeg','D','d.jpg','2023','2024',NULL);
             INSERT INTO photo_copies VALUES
                 ('a','nas','available','a/original.heic',NULL),
                 ('b','nas','available','b/original.jpg',NULL),
@@ -48,26 +52,55 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(counts(self.query), dict(total_files=3, photos=2, videos=1,
             on_nas=3, on_flickr=1, indexed_photos=2, pending_index=0))
 
-    def test_gallery_pages_and_sorts_all_photos_including_heic(self):
-        first = gallery(self.query, 'newest', 0, 1)
+    def test_gallery_pages_by_cursor_and_sorts_including_heic(self):
+        first = gallery(self.query, 'newest', 1, media='photo')
         self.assertEqual(first['photos'][0]['photo_id'], 'b')
-        self.assertEqual(first['next_offset'], 1)
-        second = gallery(self.query, 'newest', 1, 1)
+        self.assertIsNotNone(first['next_cursor'])
+        second = gallery(self.query, 'newest', 1, media='photo', cursor=first['next_cursor'])
         self.assertEqual(second['photos'][0]['photo_id'], 'a')
-        self.assertIsNone(second['next_offset'])
-        self.assertEqual(gallery(self.query, 'oldest', 0, 48)['photos'][0]['photo_id'], 'a')
+        self.assertIsNone(second['next_cursor'])
+        self.assertEqual(gallery(self.query, 'oldest', 48, media='photo')['photos'][0]['photo_id'], 'a')
 
-    def test_invalid_sort_is_rejected(self):
+    def test_cursor_never_repeats_or_skips_a_row(self):
+        seen, cursor = [], None
+        while True:
+            page = gallery(self.query, 'newest', 1, media='all', cursor=cursor)
+            seen += [row['photo_id'] for row in page['photos']]
+            cursor = page['next_cursor']
+            if not cursor:
+                break
+        self.assertEqual(seen, ['c', 'b', 'a'])
+        self.assertEqual(len(seen), len(set(seen)))
+
+    def test_media_filter_selects_videos_only(self):
+        videos = gallery(self.query, 'newest', 48, media='video')['photos']
+        self.assertEqual([row['photo_id'] for row in videos], ['c'])
+        self.assertEqual(videos[0]['media_kind'], 'video')
+        self.assertEqual(videos[0]['duration_seconds'], 12.5)
+
+    def test_all_media_returns_photos_and_videos_together(self):
+        rows = gallery(self.query, 'newest', 48, media='all')['photos']
+        self.assertEqual([row['photo_id'] for row in rows], ['c', 'b', 'a'])
+
+    def test_sort_value_is_not_leaked_to_clients(self):
+        for row in gallery(self.query, 'newest', 48, media='all')['photos']:
+            self.assertNotIn('sort_value', row)
+
+    def test_invalid_sort_media_and_cursor_are_rejected(self):
         with self.assertRaises(HTTPException):
-            gallery(self.query, 'id; DROP TABLE photos', 0, 48)
+            gallery(self.query, 'id; DROP TABLE photos', 48)
+        with self.assertRaises(HTTPException):
+            gallery(self.query, 'newest', 48, media='videos; DROP TABLE photos')
+        with self.assertRaises(HTTPException):
+            gallery(self.query, 'newest', 48, cursor='not-a-cursor')
 
-    def test_gallery_parameterizes_like_pattern_for_psycopg(self):
+    def test_gallery_parameterizes_every_value_for_psycopg(self):
         query = Mock(return_value=[])
-        gallery(query, 'newest', 0, 48)
+        gallery(query, 'newest', 48, media='video')
         sql, params = query.call_args.args
-        self.assertNotIn("LIKE 'image/%'", sql)
+        self.assertNotIn("'video'", sql)
         self.assertEqual(sql.count('%s'), len(params))
-        self.assertEqual(params, ('image/%', 49, 0))
+        self.assertEqual(params, ('video', 49))
 
 
 class ImageIdentityTests(unittest.TestCase):

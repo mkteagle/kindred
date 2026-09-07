@@ -1,5 +1,8 @@
-"""Catalog queries shared by library counts and paginated gallery."""
+"""Catalog queries shared by library counts and the paginated gallery."""
 from fastapi import HTTPException
+import base64
+import binascii
+import json
 
 JOINS = """
 FROM photos p
@@ -7,21 +10,49 @@ LEFT JOIN photo_copies n ON n.photo_id=p.id AND n.provider='nas' AND n.status='a
 LEFT JOIN photo_copies f ON f.photo_id=p.id AND f.provider='flickr' AND f.status='available'
 """
 AVAILABLE = "(n.photo_id IS NOT NULL OR f.photo_id IS NOT NULL)"
-IMAGE = "(p.media_type IS NULL OR p.media_type LIKE 'image/%')"
+IMAGE = "p.media_kind = 'photo'"
 INDEXED = "EXISTS (SELECT 1 FROM processed_photos x WHERE x.photo_id IN (p.id::text, p.legacy_photo_id, f.provider_key))"
+
+# Each sort names the expression it orders by and the direction. Ordering is
+# always broken by p.id so the keyset cursor below addresses exactly one row.
 SORTS = {
-    "newest": "COALESCE(p.taken_at,p.created_at) DESC, p.id DESC",
-    "oldest": "COALESCE(p.taken_at,p.created_at) ASC, p.id ASC",
-    "added": "p.created_at DESC, p.id DESC",
-    "name": "lower(COALESCE(NULLIF(p.title,''),p.original_filename,'')) ASC, p.id ASC",
+    "newest": ("COALESCE(p.taken_at,p.created_at)", "DESC"),
+    "oldest": ("COALESCE(p.taken_at,p.created_at)", "ASC"),
+    "added": ("p.created_at", "DESC"),
+    "name": ("lower(COALESCE(NULLIF(p.title,''),p.original_filename,''))", "ASC"),
 }
+
+MEDIA = {"all": None, "photo": "photo", "video": "video"}
+
+
+def media_clause(media):
+    """Return (sql, params) restricting to one media kind."""
+    if media not in MEDIA:
+        raise HTTPException(400, "media must be all, photo, or video")
+    kind = MEDIA[media]
+    return ("p.media_kind = %s", [kind]) if kind else ("TRUE", [])
+
+
+def encode_cursor(sort_value, photo_id):
+    payload = json.dumps({"v": None if sort_value is None else str(sort_value), "id": str(photo_id)})
+    return base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
+
+
+def decode_cursor(cursor):
+    """Return (sort_value, photo_id) from an opaque cursor."""
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode()).decode())
+        return payload["v"], payload["id"]
+    except (ValueError, KeyError, TypeError, binascii.Error):
+        raise HTTPException(400, "Invalid pagination cursor")
 
 
 def counts(query):
     row = dict(query(f"""SELECT
         count(*) AS total_files,
         count(*) FILTER (WHERE {IMAGE}) AS photos,
-        count(*) FILTER (WHERE p.media_type LIKE 'video/%') AS videos,
+        count(*) FILTER (WHERE p.media_kind = 'video') AS videos,
         count(*) FILTER (WHERE n.photo_id IS NOT NULL) AS on_nas,
         count(*) FILTER (WHERE f.photo_id IS NOT NULL) AS on_flickr,
         count(*) FILTER (WHERE {IMAGE} AND {INDEXED}) AS indexed_photos
@@ -30,16 +61,41 @@ def counts(query):
     return row
 
 
-def gallery(query, sort, offset, limit):
+def gallery(query, sort, limit, media="all", cursor=None):
+    """One page of the catalog, ordered by `sort` and filtered by `media`.
+
+    Pages by keyset rather than OFFSET: the cursor carries the last row's sort
+    value and id, so page N costs the same as page 1 no matter how deep the
+    scroll goes. Migration 006 adds the composite indexes this relies on.
+    """
     if sort not in SORTS:
         raise HTTPException(400, 'Unsupported gallery sort')
-    # Fetch one extra row to determine whether another page exists.
+    order_expr, direction = SORTS[sort]
+    kind_sql, params = media_clause(media)
+
+    keyset = "TRUE"
+    if cursor:
+        sort_value, last_id = decode_cursor(cursor)
+        # Strictly after the cursor row in the sort's own direction. The row
+        # comparison keeps the tie-break on id consistent with ORDER BY.
+        comparison = "<" if direction == "DESC" else ">"
+        keyset = f"({order_expr}, p.id) {comparison} (%s, %s)"
+        params += [sort_value, last_id]
+
+    # One extra row tells us whether a further page exists.
+    params += [limit + 1]
     rows = query(f"""SELECT p.id::text AS photo_id,
         COALESCE(NULLIF(p.title,''),p.original_filename,'Untitled') AS photo_title,
         COALESCE(p.taken_at,p.created_at) AS date_taken,
+        p.media_kind, p.duration_seconds,
+        {order_expr} AS sort_value,
         f.remote_url AS flickr_url
-        {JOINS} WHERE {AVAILABLE} AND (p.media_type IS NULL OR p.media_type LIKE %s)
-        ORDER BY {SORTS[sort]} LIMIT %s OFFSET %s""", ('image/%', limit + 1, offset))
+        {JOINS} WHERE {AVAILABLE} AND {kind_sql} AND {keyset}
+        ORDER BY {order_expr} {direction}, p.id {direction} LIMIT %s""", tuple(params))
+
     has_more = len(rows) > limit
-    return {'photos': [dict(row) for row in rows[:limit]],
-            'next_offset': offset + limit if has_more else None}
+    page = [dict(row) for row in rows[:limit]]
+    next_cursor = encode_cursor(page[-1]['sort_value'], page[-1]['photo_id']) if has_more and page else None
+    for row in page:
+        row.pop('sort_value', None)
+    return {'photos': page, 'next_cursor': next_cursor}

@@ -8637,3 +8637,153 @@ dialog::backdrop { background: rgba(18, 18, 24, .6); backdrop-filter: blur(6px);
   color: var(--rosehip);
   font-weight: 600;
 }
+
+/* Videos grid */
+.video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+.video-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.video-card-frame {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--canvas-deep);
+}
+.video-card-frame img,
+.video-card-clip {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.video-card-clip {
+  z-index: 1;
+}
+.video-card-play {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(18, 18, 24, .55);
+  color: #fff;
+  opacity: .92;
+  transition: opacity .15s ease, transform .15s ease;
+}
+.video-card:hover .video-card-play {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.06);
+}
+.video-card-duration {
+  position: absolute;
+  z-index: 2;
+  right: 8px;
+  bottom: 8px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(18, 18, 24, .72);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.video-card-title {
+  font-size: 14px;
+  color: var(--ash);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.video-card:focus-visible .video-card-frame {
+  outline: 2px solid var(--ember);
+  outline-offset: 2px;
+}
+
+/* Search facets */
+.search-facets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.facet-tabs {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--line-dark);
+  border-radius: 999px;
+  background: var(--card);
+}
+.facet-tab {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--mist);
+  font-family: var(--body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.facet-tab.is-active {
+  background: var(--pine);
+  color: var(--paper);
+}
+.facet-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  color: var(--mist);
+}
+.facet-field input,
+.facet-field select {
+  padding: 8px 10px;
+  border: 1px solid var(--line-dark);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ash);
+  font-family: var(--body);
+  font-size: 14px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.clip-result-card {
+  position: relative;
+}
+.clip-result-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(18, 18, 24, .72);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}

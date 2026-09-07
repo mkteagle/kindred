@@ -177,6 +177,9 @@ export function Topbar() {
               <Link href="/gallery" className={`nb-link ${pathname === "/gallery" ? "is-active" : ""}`}>
                 Gallery
               </Link>
+              <Link href="/videos" className={`nb-link ${pathname === "/videos" ? "is-active" : ""}`}>
+                Videos
+              </Link>
               <Link href="/timeline" className={`nb-link ${pathname === "/timeline" ? "is-active" : ""}`}>
                 Timeline
               </Link>

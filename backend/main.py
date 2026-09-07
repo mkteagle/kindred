@@ -3690,87 +3690,110 @@ async def _process_uploaded_photo(
 
 
 @app.get("/search")
-def search_photos(q: str, limit: int = 50):
-    """Search photos — checks named people first (fuzzy trigram matching), then CLIP visual search."""
-    if not q.strip():
-        raise HTTPException(400, "Query required")
+def search_photos(
+    q: str = "",
+    media: str = Query("all", description="all, photo, or video"),
+    date_from: str | None = Query(None, description="ISO date, inclusive"),
+    date_to: str | None = Query(None, description="ISO date, inclusive"),
+    date_field: str = Query("taken", description="Apply the date range to 'taken' or 'added'"),
+    cluster_id: str | None = Query(None, description="Restrict to one person/pet/vehicle cluster"),
+    category: str | None = Query(None, description="Cluster category, required with cluster_id"),
+    album_id: str | None = Query(None, description="Restrict to one album"),
+    sort: str = Query("newest", description="Ordering when there is no free text"),
+    limit: int = Query(60, ge=1, le=200),
+):
+    """Search the catalog by free text, facets, or both.
 
+    Free text is answered from three sources, best first: photos of a person
+    whose name fuzzy-matches the query, CLIP visual similarity, and a literal
+    match on title or filename. The last of those is what lets videos appear
+    at all — they have no embeddings and no detections.
+
+    With no `q`, the facets stand on their own and this is a filtered browse.
+    """
+    import search_api
+
+    facets = search_api.Facets(
+        media=media, date_from=date_from, date_to=date_to, date_field=date_field,
+        cluster_id=cluster_id, category=category, album_id=album_id,
+    )
     query = q.strip()
-    results = []
 
-    # Phase 1: Check named people/clusters with fuzzy trigram + prefix matching
-    # Uses pg_trgm similarity so "mike" matches "michael", "jen" matches "jennifer", etc.
-    name_rows = db_query("""
-        SELECT c.id as cluster_id, c.label, c.category,
+    if not query:
+        results = search_api.browse(db_query, facets, sort=sort, limit=limit)
+        return {"results": results, "query": "", "facets": _facet_summary(facets)}
+
+    ranked = []
+
+    # Phase 1 — people. A name match is a stronger signal than anything the
+    # visual index can offer, so these lead the results.
+    if not facets.cluster_id:
+        for match in _matching_clusters(query, limit=3):
+            person_facets = search_api.Facets(
+                media=media, date_from=date_from, date_to=date_to, date_field=date_field,
+                cluster_id=match["cluster_id"], category=match["category"],
+                album_id=album_id,
+            )
+            people = search_api.browse(db_query, person_facets, sort=sort, limit=limit)
+            for row in people:
+                row.update(match_type="person", match_name=match["label"],
+                           match_cluster_id=match["cluster_id"],
+                           match_category=match["category"], distance=0.0)
+            ranked.append(people)
+
+    # Phase 2 — CLIP visual similarity over the ANN index.
+    try:
+        embedding = np.array(clip_embed_text(query), dtype=np.float32)
+        visual = search_api.by_vector(db_query, embedding, facets, limit=limit)
+        for row in visual:
+            row["match_type"] = "visual"
+        ranked.append(visual)
+    except Exception as exc:
+        print(f"[search] visual phase failed for {query!r}: {exc}")
+
+    # Phase 3 — literal title/filename match, the only path that reaches videos.
+    literal = search_api.by_text(db_query, query, facets, limit=limit)
+    for row in literal:
+        row.setdefault("match_type", "text")
+    ranked.append(literal)
+
+    results = search_api.merge(*ranked, limit=limit)
+    return {"results": results, "query": query, "facets": _facet_summary(facets)}
+
+
+def _facet_summary(facets) -> dict:
+    return {
+        "media": facets.media,
+        "date_from": facets.date_from,
+        "date_to": facets.date_to,
+        "date_field": facets.date_field,
+        "cluster_id": facets.cluster_id,
+        "category": facets.category,
+        "album_id": facets.album_id,
+    }
+
+
+def _matching_clusters(query: str, limit: int = 3) -> list[dict]:
+    """Named clusters whose label fuzzy-matches the query.
+
+    Trigram similarity so "mike" reaches "Michael" and "jen" reaches
+    "Jennifer"; migration 006 adds the GIN index this leans on.
+    """
+    rows = db_query("""
+        SELECT c.id AS cluster_id, c.label, c.category,
                similarity(LOWER(c.label), LOWER(%s)) AS sim,
                LOWER(c.label) LIKE LOWER(%s) AS prefix_match
         FROM clusters c
         WHERE c.label IS NOT NULL AND (
             c.label ILIKE %s
             OR LOWER(c.label) LIKE LOWER(%s)
-            OR EXISTS (
-                SELECT 1 FROM unnest(string_to_array(LOWER(c.label), ' ')) AS word
-                WHERE word LIKE LOWER(%s)
-                OR LOWER(%s) LIKE (LEFT(word, 3) || '%%')
-                OR similarity(word, LOWER(%s)) > 0.25
-            )
+            OR similarity(LOWER(c.label), LOWER(%s)) > 0.25
         )
         ORDER BY prefix_match DESC, sim DESC, LENGTH(c.label) ASC
-        LIMIT 5
-    """, (query, f"{query}%", f"%{query}%", f"{query}%", f"{query}%", query, query))
+        LIMIT %s
+    """, (query, f"{query}%", f"%{query}%", f"{query}%", query, limit))
+    return [dict(row) for row in rows]
 
-    if name_rows:
-        # Get photos for matching people
-        for nr in name_rows:
-            photo_rows = db_query("""
-                SELECT DISTINCT ON (d.photo_id) d.photo_id, d.photo_url, d.thumb_url,
-                       d.flickr_url, d.photo_title, d.owner
-                FROM detections d
-                JOIN detection_clusters dc ON d.id = dc.detection_id
-                WHERE dc.cluster_id = %s AND dc.category = %s
-                LIMIT %s
-            """, (nr["cluster_id"], nr["category"], limit))
-            for r in photo_rows:
-                results.append({
-                    "photo_id": r["photo_id"],
-                    "distance": 0.0,
-                    "photo_url": r["photo_url"],
-                    "thumb_url": r["thumb_url"],
-                    "flickr_url": r["flickr_url"],
-                    "photo_title": r["photo_title"],
-                    "owner": r["owner"],
-                    "match_type": "person",
-                    "match_name": nr["label"],
-                    "match_cluster_id": nr["cluster_id"],
-                    "match_category": nr["category"],
-                })
-
-    # Phase 2: CLIP visual search (fill remaining slots)
-    remaining = limit - len(results)
-    if remaining > 0:
-        emb = clip_embed_text(query)
-        vec = np.array(emb, dtype=np.float32)
-        seen_ids = {r["photo_id"] for r in results}
-        clip_rows = db_query("""
-            SELECT pe.photo_id, pe.clip_embedding <=> %s AS distance,
-                   d.photo_url, d.thumb_url, d.flickr_url, d.photo_title, d.owner
-            FROM photo_embeddings pe
-            JOIN LATERAL (
-                SELECT DISTINCT ON (photo_id) photo_url, thumb_url, flickr_url, photo_title, owner
-                FROM detections WHERE photo_id = pe.photo_id LIMIT 1
-            ) d ON true
-            ORDER BY distance ASC
-            LIMIT %s
-        """, (vec, remaining + len(seen_ids)))
-        for r in clip_rows:
-            if r["photo_id"] not in seen_ids:
-                row = dict(r)
-                row["match_type"] = "visual"
-                results.append(row)
-                if len(results) >= limit:
-                    break
-
-    return results
 
 # ── Scenes / Landmarks (cached) ──────────────────────────────────────────────
 import time as _time
@@ -5231,95 +5254,159 @@ def get_library_counts(user=Depends(get_current_user)):
 
 
 @app.get("/library/photos")
-def get_library_photos(sort: str = "newest", offset: int = Query(0, ge=0),
+def get_library_photos(sort: str = "newest",
+                       media: str = Query("all", description="all, photo, or video"),
+                       cursor: str | None = Query(None, description="next_cursor from the previous page"),
                        limit: int = Query(48, ge=1, le=100), user=Depends(get_current_user)):
     from library_api import gallery
-    return gallery(db_query, sort, offset, limit)
+    return gallery(db_query, sort, limit, media=media, cursor=cursor)
 
 
 @app.get("/timeline")
-def get_timeline(request: FastAPIRequest):
-    """Return every durable library photo, even before ML analysis runs."""
-    rows = db_query("""
-        SELECT p.id::text AS photo_id,
-               COALESCE(p.taken_at, p.created_at) AS date_taken,
-               COALESCE(NULLIF(p.title, ''), p.original_filename, '') AS photo_title,
-               flickr.remote_url AS flickr_url,
-               detections.thumb_url AS analyzed_thumb_url,
-               nas.provider_key AS nas_provider_key
-        FROM photos p
-        LEFT JOIN photo_copies nas
-          ON nas.photo_id = p.id AND nas.provider = 'nas' AND nas.status = 'available'
-        LEFT JOIN photo_copies flickr
-          ON flickr.photo_id = p.id AND flickr.provider = 'flickr' AND flickr.status = 'available'
-        LEFT JOIN LATERAL (
-            SELECT d.thumb_url
-            FROM detections d
-            WHERE d.photo_id IN (p.id::text, p.legacy_photo_id, flickr.provider_key)
-            LIMIT 1
-        ) detections ON true
-        WHERE (nas.photo_id IS NOT NULL OR flickr.photo_id IS NOT NULL)
-          AND (p.media_type IS NULL OR p.media_type LIKE 'image/%')
-        ORDER BY COALESCE(p.taken_at, p.created_at) DESC
-    """)
+def get_timeline(
+    request: FastAPIRequest,
+    months: int = Query(3, ge=1, le=24, description="How many month buckets to return"),
+    before: str | None = Query(None, description="Return months older than this YYYY-MM"),
+    media: str = Query("all", description="all, photo, or video"),
+):
+    """A page of the library grouped by month, newest first.
+
+    Paginated: ask for more with `before` set to the response's `next_before`.
+    Videos are included by default now that they have poster frames.
+    """
+    import search_api
+    import timeline_api
+
+    facets = search_api.Facets(media=media)
+    page, next_before = timeline_api.months_page(db_query, facets, months=months, before=before)
 
     session_token = request.headers.get("X-Session-Token")
     auth_query = f"&session_token={session_token}" if session_token else ""
 
-    months_dict: dict[str, list[dict]] = {}
-    indexed_photo_ids: set[str] = set()
-    for r in rows:
-        indexed_photo_ids.add(r["photo_id"])
-        dt = r["date_taken"]
-        month_key = dt.strftime("%Y-%m") if hasattr(dt, "strftime") else str(dt)[:7]
-        months_dict.setdefault(month_key, [])
-        local_thumb = (
-            f"{PUBLIC_API_URL}/photos/{r['photo_id']}/local?variant=thumb{auth_query}"
-            if r.get("nas_provider_key") else None
-        )
-        months_dict[month_key].append({
-            "photo_id": r["photo_id"],
-            "thumb_url": r.get("analyzed_thumb_url") or local_thumb,
-            "flickr_url": r["flickr_url"] or "",
-            "photo_title": r["photo_title"] or "",
-            "date_taken": str(r["date_taken"]),
-        })
+    for bucket in page:
+        for row in bucket["photos"]:
+            local_thumb = (
+                f"{PUBLIC_API_URL}/photos/{row['photo_id']}/local?variant=thumb{auth_query}"
+                if row.get("nas_provider_key") else None
+            )
+            row["thumb_url"] = local_thumb or ""
+            if row["media_kind"] == "video" and row.get("nas_provider_key"):
+                row["clip_url"] = (
+                    f"{PUBLIC_API_URL}/photos/{row['photo_id']}/local?variant=clip{auth_query}"
+                )
+            row["flickr_url"] = row.get("flickr_url") or ""
+            row["date_taken"] = str(row["date_taken"])
+            row.pop("nas_provider_key", None)
+            row.pop("month", None)
 
-    # Originals are the durable source of truth. Keep the library usable when
-    # its database index is stale or temporarily points at a fresh database.
-    # This bounded layout excludes import staging and other arbitrary files.
-    if PHOTO_STORAGE_ROOT:
-        storage_root = Path(PHOTO_STORAGE_ROOT)
-        for source in managed_originals(storage_root):
-            photo_id = source.parent.name
-            if photo_id in indexed_photo_ids:
-                continue
-            try:
-                uuid.UUID(photo_id)
-                modified = datetime.fromtimestamp(source.stat().st_mtime, tz=timezone.utc)
-            except (ValueError, OSError):
-                continue
-            month_key = modified.strftime("%Y-%m")
-            months_dict.setdefault(month_key, []).append({
-                "photo_id": photo_id,
-                "thumb_url": f"{PUBLIC_API_URL}/photos/{photo_id}/local?variant=thumb{auth_query}",
-                "flickr_url": "",
-                "photo_title": source.stem,
-                "date_taken": modified.isoformat(),
-            })
+    # Originals are the durable source of truth, so the library stays browsable
+    # when the database index is stale or pointing at a fresh database. Only on
+    # the first page: this walks the managed tree, and paging backwards through
+    # history should not pay for it repeatedly.
+    if PHOTO_STORAGE_ROOT and before is None:
+        _merge_unindexed_originals(page, months, media, auth_query)
 
-    months = [
-        {"month": m, "count": len(photos), "photos": photos}
-        for m, photos in sorted(months_dict.items(), reverse=True)
-    ]
-    return {"months": months}
+    return {"months": page, "next_before": next_before}
+
+
+def _merge_unindexed_originals(page: list[dict], months: int, media: str, auth_query: str) -> None:
+    """Fold NAS originals the catalog does not know about into a timeline page."""
+    indexed = {row["photo_id"] for bucket in page for row in bucket["photos"]}
+    buckets = {bucket["month"]: bucket for bucket in page}
+
+    for source in managed_originals(Path(PHOTO_STORAGE_ROOT)):
+        photo_id = source.parent.name
+        if photo_id in indexed:
+            continue
+        is_video = source.suffix.lower() in VIDEO_EXTENSIONS
+        if (media == "photo" and is_video) or (media == "video" and not is_video):
+            continue
+        try:
+            uuid.UUID(photo_id)
+            modified = datetime.fromtimestamp(source.stat().st_mtime, tz=timezone.utc)
+        except (ValueError, OSError):
+            continue
+        indexed.add(photo_id)
+        key = modified.strftime("%Y-%m")
+        bucket = buckets.get(key)
+        if bucket is None:
+            bucket = {"month": key, "count": 0, "photos": []}
+            buckets[key] = bucket
+        entry = {
+            "photo_id": photo_id,
+            "thumb_url": f"{PUBLIC_API_URL}/photos/{photo_id}/local?variant=thumb{auth_query}",
+            "flickr_url": "",
+            "photo_title": source.stem,
+            "date_taken": modified.isoformat(),
+            "media_kind": "video" if is_video else "photo",
+            "duration_seconds": None,
+        }
+        if is_video:
+            entry["clip_url"] = f"{PUBLIC_API_URL}/photos/{photo_id}/local?variant=clip{auth_query}"
+        bucket["photos"].append(entry)
+        bucket["count"] += 1
+
+    ordered = sorted(buckets.values(), key=lambda b: b["month"], reverse=True)[:months]
+    page[:] = ordered
+
+
+THUMBNAIL_DIR = Path("/app/data/thumbnails")
+
+
+def _video_derivative(photo_id: str, source: Path, variant: str) -> tuple[Path, str]:
+    """Return a cached poster frame or hover clip for a video, rendering once.
+
+    Duration is probed on the first derivative and written back to the photo
+    row, so the grid can show a badge without touching the file again.
+    """
+    import video_preview
+
+    THUMBNAIL_DIR.mkdir(parents=True, exist_ok=True)
+    is_clip = variant == "clip"
+    destination = THUMBNAIL_DIR / f"{photo_id}{'-clip.mp4' if is_clip else '-poster.jpg'}"
+    media_type = "video/mp4" if is_clip else "image/jpeg"
+    if destination.exists():
+        return destination, media_type
+
+    try:
+        duration = video_preview.probe_duration(source)
+    except video_preview.VideoPreviewError as exc:
+        raise HTTPException(422, "This video could not be read") from exc
+
+    if duration is not None:
+        try:
+            db_query(
+                "UPDATE photos SET duration_seconds = %s WHERE id = %s AND duration_seconds IS NULL",
+                (duration, photo_id),
+                fetch=False,
+            )
+        except Exception as exc:
+            print(f"[video] could not persist duration for {photo_id}: {exc}")
+
+    # Render to a unique sibling first so concurrent requests cannot serve a
+    # half-written file, mirroring how image thumbnails are cached.
+    temporary = destination.with_name(f"{destination.stem}.{uuid.uuid4().hex}.tmp{destination.suffix}")
+    build = video_preview.clip_command if is_clip else video_preview.poster_command
+    try:
+        video_preview.render(build(source, temporary, duration), temporary)
+        os.replace(temporary, destination)
+    except video_preview.VideoPreviewError as exc:
+        raise HTTPException(422, "This video could not be decoded") from exc
+    finally:
+        temporary.unlink(missing_ok=True)
+    return destination, media_type
 
 
 @app.get("/photos/{photo_id}/local")
 def get_local_photo(photo_id: str, variant: str = "original", user=Depends(get_current_user)):
-    """Serve a NAS original or an on-demand cached thumbnail."""
-    if variant not in ("original", "thumb", "preview"):
-        raise HTTPException(400, "variant must be original, thumb, or preview")
+    """Serve a NAS original or an on-demand cached thumbnail.
+
+    Videos derive two extra artefacts on first request: a `thumb`/`preview`
+    poster frame and a short silent `clip` for hover. Both are cached beside
+    the image thumbnails.
+    """
+    if variant not in ("original", "thumb", "preview", "clip"):
+        raise HTTPException(400, "variant must be original, thumb, preview, or clip")
     if not PHOTO_STORAGE_ROOT:
         raise HTTPException(503, "NAS photo storage is not configured")
 
@@ -5348,6 +5435,18 @@ def get_local_photo(photo_id: str, variant: str = "original", user=Depends(get_c
     response_path = source
     original_filename = row.get("original_filename") if row else None
     media_type = (row.get("media_type") if row else None) or _content_type_for_filename(original_filename or source.name)
+
+    if media_type.startswith("video/") and variant != "original":
+        response_path, media_type = _video_derivative(photo_id, source, variant)
+        return FileResponse(
+            response_path,
+            media_type=media_type,
+            content_disposition_type="inline",
+            headers={"Cache-Control": "private, max-age=86400"},
+        )
+    if variant == "clip":
+        raise HTTPException(400, "clip is only available for videos")
+
     if variant in ("thumb", "preview") and media_type.startswith("image/"):
         thumbnail_dir = Path("/app/data/thumbnails")
         thumbnail_dir.mkdir(parents=True, exist_ok=True)

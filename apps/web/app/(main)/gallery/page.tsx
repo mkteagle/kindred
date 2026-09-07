@@ -6,7 +6,7 @@ import { BACKEND } from "@/lib/constants";
 import { LibraryCounts } from "@/components/library-counts";
 import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
 
-type Page = { photos: LightboxPhoto[]; next_offset: number | null };
+type Page = { photos: LightboxPhoto[]; next_cursor: string | null };
 
 export default function GalleryPage() {
   const [sort, setSort] = useState("newest");
@@ -14,16 +14,18 @@ export default function GalleryPage() {
   const { openLightbox } = useLightbox();
   const { data, error, isPending, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } = useInfiniteQuery<Page>({
     queryKey: ["gallery", sort],
-    initialPageParam: 0,
+    initialPageParam: null as string | null,
     queryFn: async ({ pageParam }) => {
-      const response = await fetch(`${BACKEND}/library/photos?sort=${sort}&offset=${pageParam}&limit=48`);
+      // Keyset paging: page N costs the same as page 1, however deep the scroll.
+      const cursor = pageParam ? `&cursor=${encodeURIComponent(pageParam as string)}` : "";
+      const response = await fetch(`${BACKEND}/library/photos?sort=${sort}&limit=48${cursor}`);
       if (!response.ok) throw new Error("The gallery could not be loaded.");
       const page: Page = await response.json();
       return { ...page, photos: page.photos.map(p => ({ ...p,
         thumb_url: `${BACKEND}/photos/${p.photo_id}/image?size=n`,
       })) };
     },
-    getNextPageParam: (page) => page.next_offset ?? undefined,
+    getNextPageParam: (page) => page.next_cursor ?? undefined,
   });
   const photos = useMemo(() => Array.from(new Map(
     (data?.pages.flatMap(p => p.photos) ?? []).map(p => [p.photo_id, p]),
