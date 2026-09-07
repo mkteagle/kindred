@@ -121,12 +121,18 @@ def main():
             print('Rolled back to ' + (target.get('revision') or 'the previous NAS deployment'))
             return 0
 
+        launcher_before = Path(__file__).read_bytes()
         if run('git', 'status', '--porcelain', capture=True, cwd=ROOT):
             raise RuntimeError('NAS Git checkout has local changes; commit or preserve them before deploying')
         run('git', 'fetch', '--prune', 'origin', cwd=ROOT)
         revision = run('git', 'rev-parse', '--verify', args.ref + '^{commit}', capture=True, cwd=ROOT)
         if args.ref == 'origin/main':
             run('git', 'merge', '--ff-only', revision, cwd=ROOT)
+            if Path(__file__).read_bytes() != launcher_before:
+                # A fetched release may change deployment services or verification.
+                # Release this process's lock and execute the updated launcher.
+                fcntl.flock(lock, fcntl.LOCK_UN)
+                os.execv(sys.executable, [sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]])
         release = state_dir / 'releases' / revision
         if not release.exists():
             release.parent.mkdir(parents=True, exist_ok=True)

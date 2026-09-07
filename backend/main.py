@@ -402,7 +402,9 @@ def get_face_app():
     global _face_app
     if _face_app is None:
         from insightface.app import FaceAnalysis
-        _face_app = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
+        _face_app = FaceAnalysis(name="buffalo_l",
+            root=os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "insightface"),
+            providers=["CPUExecutionProvider"])
         _face_app.prepare(ctx_id=0, det_size=(960, 960))
     return _face_app
 
@@ -410,7 +412,9 @@ def get_yolo():
     global _yolo
     if _yolo is None:
         from ultralytics import YOLO
-        _yolo = YOLO("yolov8n.pt")
+        model_directory = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "ultralytics")
+        os.makedirs(model_directory, exist_ok=True)
+        _yolo = YOLO(os.path.join(model_directory, "yolov8n.pt"))
     return _yolo
 
 def get_clip():
