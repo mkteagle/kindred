@@ -1,12 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Only the handful of colours the platform needs before Compose starts:
-  the splash/window background and the system bars. Everything else lives in
+  Only the colours the platform needs before Compose starts: the splash/window
+  background, and the launcher icon's background layer. Everything else lives in
   the Compose colour scheme (ui/theme/Color.kt), which is the source of truth.
 -->
 <resources>
     <color name="kindred_bg">#0C0E0C</color>
-    <color name="kindred_chrome">#171A16</color>
     <color name="kindred_terracotta">#CC7F61</color>
-    <color name="kindred_ink">#F1F1EC</color>
 </resources>

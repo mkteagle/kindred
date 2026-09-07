@@ -10,8 +10,11 @@
         <item name="android:windowBackground">@color/kindred_bg</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar">false</item>
+        <!--
+          Light bar icons are not declared here: the flags are false by default,
+          they are only honoured from API 23/27 while minSdk is 26, and Compose
+          sets them through WindowInsetsController at runtime anyway.
+        -->
     </style>
 
     <!-- Splash screen theme -->
