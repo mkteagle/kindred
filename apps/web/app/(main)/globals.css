@@ -11123,6 +11123,248 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
 .kx-menu-item img { flex: none; }
 .kx-menu-item > span:first-of-type { flex: 1 1 auto; min-width: 0; }
 
+/* ════════════════════════════════════════════════════════════════════════
+   Redesign — review and naming
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* The banner on the people screen. Naming is a first-class job, so the work
+   outstanding is stated where it is felt rather than filed under settings. */
+.kx-reviewbanner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 18px;
+  margin-bottom: 26px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--fill-1);
+}
+
+.kx-reviewbanner-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-right: auto;
+}
+
+.kx-reviewbanner-copy strong {
+  font-family: var(--display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.kx-reviewbanner .kx-button { text-decoration: none; }
+
+/* ── The review screen ───────────────────────────────────────────────── */
+
+.kx-reviewhead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.kx-reviewhead .kx-lede { max-width: 48ch; margin-bottom: 0; }
+
+.kx-reviewprogress {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 210px;
+}
+
+.kx-reviewbar {
+  display: block;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--fill-3);
+  overflow: hidden;
+}
+
+.kx-reviewbar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width .3s var(--ease-rise);
+}
+
+/* The decision on the left, the evidence for it on the right. */
+.kx-reviewgrid {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.kx-reviewcard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--fill-1);
+}
+
+.kx-reviewcover {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 999px;
+  background: var(--tile-bg);
+}
+
+.kx-reviewcover.blank {
+  display: grid;
+  place-items: center;
+  font-family: var(--display);
+  font-size: 40px;
+  color: var(--ink-3);
+}
+
+.kx-reviewname {
+  min-height: 42px;
+  padding: 0 13px;
+  border: 1px solid var(--line-3);
+  border-radius: 8px;
+  background: var(--fill-1);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.kx-reviewname::placeholder { color: var(--ink-3); }
+
+.kx-reusenames {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.kx-reusenames > .kx-eyebrow { width: 100%; }
+
+.kx-namechip {
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--fill-3);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.kx-namechip:hover { background: var(--fill-4); color: var(--ink); }
+
+.kx-reviewactions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.kx-reviewactions .kx-button { justify-content: center; gap: 8px; }
+
+/* The key that does the same thing, said quietly inside the button. */
+.kx-shortcut {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  opacity: .7;
+}
+
+.kx-reviewevidence {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.kx-reviewevidence > section {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.kx-facestrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* A face chip is a claim that this detection belongs to the group. Clicking
+   one withdraws the claim, so the hover state is the danger colour. */
+.kx-facechip {
+  width: 62px;
+  height: 62px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--tile-bg);
+  cursor: pointer;
+}
+
+.kx-facechip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.kx-facechip:hover {
+  outline: 2px solid var(--danger-ink);
+  outline-offset: -2px;
+}
+
+.kx-facechip.more {
+  display: grid;
+  place-items: center;
+  background: var(--fill-3);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: default;
+}
+
+.kx-reviewphotos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 6px;
+}
+
+.kx-reviewphotos button {
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--tile-bg);
+  cursor: pointer;
+}
+
+.kx-reviewphotos img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+}
+
+.kx-reviewphotos button:hover {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+@media (max-width: 900px) {
+  .kx-reviewgrid { grid-template-columns: minmax(0, 1fr); }
+  .kx-reviewprogress { margin-left: 0; width: 100%; }
+}
+
 /* ── Day header: label provenance and naming ─────────────────────────── */
 
 /* A name a member typed and a place a machine guessed are different claims,
