@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { SIDEBAR_COLLAPSED, SIDEBAR_EXPANDED, SIDEBAR_KEY } from "./sidebar-script";
 
 /** Grid zoom bounds from the spec: 105–360px in 45px steps. */
 export const TILE_MIN = 105;
@@ -29,6 +30,13 @@ export interface KxUiValue {
   setSearchOpen: (open: boolean) => void;
   uploadOpen: boolean;
   setUploadOpen: (open: boolean) => void;
+  /**
+   * Desktop only: the rail is collapsed to its logo. Mirrored on
+   * <html data-sidebar>, which is what the CSS keys off — below 900px the
+   * sidebar is a drawer and this is ignored.
+   */
+  railCollapsed: boolean;
+  toggleRail: () => void;
   /** True on the library screen, which is the only one with zoom and select. */
   isLibrary: boolean;
 }
@@ -54,6 +62,7 @@ export function KxUiProvider({
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [searchOpen, setSearchOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(false);
 
   // Restored after mount so the server and first client render agree.
   useEffect(() => {
@@ -62,6 +71,24 @@ export function KxUiProvider({
       if (saved >= TILE_MIN && saved <= TILE_MAX) setTile(saved);
     } catch {
       /* private mode */
+    }
+  }, []);
+
+  // The boot script has already written <html data-sidebar> from localStorage,
+  // so the rail is painted in the right shape before React runs; all this does
+  // is bring the component state into line with what is already on screen.
+  useEffect(() => {
+    setRailCollapsed(document.documentElement.getAttribute("data-sidebar") === SIDEBAR_COLLAPSED);
+  }, []);
+
+  const toggleRail = useCallback(() => {
+    const next = document.documentElement.getAttribute("data-sidebar") !== SIDEBAR_COLLAPSED;
+    setRailCollapsed(next);
+    document.documentElement.setAttribute("data-sidebar", next ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED);
+    try {
+      localStorage.setItem(SIDEBAR_KEY, next ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED);
+    } catch {
+      /* private mode — the rail still moves, it just will not persist */
     }
   }, []);
 
@@ -121,9 +148,25 @@ export function KxUiProvider({
       setSearchOpen,
       uploadOpen,
       setUploadOpen,
+      railCollapsed,
+      toggleRail,
       isLibrary,
     }),
-    [tile, step, loose, selecting, setSelecting, selected, toggleSelected, exitSelect, searchOpen, uploadOpen, isLibrary],
+    [
+      tile,
+      step,
+      loose,
+      selecting,
+      setSelecting,
+      selected,
+      toggleSelected,
+      exitSelect,
+      searchOpen,
+      uploadOpen,
+      railCollapsed,
+      toggleRail,
+      isLibrary,
+    ],
   );
 
   return <KxUiContext.Provider value={value}>{children}</KxUiContext.Provider>;

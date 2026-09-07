@@ -102,6 +102,22 @@ export const MenuIcon = (p: IconProps) => (
   </Stroke>
 );
 
+/**
+ * The rail toggle's glyph: the shell seen from above — a panel with its left
+ * column marked — plus a chevron pointing the way the rail will move.
+ */
+export const SidebarIcon = ({ direction = "left", ...p }: IconProps & { direction?: "left" | "right" }) => (
+  <Stroke size={16} {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <line x1="9" y1="4" x2="9" y2="20" />
+    {direction === "left" ? (
+      <polyline points="16.5 9.5 14 12 16.5 14.5" />
+    ) : (
+      <polyline points="14 9.5 16.5 12 14 14.5" />
+    )}
+  </Stroke>
+);
+
 export const UploadIcon = (p: IconProps) => (
   <Stroke strokeWidth={1.5} {...p}>
     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
