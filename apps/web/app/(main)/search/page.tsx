@@ -9,18 +9,14 @@ import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
 import { SearchIcon } from "@/components/kx/icons";
 import { rememberSearch } from "@/components/kx/search-overlay";
 import { KxEmptyResults, KxSkeletonCards } from "@/components/kx/states";
+import { KxDateFacet, type DateField, type DateRange } from "@/components/kx/date-facet";
+import { useNamedPeople } from "@/components/kx/use-people";
 
 type Media = "all" | "photo" | "video";
 
 interface SearchResponse {
   results: SearchResult[];
   query: string;
-}
-
-interface NamedCluster {
-  cluster_id: string;
-  label: string;
-  category: string;
 }
 
 const MEDIA_CHIPS: { value: Media; label: string }[] = [
@@ -39,18 +35,6 @@ function thumbFor(result: SearchResult & { media_kind?: string }): string {
     : result.thumb_url || result.photo_url || `${BACKEND}/photos/${result.photo_id}/image?size=n`;
 }
 
-const RANGE_LABEL = new Intl.DateTimeFormat("en-GB", { month: "short", year: "numeric" });
-
-function rangeLabel(from: string, to: string): string {
-  const parts = [from, to]
-    .filter(Boolean)
-    .map((value) => {
-      const date = new Date(value);
-      return Number.isNaN(date.getTime()) ? value : RANGE_LABEL.format(date);
-    });
-  return parts.join(" – ");
-}
-
 function SearchContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -59,10 +43,12 @@ function SearchContent() {
   const [input, setInput] = useState(searchParams.get("q") || "");
   const [debouncedQ, setDebouncedQ] = useState(searchParams.get("q") || "");
   const [media, setMedia] = useState<Media>((searchParams.get("media") as Media) || "all");
-  const [dateFrom, setDateFrom] = useState(searchParams.get("date_from") || "");
-  const [dateTo, setDateTo] = useState(searchParams.get("date_to") || "");
+  const [dates, setDates] = useState<DateRange>({
+    field: (searchParams.get("date_field") as DateField) || "taken",
+    from: searchParams.get("date_from") || "",
+    to: searchParams.get("date_to") || "",
+  });
   const [person, setPerson] = useState(searchParams.get("cluster_id") || "");
-  const [datesOpen, setDatesOpen] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQ(input.trim()), 300);
@@ -74,19 +60,10 @@ function SearchContent() {
   }, [debouncedQ]);
 
   // People available as a facet. Cheap, cached, and unrelated to the query.
-  const { data: people } = useQuery<NamedCluster[]>({
-    queryKey: ["named-clusters"],
-    queryFn: async () => {
-      const response = await fetch(`${BACKEND}/clusters/named`);
-      if (!response.ok) return [];
-      const data = await response.json();
-      return (data.clusters ?? data ?? []) as NamedCluster[];
-    },
-    staleTime: 5 * 60 * 1000,
-  });
+  const { data: people } = useNamedPeople();
 
   const selectedPerson = useMemo(
-    () => people?.find((p) => p.cluster_id === person),
+    () => people?.find((p) => p.id === person),
     [people, person],
   );
 
@@ -94,14 +71,17 @@ function SearchContent() {
     const next = new URLSearchParams();
     if (debouncedQ) next.set("q", debouncedQ);
     if (media !== "all") next.set("media", media);
-    if (dateFrom) next.set("date_from", dateFrom);
-    if (dateTo) next.set("date_to", dateTo);
+    if (dates.from) next.set("date_from", dates.from);
+    if (dates.to) next.set("date_to", dates.to);
+    // Only worth sending when it is not the default, and only meaningful
+    // alongside a range.
+    if (dates.field === "added" && (dates.from || dates.to)) next.set("date_field", "added");
     if (person && selectedPerson) {
       next.set("cluster_id", person);
       next.set("category", selectedPerson.category);
     }
     return next;
-  }, [debouncedQ, media, dateFrom, dateTo, person, selectedPerson]);
+  }, [debouncedQ, media, dates, person, selectedPerson]);
 
   // Keep the URL shareable and reloadable.
   useEffect(() => {
@@ -111,13 +91,11 @@ function SearchContent() {
 
   const clearFilters = () => {
     setMedia("all");
-    setDateFrom("");
-    setDateTo("");
+    setDates({ field: "taken", from: "", to: "" });
     setPerson("");
-    setDatesOpen(false);
   };
 
-  const hasFacets = media !== "all" || Boolean(dateFrom || dateTo || person);
+  const hasFacets = media !== "all" || Boolean(dates.from || dates.to || person);
   // Free text needs a few characters to be meaningful; facets stand on their
   // own, so a filter-only search runs immediately.
   const enabled = debouncedQ.length > 2 || hasFacets;
@@ -186,63 +164,23 @@ function SearchContent() {
 
           {peopleChips.map((candidate) => (
             <button
-              key={candidate.cluster_id}
-              className={`kx-chip ${person === candidate.cluster_id ? "is-active" : ""}`}
-              aria-pressed={person === candidate.cluster_id}
-              onClick={() => setPerson(person === candidate.cluster_id ? "" : candidate.cluster_id)}
+              key={candidate.id}
+              className={`kx-chip ${person === candidate.id ? "is-active" : ""}`}
+              aria-pressed={person === candidate.id}
+              onClick={() => setPerson(person === candidate.id ? "" : candidate.id)}
             >
               With {candidate.label}
             </button>
           ))}
 
-          {dateFrom || dateTo ? (
-            <button
-              className="kx-chip removable"
-              onClick={() => {
-                setDateFrom("");
-                setDateTo("");
-                setDatesOpen(false);
-              }}
-            >
-              {rangeLabel(dateFrom, dateTo)} ×
-            </button>
-          ) : (
-            <button
-              className={`kx-chip ${datesOpen ? "is-active" : ""}`}
-              aria-expanded={datesOpen}
-              onClick={() => setDatesOpen((open) => !open)}
-            >
-              Date range
-            </button>
-          )}
+          {/* Taken versus added has its own control because a bulk import
+              gives every file the same added date and none of its real one. */}
+          <KxDateFacet
+            value={dates}
+            onApply={setDates}
+            onClear={() => setDates({ field: "taken", from: "", to: "" })}
+          />
         </div>
-
-        {/* The design shows the range only as a chip. Something has to set it,
-            so the chip reveals the two fields the /search facet takes. */}
-        {(datesOpen || dateFrom || dateTo) && (
-          <div className="kx-chiprow" style={{ marginTop: -14 }}>
-            <label className="kx-mono">
-              From{" "}
-              <input
-                type="date"
-                className="kx-input"
-                value={dateFrom}
-                max={dateTo || undefined}
-                onChange={(e) => setDateFrom(e.target.value)}
-              />
-            </label>
-            <label className="kx-mono">
-              To{" "}
-              <input
-                type="date"
-                className="kx-input"
-                value={dateTo}
-                min={dateFrom || undefined}
-                onChange={(e) => setDateTo(e.target.value)}
-              />
-            </label>
-          </div>
-        )}
       </div>
 
       {enabled && isLoading && (
