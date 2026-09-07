@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Supervise checkpoint import and local indexing independently of the API."""
+"""Supervise one importer and one indexer independently of the API."""
 import fcntl
 import json
 import os
@@ -20,11 +20,50 @@ def status(**fields):
     temporary.replace(DATA / 'nas-worker-status.json')
 
 
-def phase(name, args):
-    status(phase=name, pid=os.getpid(), source=SOURCE)
+def launch(name, args):
     with (DATA / ('nas-worker-' + name + '.log')).open('a', buffering=1) as log:
         log.write('\n[worker] Starting ' + time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()) + '\n')
-        return subprocess.call([sys.executable, '-u', *args], stdout=log, stderr=subprocess.STDOUT)
+        return subprocess.Popen([sys.executable, '-u', *args], stdout=log, stderr=subprocess.STDOUT)
+
+
+def run_pass():
+    importer = launch('import', [str(SCRIPTS / 'resume_nas_library.py'), SOURCE,
+                               '--progress', str(DATA / 'staged-import-progress.json'), '--defer-analysis'])
+    indexer = None
+    final_index = False
+    next_index = 0
+    index_result = None
+    try:
+        while True:
+            import_result = importer.poll()
+            if indexer is not None:
+                index_result = indexer.poll()
+                if index_result is not None:
+                    if final_index:
+                        return import_result, index_result
+                    indexer = None
+                    next_index = time.monotonic() + (300 if index_result else 30)
+            # Index current NAS photos immediately while uploads continue. A final
+            # pass after import exits catches photos added after an earlier snapshot.
+            if indexer is None and (import_result is not None or time.monotonic() >= next_index):
+                final_index = import_result is not None
+                indexer = launch('index', [str(SCRIPTS / 'index_nas_library.py')])
+                index_result = None
+            status(phase='indexing' if import_result is not None else 'importing_and_indexing',
+                   pid=os.getpid(), import_pid=importer.pid, import_exit=import_result,
+                   index_pid=indexer.pid if indexer else None, index_exit=index_result,
+                   final_index_pass=final_index, source=SOURCE)
+            time.sleep(5)
+    finally:
+        # If the supervisor itself errors, don't leave detached workers behind.
+        for process in (importer, indexer):
+            if process is not None and process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
 
 
 def run():
@@ -35,14 +74,10 @@ def run():
         except BlockingIOError:
             print('A NAS library worker is already running', flush=True)
             return 0
-        # A failed mirror must not prevent local indexing. Preserve individual
-        # phase results and retry failures after a cooldown, without API restarts.
         attempt = 0
         while True:
             attempt += 1
-            imported = phase('import', [str(SCRIPTS / 'resume_nas_library.py'), SOURCE,
-                                      '--progress', str(DATA / 'staged-import-progress.json'), '--defer-analysis'])
-            indexed = phase('index', [str(SCRIPTS / 'index_nas_library.py')])
+            imported, indexed = run_pass()
             if imported == 0 and indexed == 0:
                 status(phase='complete', import_exit=0, index_exit=0, attempts=attempt)
                 return 0

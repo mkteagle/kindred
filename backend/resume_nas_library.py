@@ -125,7 +125,7 @@ async def mirror(relative: str, receipt: dict, source_root: Path, privacy: str) 
         receipt["flickr_photo_id"] = flickr_id
         return True
     except Exception as exc:
-        main._set_replication_status(job_id, "retry", str(exc)[:1000])
+        main._set_replication_status(job_id, "retry", f"{type(exc).__name__}: {exc}"[:1000])
         raise
     finally:
         Path(str(source) + ".jpg").unlink(missing_ok=True)
@@ -205,8 +205,8 @@ async def _run(args: argparse.Namespace) -> int:
             progress["failed"].pop(relative, None)
         except Exception as exc:
             failures += 1
-            progress["failed"][relative] = str(exc)[:1000]
-            print(f"[resume] failed {relative}: {exc}", flush=True)
+            progress["failed"][relative] = f"{type(exc).__name__}: {exc}"[:1000]
+            print(f"[resume] failed {relative}: {type(exc).__name__}: {exc}", flush=True)
         staged_import.save_progress(progress_path, progress)
         if index % 10 == 0:
             elapsed = max(time.monotonic() - started, 0.001)
