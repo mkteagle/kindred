@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { BrandWordmark } from "@/components/brand-mark";
 
 export const Spinner = ({ size }: { size?: number } = {}): React.ReactNode => (
   <span className="spinner" aria-label="Loading" style={size ? { width: size, height: size } : undefined} />
@@ -8,7 +9,7 @@ export const Spinner = ({ size }: { size?: number } = {}): React.ReactNode => (
 
 export const BrandMark = (): React.ReactNode => (
   <span className="brand-mark logo-lockup" aria-hidden="true">
-    <img src="/kindred-wordmark.svg" alt="" />
+    <BrandWordmark alt="" />
   </span>
 );
 

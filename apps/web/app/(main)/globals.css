@@ -12373,3 +12373,70 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
   font-weight: 700;
   letter-spacing: .04em;
 }
+
+/* Theme-swapped brand marks, anywhere on the page.
+   The .kx-brand rules above are the same idea scoped to the shell; these cover
+   the screens that have not been ported into it yet. */
+[data-mark-theme="dark"] { display: none; }
+:root[data-theme="dark"] [data-mark-theme="light"] { display: none; }
+:root[data-theme="dark"] [data-mark-theme="dark"] { display: block; }
+
+/* ── Mobile: send people to the apps ─────────────────────────────────────────
+   The library is a desktop experience on the web; phones get the iOS and
+   Android apps, which do camera-roll backup and offline caching a browser
+   cannot. A media query swaps them, so there is no hydration mismatch and no
+   flash of the wrong screen before JavaScript runs.
+
+   Share links live outside this layout group and are deliberately untouched:
+   a shared album that demanded an install would not be a shared album. */
+.app-gate { display: none; }
+
+@media (max-width: 900px) {
+  .main-app > :not(.app-gate) { display: none !important; }
+  .app-gate {
+    display: grid;
+    place-items: center;
+    min-height: 100svh;
+    padding: 32px 24px;
+    background: var(--bg, #0c0e0c);
+    color: var(--ink, #f1f1ec);
+  }
+}
+
+.app-gate-inner { max-width: 420px; text-align: center; }
+.app-gate-mark { width: 56px; height: 56px; margin: 0 auto 20px; }
+.app-gate-eyebrow {
+  margin: 0 0 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--accent, #cc7f61);
+}
+.app-gate-title {
+  margin: 0 0 14px;
+  font-family: var(--display);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -.02em;
+}
+.app-gate-lede {
+  margin: 0 0 26px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-4, #b6b8b0);
+}
+.app-gate-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.app-gate-note {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-3, #9ba095);
+}

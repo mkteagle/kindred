@@ -6,6 +6,7 @@ import Link from "next/link";
 import { KindlingFooter } from "@/components/kindling-footer";
 import type { User, Stats } from "@/types";
 import { BACKEND, CATEGORIES, HERO_PHOTOS, fmt } from "@/lib/constants";
+import { BrandMark, BrandWordmark } from "@/components/brand-mark";
 
 const API = "/api";
 
@@ -138,8 +139,8 @@ function LandingPage() {
       <section className="landing-hero">
         <div className="landing-hero-inner">
           <div className="landing-hero-brand">
-            <img src="/kindred-icon.svg" alt="" className="landing-hero-icon" />
-            <img src="/kindred-wordmark.svg" alt="Kindred Photos" className="landing-hero-wordmark" />
+            <BrandMark className="landing-hero-icon" />
+            <BrandWordmark className="landing-hero-wordmark" alt="Kindred Photos" />
           </div>
 
           <h1 className="landing-h1">A calmer home for family photos.</h1>

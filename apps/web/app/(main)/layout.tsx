@@ -3,6 +3,7 @@ import { KxAppShell } from "@/components/kx/app-shell";
 import { SIDEBAR_BOOT_SCRIPT } from "@/components/kx/sidebar-script";
 import { THEME_BOOT_SCRIPT } from "@/components/kx/theme-script";
 import { SyncProgress } from "@/components/sync-progress";
+import { GetTheApp } from "@/components/get-the-app";
 import "./globals.css";
 
 export default function MainLayout({
@@ -18,6 +19,9 @@ export default function MainLayout({
       {/* Same trick for the rail: sets <html data-sidebar> before first paint so
           a collapsed rail is never drawn wide and then snapped shut. */}
       <script dangerouslySetInnerHTML={{ __html: SIDEBAR_BOOT_SCRIPT }} />
+      {/* Both are rendered; a media query picks one. See GetTheApp for why
+          this is CSS rather than a width check in JavaScript. */}
+      <GetTheApp />
       <Providers>
         <KxAppShell>
           <SyncProgress />
