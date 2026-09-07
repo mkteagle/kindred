@@ -160,6 +160,10 @@ export function KxClusterBrowse({
               <Link
                 key={cluster.id}
                 href={`/${category}/${cluster.id}`}
+                // Sixty cards on screen means sixty prefetched routes, each
+                // pulling a group the reader has not asked for. Hover still
+                // prefetches the one they are actually heading to.
+                prefetch={false}
                 className={`kx-personcard ${named ? "" : "unnamed"}`.trim()}
               >
                 {cover ? (
@@ -181,6 +185,10 @@ export function KxClusterBrowse({
             <Link
               key={cluster.id}
               href={`/${category}/${cluster.id}`}
+              // Sixty cards on screen means sixty prefetched routes, each
+              // pulling a group the reader has not asked for. Hover still
+              // prefetches the one they are actually heading to.
+              prefetch={false}
               className={`kx-card-lift kx-covercard ${named ? "" : "unnamed"}`.trim()}
             >
               <span className="kx-covercard-media">

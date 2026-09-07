@@ -56,7 +56,7 @@ interface RailTip {
  */
 function BrandLockup() {
   return (
-    <Link href="/gallery" className="kx-brand" aria-label="Kindred, home">
+    <Link href="/gallery" className="kx-brand" aria-label="Kindred, home" prefetch={false}>
       <span className="kx-brand-mark">
         <img src="/logo.svg" alt="" className="kx-mark" data-mark-theme="light" />
         <img src="/logo-light.svg" alt="" className="kx-mark" data-mark-theme="dark" />
@@ -144,6 +144,11 @@ function NavRow({
     <Link
       ref={ref}
       href={href}
+      // The rail is on every screen, so viewport prefetching pulls the whole
+      // app down on every load -- twenty-odd routes, several requests each,
+      // ahead of the data the page actually needs. Next still prefetches on
+      // hover, which is the intent that matters.
+      prefetch={false}
       className={`kx-navrow ${wide ? "with-icon" : ""} ${active ? "is-active" : ""}`}
       aria-current={active ? "page" : undefined}
       aria-label={label}
