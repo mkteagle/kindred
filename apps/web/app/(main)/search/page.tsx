@@ -61,6 +61,7 @@ function SearchContent() {
   const [dateFrom, setDateFrom] = useState(searchParams.get("date_from") || "");
   const [dateTo, setDateTo] = useState(searchParams.get("date_to") || "");
   const [person, setPerson] = useState(searchParams.get("cluster_id") || "");
+  const [datesOpen, setDatesOpen] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQ(input.trim()), 300);
@@ -185,18 +186,54 @@ function SearchContent() {
             </button>
           ))}
 
-          {(dateFrom || dateTo) && (
+          {dateFrom || dateTo ? (
             <button
               className="kx-chip removable"
               onClick={() => {
                 setDateFrom("");
                 setDateTo("");
+                setDatesOpen(false);
               }}
             >
               {rangeLabel(dateFrom, dateTo)} ×
             </button>
+          ) : (
+            <button
+              className={`kx-chip ${datesOpen ? "is-active" : ""}`}
+              aria-expanded={datesOpen}
+              onClick={() => setDatesOpen((open) => !open)}
+            >
+              Date range
+            </button>
           )}
         </div>
+
+        {/* The design shows the range only as a chip. Something has to set it,
+            so the chip reveals the two fields the /search facet takes. */}
+        {(datesOpen || dateFrom || dateTo) && (
+          <div className="kx-chiprow" style={{ marginTop: -14 }}>
+            <label className="kx-mono">
+              From{" "}
+              <input
+                type="date"
+                className="kx-input"
+                value={dateFrom}
+                max={dateTo || undefined}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+            </label>
+            <label className="kx-mono">
+              To{" "}
+              <input
+                type="date"
+                className="kx-input"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </label>
+          </div>
+        )}
       </div>
 
       {enabled && isLoading && <p className="kx-status" role="status">Searching…</p>}
