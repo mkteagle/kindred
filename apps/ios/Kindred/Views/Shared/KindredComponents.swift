@@ -564,6 +564,35 @@ struct PhotoCountBadge: View {
     }
 }
 
+// MARK: - Face circle
+
+/// A 1:1 circular face that fills whatever width the grid gives it.
+/// `KindredAvatar` takes a fixed point size; the People grid is fluid.
+struct FaceCircle: View {
+    let url: String?
+
+    var body: some View {
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                if let url, DemoDataProvider.isDemoURL(url) {
+                    DemoThumbnailView(urlString: url, cornerRadius: 0)
+                } else if let url, let parsed = URL(string: url) {
+                    AsyncImage(url: parsed) { phase in
+                        switch phase {
+                        case .success(let image): image.resizable().scaledToFill()
+                        default: KindredTheme.avatarGradient
+                        }
+                    }
+                } else {
+                    KindredTheme.avatarGradient
+                }
+            }
+            .clipShape(Circle())
+            .accessibilityHidden(true)
+    }
+}
+
 // MARK: - Conditional View Modifier
 
 extension View {

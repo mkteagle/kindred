@@ -14,14 +14,17 @@ actor APIClient {
     }()
 
     private init() {
+        Self.publicBaseURL = baseURL
         // Load session token from Keychain on init
         if let token = KeychainHelper.loadString(forKey: "kindred_session_token") {
             self.sessionToken = token
+            Self.publicSessionToken = token
         }
     }
 
     func setSessionToken(_ token: String?) {
         self.sessionToken = token
+        Self.publicSessionToken = token
     }
 
     func currentSessionToken() -> String? { sessionToken }
@@ -29,6 +32,11 @@ actor APIClient {
 
     /// Synchronously accessible base URL for constructing image proxy URLs
     nonisolated(unsafe) static var publicBaseURL: String = ""
+
+    /// Synchronously accessible session token. AsyncImage and AVPlayer both
+    /// fetch outside this actor and cannot set a header, so signed media URLs
+    /// carry the token as a query item instead.
+    nonisolated(unsafe) static var publicSessionToken: String?
 
     func setBaseURL(_ url: String) {
         self.baseURL = url
@@ -174,9 +182,40 @@ actor APIClient {
 
     // MARK: - Search
 
+    /// Legacy shape kept for the avatar picker. `/search` answers an envelope
+    /// of catalog rows with no image URLs, so the media URLs are built here.
     func search(query: String, limit: Int = 50) async throws -> [SearchResult] {
-        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        return try await request("/search?q=\(encoded)&limit=\(limit)")
+        let response = try await searchLibrary(query: query, limit: limit)
+        return response.results.map { hit in
+            SearchResult(
+                photo_id: hit.photo_id,
+                distance: Float(hit.distance ?? 0),
+                photo_url: Self.mediaURL(photoID: hit.photo_id, variant: .preview,
+                                         baseURL: baseURL, token: sessionToken)?
+                    .absoluteString ?? "",
+                thumb_url: Self.mediaURL(photoID: hit.photo_id, variant: .thumb,
+                                         baseURL: baseURL, token: sessionToken)?
+                    .absoluteString,
+                flickr_url: hit.flickr_url,
+                photo_title: hit.photo_title,
+                owner: nil,
+                match_type: hit.match_type,
+                match_name: hit.match_name,
+                match_cluster_id: hit.match_cluster_id,
+                match_category: hit.match_category
+            )
+        }
+    }
+
+    /// Signed media URL for the current session, from inside the actor.
+    func mediaURL(photoID: String, variant: MediaVariant = .thumb) -> URL? {
+        Self.mediaURL(photoID: photoID, variant: variant,
+                      baseURL: baseURL, token: sessionToken)
+    }
+
+    /// A request with no body that still returns one — PUT/DELETE on favourites.
+    func send<R: Decodable>(_ path: String, method: String) async throws -> R {
+        try await request(path, method: method)
     }
 
     // MARK: - Explore

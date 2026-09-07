@@ -1,133 +1,103 @@
 import SwiftUI
 
+/// Screen 01 — Home. The inverse lockup and a bell, a time-of-day eyebrow over
+/// the standing title, the brand's memory wall, two stat cards, and the latest
+/// day as a mosaic.
 struct HomeView: View {
-    @State private var libraryVM = LibraryViewModel()
-    @State private var exploreVM = ExploreViewModel()
+    var onNavigateToTab: ((Int) -> Void)? = nil
+
+    @State private var recent: [LibraryPhoto] = []
+    @State private var latestDay: PhotoDay?
+    @State private var newThisWeek: Int?
+    @State private var newThisWeekIsFloor = false
+    @State private var peopleToName: Int?
     @State private var inboxVM = InboxViewModel()
     @ObservedObject private var readState = NotificationReadState.shared
-    @State private var selectedPhoto: PhotoGridItem?
-    @State private var showTogether = false
-    @State private var showMemory = false
     @State private var showInbox = false
+    @State private var viewing: LibraryPhoto?
+    @State private var hasAppeared = false
     @State private var lastLoadedAt: Date?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var isIPad: Bool { horizontalSizeClass == .regular }
 
-    /// Callback for tab navigation from notification taps
-    var onNavigateToTab: ((Int) -> Void)? = nil
-
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    // App bar
                     KindredAppBar(
                         unreadCount: inboxVM.unreadCount(readState: readState),
                         onBellTap: { showInbox = true }
                     )
 
-                    // Greeting
-                    greetingBlock
+                    greeting
+                        .kindredEntry(hasAppeared)
 
-                    // Memory wall scatter
-                    memoryWallScatter
+                    MemoryWall(photos: Array(recent.prefix(4)))
+                        .frame(height: isIPad ? 250 : 196)
+                        .padding(.horizontal, 14)
+                        .padding(.top, 22)
+                        .padding(.bottom, 6)
+                        .kindredEntry(hasAppeared, delay: 0.06)
 
-                    // Together feature link
-                    togetherLink
+                    thisWeek
+                        .kindredEntry(hasAppeared, delay: 0.12)
 
-                    // "Worth finding again" carousel
-                    worthFindingSection
+                    latestDaySection
+                        .kindredEntry(hasAppeared, delay: 0.18)
 
-                    // People row
-                    peopleRow
-
-                    // "On this day" card
-                    onThisDayCard
-
-                    Spacer().frame(height: isIPad ? 32 : 110)
+                    Color.clear.frame(height: isIPad ? 32 : 110)
                 }
                 .frame(maxWidth: isIPad ? 900 : .infinity, alignment: .leading)
                 .frame(maxWidth: .infinity)
             }
-            .kindredPaperBackground()
+            .background(KindredTheme.bg.ignoresSafeArea())
             .navigationBarHidden(true)
-            .navigationDestination(for: ClusterSummary.self) { cluster in
-                ClusterDetailView(
-                    cluster: cluster,
-                    category: .people,
-                    viewModel: libraryVM
-                )
-            }
-            .sheet(item: $selectedPhoto) { item in
-                FullScreenPhotoView(item: item)
-            }
-            .fullScreenCover(isPresented: $showTogether) {
-                TogetherPickerView()
-            }
-            .fullScreenCover(isPresented: $showMemory) {
-                MemoryView(
-                    photos: onThisDayPhotos,
-                    title: onThisDayTitle,
-                    subtitle: "\(onThisDayPhotos.count) photos from \(onThisDayYear)"
-                )
+            .fullScreenCover(item: $viewing) { photo in
+                PhotoViewerView(photos: latestDay?.photos ?? recent, initial: photo)
             }
             .sheet(isPresented: $showInbox) {
-                NotificationInboxView(
-                    onNavigateToTab: onNavigateToTab
-                )
+                NotificationInboxView(onNavigateToTab: onNavigateToTab)
             }
             .task {
-                async let stats: () = libraryVM.loadStats()
-                async let clusters: () = libraryVM.loadClusters()
-                async let timeline: () = exploreVM.loadTimeline()
-                async let inbox: () = inboxVM.loadSyncHistory()
-                _ = await (stats, clusters, timeline, inbox)
-                lastLoadedAt = Date()
+                await load()
+                withAnimation { hasAppeared = true }
             }
-            .refreshable {
-                async let clusters: () = libraryVM.loadClusters()
-                async let timeline: () = exploreVM.loadTimeline()
-                async let inbox: () = inboxVM.loadSyncHistory()
-                _ = await (clusters, timeline, inbox)
-                lastLoadedAt = Date()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-                // Refresh if data is older than 5 minutes
-                if let loaded = lastLoadedAt, Date().timeIntervalSince(loaded) > 300 {
-                    Task {
-                        await libraryVM.loadClusters()
-                        await exploreVM.loadTimeline()
-                        await inboxVM.loadSyncHistory()
-                        lastLoadedAt = Date()
-                    }
-                }
+            .refreshable { await load() }
+            .onReceive(
+                NotificationCenter.default.publisher(
+                    for: UIApplication.willEnterForegroundNotification
+                )
+            ) { _ in
+                guard let loaded = lastLoadedAt, Date().timeIntervalSince(loaded) > 300 else { return }
+                Task { await load() }
             }
         }
     }
 
     // MARK: - Greeting
 
-    private var greetingBlock: some View {
+    private var greeting: some View {
         VStack(alignment: .leading, spacing: 8) {
-            KindredEyebrow(text: greetingTimeOfDay, color: KindredTheme.gold)
+            KindredEyebrow(text: timeOfDay, color: KindredTheme.amber)
             Text("A quieter view\nof your week.")
-                .font(.display(34, weight: .bold))
-                .foregroundStyle(KindredTheme.ash)
+                .font(.display(33, weight: .bold, relativeTo: .largeTitle))
+                .tracking(-0.33)
                 .lineSpacing(-4)
-                .tracking(-0.34)
+                .foregroundStyle(KindredTheme.ink)
+                .accessibilityAddTraits(.isHeader)
         }
-        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, KindredTheme.gutter)
         .padding(.top, 14)
-        .padding(.bottom, 6)
     }
 
-    private var greetingTimeOfDay: String {
-        let hour = Calendar.current.component(.hour, from: Date())
+    private var timeOfDay: String {
+        let now = Date()
         let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE"
-        let day = formatter.string(from: Date())
-        switch hour {
+        formatter.setLocalizedDateFormatFromTemplate("EEEE")
+        let day = formatter.string(from: now)
+        switch Calendar.current.component(.hour, from: now) {
         case 5..<12: return "\(day) morning"
         case 12..<17: return "\(day) afternoon"
         case 17..<21: return "\(day) evening"
@@ -135,433 +105,157 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Memory Wall Scatter
+    // MARK: - This week
 
-    private var memoryWallScatter: some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            ZStack {
-                let recentPhotos = recentPhotoURLs(count: 4)
-
-                if recentPhotos.count >= 4 {
-                    scatterItem(url: recentPhotos[0], x: w * 0.20, y: 50, size: w * 0.28, rotation: -8, z: 1)
-                    scatterItem(url: recentPhotos[1], x: w * 0.72, y: 30, size: w * 0.30, rotation: 6, z: 2)
-                    scatterItem(url: recentPhotos[2], x: w * 0.42, y: 100, size: w * 0.34, rotation: -1, z: 5)
-                    scatterItem(url: recentPhotos[3], x: w * 0.75, y: 110, size: w * 0.26, rotation: 4, z: 3)
-                } else {
-                    placeholderScatter(width: w)
+    private var thisWeek: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            KindredEyebrow(text: "This week")
+            HStack(spacing: 10) {
+                KindredStatCard(value: newThisWeekLabel, label: "new moments")
+                Button {
+                    onNavigateToTab?(1)
+                } label: {
+                    KindredStatCard(
+                        value: peopleToName.map { "\($0)" } ?? "—", label: "people to name"
+                    )
                 }
-
-                // Badge
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("THIS WEEK")
-                        .font(.mono(8, weight: .semibold))
-                        .tracking(1.1)
-                        .foregroundStyle(KindredTheme.gold)
-                    Text("\(recentPhotoCount) new moments")
-                        .font(.display(12, weight: .bold))
-                        .foregroundStyle(KindredTheme.ash)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    KindredTheme.paper.opacity(0.94)
-                        .background(.ultraThinMaterial)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(KindredTheme.line, lineWidth: 1)
-                )
-                .shadow(color: KindredTheme.cardShadow, radius: 11, x: 0, y: 10)
-                .position(x: w * 0.72, y: 148)
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens People")
             }
         }
-        .frame(height: isIPad ? 260 : 195)
-        .clipped() // Prevent photos from bleeding into content below
-        .padding(.horizontal, 14)
+        .padding(.horizontal, KindredTheme.gutter)
         .padding(.top, 16)
-        .padding(.bottom, 4)
     }
 
-    private func scatterItem(url: String, x: CGFloat, y: CGFloat, size: CGFloat, rotation: Double, z: Int) -> some View {
-        Group {
-            if DemoDataProvider.isDemoURL(url) {
-                DemoThumbnailView(urlString: url, cornerRadius: 4)
-            } else {
-                AsyncImage(url: URL(string: url)) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    default:
-                        KindredTheme.canvas
-                    }
-                }
-            }
-        }
-        .frame(width: size, height: size * 1.25)
-        .clipShape(RoundedRectangle(cornerRadius: 4))
-        .padding(5)
-        .background(Color.white.opacity(0.95))
-        .rotationEffect(.degrees(rotation))
-        .shadow(color: KindredTheme.cardShadow, radius: 14, x: 0, y: 14)
-        .position(x: x, y: y)
-        .zIndex(Double(z))
+    /// The catalog has no "count matching these facets" endpoint, so this is
+    /// the size of one page of the last seven days. When the page is full there
+    /// are more, and the number is shown as a floor rather than a guess.
+    /// TODO: a `/library/count` taking the same facets as /library/photos
+    /// would make this exact.
+    private var newThisWeekLabel: String {
+        guard let newThisWeek else { return "—" }
+        return newThisWeekIsFloor ? "\(newThisWeek)+" : "\(newThisWeek)"
     }
 
-    private func placeholderScatter(width w: CGFloat) -> some View {
-        ForEach(0..<4, id: \.self) { i in
-            let configs: [(x: CGFloat, y: CGFloat, s: CGFloat, r: Double)] = [
-                (0.20, 50, 0.28, -8), (0.72, 30, 0.30, 6),
-                (0.42, 100, 0.34, -1), (0.75, 110, 0.26, 4),
-            ]
-            let c = configs[i]
-            RoundedRectangle(cornerRadius: 4)
-                .fill(KindredTheme.canvas)
-                .frame(width: w * c.s, height: w * c.s * 1.25)
-                .padding(5)
-                .background(KindredTheme.card)
-                .rotationEffect(.degrees(c.r))
-                .shadow(color: KindredTheme.cardShadow, radius: 14, x: 0, y: 14)
-                .position(x: w * c.x, y: c.y)
-                .zIndex(Double(i))
-        }
-    }
+    // MARK: - Latest day
 
-    // MARK: - Together Link
-
-    private var togetherLink: some View {
-        Button { showTogether = true } label: {
-            HStack(spacing: 12) {
-                // Stacked avatar preview
-                ZStack {
-                    ForEach(Array(topClusters.prefix(3).enumerated()), id: \.element.id) { index, cluster in
-                        KindredAvatar(url: cluster.avatar ?? cluster.thumb_url, size: 32, borderWidth: 2)
-                            .offset(x: CGFloat(index) * 14)
-                            .zIndex(Double(3 - index))
-                    }
-                }
-                .frame(width: 60, alignment: .leading)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Together")
-                        .font(.kindredCardTitle)
-                        .foregroundStyle(KindredTheme.ash)
-                    Text("Find photos with multiple people")
+    @ViewBuilder
+    private var latestDaySection: some View {
+        if let day = latestDay {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(day.longTitle)
+                        .font(.display(17, weight: .semibold, relativeTo: .headline))
+                        .foregroundStyle(KindredTheme.ink)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(day.countLabel)
                         .font(.kindredMeta)
-                        .foregroundStyle(KindredTheme.mist)
+                        .foregroundStyle(KindredTheme.inkMeta)
+                    Spacer()
                 }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(KindredTheme.ember)
+                .padding(.horizontal, KindredTheme.gutter)
+
+                MosaicGrid(
+                    photos: Array(day.photos.prefix(9)),
+                    rowHeight: isIPad ? 120 : 84,
+                    spacing: 2,
+                    onTap: { viewing = $0 }
+                )
+                .padding(.horizontal, KindredTheme.gutter)
             }
-            .padding(14)
-            .background(KindredTheme.card)
-            .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusMD))
-            .overlay(
-                RoundedRectangle(cornerRadius: KindredTheme.radiusMD)
-                    .stroke(KindredTheme.line, lineWidth: 1)
-            )
-            .shadow(color: KindredTheme.cardShadow, radius: 8, x: 0, y: 6)
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
-    }
-
-    // MARK: - Worth Finding Again
-
-    private var worthFindingSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            KindredSectionHeader(
-                eyebrow: "For you",
-                title: "Worth finding again",
-                trailingText: "See all →"
-            )
-            .padding(.horizontal, 20)
-            .padding(.top, 14)
-            .padding(.bottom, 8)
-
-            if libraryVM.isLoading {
-                // Skeleton cards while loading
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: isIPad ? 16 : 12) {
-                        ForEach(0..<(isIPad ? 5 : 3), id: \.self) { _ in
-                            VStack(alignment: .leading, spacing: 0) {
-                                SkeletonCard()
-                                    .frame(width: isIPad ? 240 : 200, height: isIPad ? 160 : 130)
-                                VStack(alignment: .leading, spacing: 6) {
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(KindredTheme.canvas)
-                                        .frame(width: 120, height: 14)
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(KindredTheme.canvas)
-                                        .frame(width: 80, height: 10)
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 12)
-                            }
-                            .frame(width: isIPad ? 240 : 200)
-                            .kindredCardStyle()
-                        }
-                    }
-                    .padding(.leading, 20)
-                }
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: isIPad ? 16 : 12) {
-                        ForEach(topClusters.prefix(isIPad ? 10 : 6)) { cluster in
-                            NavigationLink(value: cluster) {
-                                memoryCard(cluster: cluster)
-                            }
-                            .contentShape(Rectangle())
-                            .buttonStyle(.plain)
-                        }
-                        Spacer().frame(width: 8)
-                    }
-                    .padding(.leading, 20)
-                }
-            }
+            .padding(.top, 20)
         }
     }
 
-    private func memoryCard(cluster: ClusterSummary) -> some View {
-        let cardWidth: CGFloat = isIPad ? 240 : 200
-        let cardHeight: CGFloat = isIPad ? 160 : 130
-        return VStack(alignment: .leading, spacing: 0) {
-            // Cover image
-            let coverURL = cluster.photo_url ?? cluster.thumb_url ?? cluster.avatar
-            Group {
-                if let coverURL, DemoDataProvider.isDemoURL(coverURL) {
-                    DemoThumbnailView(urlString: coverURL, cornerRadius: 0)
-                } else {
-                    AsyncImage(url: URL(string: coverURL ?? "")) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image.resizable().scaledToFill()
-                        default:
-                            KindredTheme.canvas
-                        }
-                    }
-                }
-            }
-            .frame(width: cardWidth, height: cardHeight)
-            .clipped()
+    // MARK: - Data
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(cluster.label ?? "Unnamed")
-                    .font(.kindredCardTitle)
-                    .foregroundStyle(KindredTheme.ash)
-                    .lineLimit(1)
-                Text("\(cluster.photo_count) photos")
-                    .font(.kindredMeta)
-                    .foregroundStyle(KindredTheme.mist)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-        }
-        .frame(width: cardWidth)
-        .background(KindredTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusSM))
-        .overlay(
-            RoundedRectangle(cornerRadius: KindredTheme.radiusSM)
-                .stroke(KindredTheme.line, lineWidth: 1)
+    private func load() async {
+        async let page = try? await APIClient.shared.libraryPhotos(limit: 60)
+        async let weekPage = try? await APIClient.shared.libraryPhotos(
+            dateFrom: HomeView.sevenDaysAgo, limit: 100
         )
-        .shadow(color: KindredTheme.cardShadow, radius: 14, x: 0, y: 12)
+        async let people = try? await APIClient.shared.getClusterSummary(category: "people")
+        async let inbox: () = inboxVM.loadSyncHistory()
+
+        let library = await page
+        recent = library?.photos ?? []
+        latestDay = PhotoDay.group(recent).first
+
+        if let week = await weekPage {
+            newThisWeek = week.photos.count
+            newThisWeekIsFloor = week.next_cursor != nil
+        }
+
+        if let people = await people {
+            peopleToName = people.clusters.filter { $0.label == nil }.count
+        }
+        await inbox
+        lastLoadedAt = Date()
     }
 
-    // MARK: - People Row
+    private static var sevenDaysAgo: String {
+        let date = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+}
 
-    private var peopleRow: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            KindredSectionHeader(eyebrow: "People", title: "You keep coming back to")
-                .padding(.horizontal, 20)
-                .padding(.top, 22)
-                .padding(.bottom, 8)
+// MARK: - Memory wall
 
-            if libraryVM.isLoading {
-                // Skeleton avatars
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: isIPad ? 18 : 14) {
-                        ForEach(0..<(isIPad ? 10 : 6), id: \.self) { _ in
-                            VStack(spacing: 4) {
-                                Circle()
-                                    .fill(KindredTheme.canvas)
-                                    .frame(width: isIPad ? 64 : 56, height: isIPad ? 64 : 56)
-                                    .kindredShimmer()
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(KindredTheme.canvas)
-                                    .frame(width: 40, height: 10)
-                            }
-                            .frame(width: isIPad ? 72 : 60)
-                        }
-                    }
-                    .padding(.leading, 20)
+/// The brand's memory wall: four photos in 5pt near-white borders at fixed
+/// rotations, layered. Deliberately hand-placed rather than a grid — the
+/// scatter is the identity.
+struct MemoryWall: View {
+    let photos: [LibraryPhoto]
+
+    private struct Placement {
+        let x: CGFloat      // fraction of width, centre of the card
+        let y: CGFloat      // points from the top, centre of the card
+        let width: CGFloat  // fraction of width
+        let rotation: Double
+        let z: Double
+    }
+
+    private static let placements: [Placement] = [
+        .init(x: 0.23, y: 76, width: 0.38, rotation: -8, z: 1),
+        .init(x: 0.75, y: 62, width: 0.40, rotation: 6, z: 2),
+        .init(x: 0.43, y: 138, width: 0.46, rotation: -1, z: 5),
+        .init(x: 0.74, y: 150, width: 0.36, rotation: 4, z: 3),
+    ]
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                ForEach(Array(Self.placements.enumerated()), id: \.offset) { position, placement in
+                    card(at: position, placement: placement, width: geo.size.width)
                 }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Recent photos")
+    }
+
+    @ViewBuilder
+    private func card(at position: Int, placement: Placement, width: CGFloat) -> some View {
+        let cardWidth = width * placement.width
+        Group {
+            if photos.indices.contains(position) {
+                KindredThumbnail(photo: photos[position])
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: isIPad ? 18 : 14) {
-                        ForEach(topClusters.prefix(isIPad ? 14 : 8)) { cluster in
-                            NavigationLink(value: cluster) {
-                                VStack(spacing: 4) {
-                                    KindredAvatar(url: cluster.avatar ?? cluster.thumb_url, size: isIPad ? 64 : 56)
-                                    Text(cluster.label?.split(separator: " ").first.map(String.init) ?? "?")
-                                        .font(.kindredName)
-                                        .foregroundStyle(KindredTheme.ash)
-                                        .lineLimit(1)
-                                    Text("\(cluster.photo_count)")
-                                        .font(.kindredMicro)
-                                        .foregroundStyle(KindredTheme.mist)
-                                }
-                                .frame(width: isIPad ? 72 : 60)
-                            }
-                            .contentShape(Rectangle())
-                            .buttonStyle(.plain)
-                        }
-                        Spacer().frame(width: 8)
-                    }
-                    .padding(.leading, 20)
-                }
+                KindredTheme.tile
             }
         }
-    }
-
-    // MARK: - On This Day
-
-    private var onThisDayCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            KindredEyebrow(text: "On this day · \(onThisDayYear)", color: KindredTheme.ember)
-
-            Text(onThisDayTitle)
-                .font(.kindredH2)
-                .foregroundStyle(KindredTheme.ash)
-                .lineSpacing(-1)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: 6) {
-                // Thumbnail row — only show what fits
-                ForEach(onThisDayPhotos.prefix(3), id: \.id) { photo in
-                    let thumbOrPhoto = photo.thumbURL ?? photo.photoURL
-                    Group {
-                        if DemoDataProvider.isDemoURL(thumbOrPhoto) {
-                            DemoThumbnailView(urlString: thumbOrPhoto, cornerRadius: 6)
-                        } else {
-                            AsyncImage(url: URL(string: thumbOrPhoto)) { phase in
-                                switch phase {
-                                case .success(let image):
-                                    image.resizable().scaledToFill()
-                                default:
-                                    KindredTheme.canvas
-                                }
-                            }
-                        }
-                    }
-                    .frame(width: 52, height: 52)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-
-                Spacer()
-
-                VStack(spacing: 6) {
-                    Button {
-                        showMemory = true
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 9))
-                            Text("Play")
-                                .font(.body(12, weight: .bold))
-                        }
-                        .foregroundStyle(KindredTheme.paper)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(KindredTheme.ember)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                    }
-                    Button {
-                        selectedPhoto = onThisDayPhotos.first
-                    } label: {
-                        Text("Open")
-                            .font(.body(12, weight: .bold))
-                            .foregroundStyle(KindredTheme.ash)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(KindredTheme.card)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(KindredTheme.line, lineWidth: 1)
-                            )
-                    }
-                }
-            }
-            .padding(.top, 6)
-        }
-        .padding(18)
-        .background(KindredTheme.canvas)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(KindredTheme.line, lineWidth: 1)
-        )
-        .padding(.horizontal, 20)
-        .padding(.top, 24)
-    }
-
-    // MARK: - Data Helpers
-
-    private var topClusters: [ClusterSummary] {
-        libraryVM.clusters.sorted { $0.photo_count > $1.photo_count }
-    }
-
-    private func recentPhotoURLs(count: Int) -> [String] {
-        var urls: [String] = []
-        for month in exploreVM.timeline.prefix(2) {
-            for photo in month.photos {
-                if let thumb = photo.thumb_url {
-                    urls.append(thumb)
-                }
-                if urls.count >= count { return urls }
-            }
-        }
-        return urls
-    }
-
-    private var recentPhotoCount: Int {
-        exploreVM.timeline.first?.count ?? 0
-    }
-
-    private var onThisDayPhotos: [PhotoGridItem] {
-        // Use oldest timeline month's photos as "on this day" placeholder
-        guard let oldMonth = exploreVM.timeline.last else { return [] }
-        return oldMonth.photos.prefix(3).map { photo in
-            PhotoGridItem(
-                id: photo.photo_id,
-                photoURL: photo.thumb_url ?? "",
-                thumbURL: photo.thumb_url,
-                flickrURL: photo.flickr_url,
-                title: photo.photo_title
-            )
-        }
-    }
-
-    private var onThisDayYear: String {
-        guard let month = exploreVM.timeline.last else { return "2022" }
-        return String(month.month.prefix(4))
-    }
-
-    private var onThisDayTitle: String {
-        guard let month = exploreVM.timeline.last else {
-            return "The afternoon the light\ncame through the kitchen."
-        }
-        // Format "2009-06" → "June 2009"
-        let parts = month.month.split(separator: "-")
-        if parts.count == 2, let monthNum = Int(parts[1]) {
-            let formatter = DateFormatter()
-            let monthName = formatter.monthSymbols[max(0, monthNum - 1)]
-            return "Moments from\n\(monthName) \(parts[0])"
-        }
-        return "Moments from\n\(month.month)"
+        .frame(width: cardWidth, height: cardWidth * 1.25)
+        .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusXS))
+        .padding(5)
+        .background(Color(hex: 0xF1F1EC, alpha: 0.92))
+        .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusXS))
+        .rotationEffect(.degrees(placement.rotation))
+        .shadow(color: .black.opacity(0.45), radius: 14, x: 0, y: 14)
+        .position(x: width * placement.x, y: placement.y)
+        .zIndex(placement.z)
     }
 }
