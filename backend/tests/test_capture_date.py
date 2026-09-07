@@ -20,7 +20,7 @@ from unittest.mock import Mock
 import capture_date
 from capture_date import (
     Capture, capture_from_exif, capture_from_ffprobe, capture_from_sidecar,
-    coordinates_from_exif, extract, is_plausible, parse_epoch, parse_exif_datetime,
+    coordinates_from_exif, extract, is_plausible, parse_folder_datetime, parse_epoch, parse_exif_datetime,
     parse_filename_datetime, parse_iso6709, parse_iso_datetime, read_image,
     read_video, valid_coordinates,
 )
@@ -361,3 +361,148 @@ class RealVideoFileTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AlbumFolderDateTests(unittest.TestCase):
+    """This library was curated by hand into dated folders before it ever
+    reached Google, and those names beat Google's own guess."""
+
+    def test_reads_the_shapes_this_library_actually_uses(self):
+        for folder, expected in [
+            ("2004.03.20 Allison Junior Prom", datetime(2004, 3, 20)),
+            ("2004.10.20 - Austin_s Birthday Party", datetime(2004, 10, 20)),
+            ("2004.09.06 Labor Day Fishing", datetime(2004, 9, 6)),
+            ("2019-07-15 Beach", datetime(2019, 7, 15)),
+            ("2011_05_02 Something", datetime(2011, 5, 2)),
+        ]:
+            got = parse_folder_datetime(folder)
+            self.assertIsNotNone(got, folder)
+            self.assertEqual(got.replace(tzinfo=None), expected, folder)
+
+    def test_a_year_and_month_groups_to_the_first_of_that_month(self):
+        got = parse_folder_datetime("2004.03 Allison Hyde Park Princess Pageant")
+        self.assertEqual(got.replace(tzinfo=None), datetime(2004, 3, 1))
+
+    def test_a_bare_year_is_refused(self):
+        # "2004" alone would date everything to 1 January, which sorts worse
+        # than admitting the date is unknown.
+        self.assertIsNone(parse_folder_datetime("2004"))
+        self.assertIsNone(parse_folder_datetime("2004 Family"))
+
+    def test_undated_and_nonsense_folders_yield_nothing(self):
+        for folder in ("Halloween", "", None, "Dusty 10", "9999.99.99 x", "2004.13.01 x"):
+            self.assertIsNone(parse_folder_datetime(folder))
+
+    def test_the_date_must_lead_the_name(self):
+        # A number inside a title is not a date for the whole folder.
+        self.assertIsNone(parse_folder_datetime("Trip 2004.03.20"))
+
+    def test_a_folder_date_is_stored_as_a_wall_clock_like_every_other_source(self):
+        got = parse_folder_datetime("2004.03.20 Prom")
+        self.assertEqual(got.tzinfo, timezone.utc)
+        self.assertEqual(got.hour, 0)
+
+    def test_implausible_folder_dates_are_rejected(self):
+        self.assertIsNone(parse_folder_datetime("2099.01.01 Future"))
+
+
+class FolderBeatsSidecarTests(unittest.TestCase):
+    """The case that motivated this: a scanned 2004 prom photo whose Google
+    sidecar claims 2010, because that is when it reached Google Photos."""
+
+    def _photo_without_exif(self, directory):
+        from PIL import Image
+        path = Path(directory) / "IMG_0081.JPG"
+        Image.new("RGB", (8, 8), "red").save(path, "JPEG")
+        return path
+
+    def _sidecar(self, path, epoch):
+        sidecar = path.with_name(path.name + ".supplemental-metadata.json")
+        sidecar.write_text(json.dumps({
+            "title": path.name,
+            "photoTakenTime": {"timestamp": str(epoch)},
+        }), encoding="utf-8")
+        return sidecar
+
+    def test_the_folder_wins_when_the_file_has_no_embedded_date(self):
+        with tempfile.TemporaryDirectory() as directory:
+            photo = self._photo_without_exif(directory)
+            self._sidecar(photo, 1272699054)  # May 2010, Google's guess
+
+            capture = extract(photo, album_folder="2004.03.20 Allison Junior Prom")
+
+            self.assertEqual(capture.taken_at_source, "folder")
+            self.assertEqual(capture.taken_at.year, 2004)
+            self.assertEqual(capture.taken_at.month, 3)
+            self.assertEqual(capture.taken_at.day, 20)
+
+    def test_without_a_folder_the_sidecar_is_still_used(self):
+        with tempfile.TemporaryDirectory() as directory:
+            photo = self._photo_without_exif(directory)
+            self._sidecar(photo, 1272699054)
+
+            capture = extract(photo)
+
+            self.assertEqual(capture.taken_at_source, "sidecar:photoTakenTime")
+            self.assertEqual(capture.taken_at.year, 2010)
+
+    def test_an_embedded_exif_date_still_outranks_the_folder(self):
+        # A camera's own observation beats a human's folder label.
+        with tempfile.TemporaryDirectory() as directory:
+            from PIL import Image
+            import piexif
+            path = Path(directory) / "IMG_1.JPG"
+            Image.new("RGB", (8, 8), "blue").save(path, "JPEG")
+            exif = {"Exif": {piexif.ExifIFD.DateTimeOriginal: b"2015:06:01 10:00:00"}}
+            piexif.insert(piexif.dump(exif), str(path))
+
+            capture = extract(path, album_folder="2004.03.20 Prom")
+
+            self.assertEqual(capture.taken_at.year, 2015)
+
+
+class SidecarNamingTests(unittest.TestCase):
+    """Google has shipped several sidecar naming conventions; this library uses
+    the newest, and is full of -edited copies that carry no sidecar at all."""
+
+    def _photo(self, directory, name="IMG_0081.JPG"):
+        from PIL import Image
+        path = Path(directory) / name
+        Image.new("RGB", (8, 8), "red").save(path, "JPEG")
+        return path
+
+    def _write(self, directory, name, epoch=1272699054):
+        (Path(directory) / name).write_text(json.dumps(
+            {"photoTakenTime": {"timestamp": str(epoch)}}), encoding="utf-8")
+
+    def test_finds_the_supplemental_metadata_name_this_export_uses(self):
+        with tempfile.TemporaryDirectory() as d:
+            photo = self._photo(d)
+            self._write(d, "IMG_0081.JPG.supplemental-metadata.json")
+            self.assertEqual(extract(photo).taken_at_source, "sidecar:photoTakenTime")
+
+    def test_still_finds_the_older_plain_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            photo = self._photo(d)
+            self._write(d, "IMG_0081.JPG.json")
+            self.assertEqual(extract(photo).taken_at_source, "sidecar:photoTakenTime")
+
+    def test_finds_a_truncated_supplemental_name(self):
+        # Google truncates the sidecar name, so an exact match can never work.
+        with tempfile.TemporaryDirectory() as d:
+            photo = self._photo(d)
+            self._write(d, "IMG_0081.JPG.supplemental-met.json")
+            self.assertEqual(extract(photo).taken_at_source, "sidecar:photoTakenTime")
+
+    def test_an_edited_copy_falls_back_to_the_originals_sidecar(self):
+        # This library is full of "-edited" copies, and Takeout gives them none.
+        with tempfile.TemporaryDirectory() as d:
+            edited = self._photo(d, "IMG_5310-edited.JPG")
+            self._write(d, "IMG_5310.JPG.supplemental-metadata.json")
+            self.assertEqual(extract(edited).taken_at_source, "sidecar:photoTakenTime")
+
+    def test_no_sidecar_at_all_is_not_an_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            capture = extract(self._photo(d))
+            self.assertIsNone(capture.taken_at)
+            self.assertIsNone(capture.error)

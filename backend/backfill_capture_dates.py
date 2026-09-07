@@ -37,7 +37,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import sys
 import time
 
@@ -112,11 +112,18 @@ def update_parameters(write: dict) -> tuple:
     return (write["taken_at"], write["latitude"], write["longitude"], write["photo_id"])
 
 
-def sidecar_index(import_progress: dict, source_root: Path) -> dict:
-    """photo_id → the Takeout sidecar beside the file it was imported from.
+def source_index(import_progress: dict, source_root: Path) -> dict:
+    """photo_id → (sidecar, album folder) from the tree it was imported from.
 
     The importer's receipts are the only link between a managed original and
-    the source tree; the managed layout keeps the media file alone.
+    the source tree; the managed layout keeps the media file alone, with no
+    sidecar and no folder.
+
+    Both matter, and the folder matters more. This library was organised by
+    hand into folders like "2004.03.20 Allison Junior Prom" before it ever
+    reached Google, so the folder states when something happened, while
+    Google's photoTakenTime for a scanned photo records when it reached Google
+    Photos — that prom carries a sidecar reading 2010.
     """
     from capture_date import sidecar_for
 
@@ -125,9 +132,12 @@ def sidecar_index(import_progress: dict, source_root: Path) -> dict:
         photo_id = (receipt or {}).get("kindred_photo_id")
         if not photo_id:
             continue
-        sidecar = sidecar_for(source_root / relative)
-        if sidecar is not None:
-            index[str(photo_id)] = sidecar
+        source = source_root / relative
+        parent = PurePosixPath(str(relative)).parent
+        folder = parent.name if parent.name not in (".", "", "/") else None
+        sidecar = sidecar_for(source)
+        if sidecar is not None or folder:
+            index[str(photo_id)] = (sidecar, folder)
     return index
 
 
@@ -149,18 +159,20 @@ def describe(tally: Counter, sources: Counter) -> str:
 
 # ── The pass (IO) ────────────────────────────────────────────────────────────
 
-def examine(provider, row: dict, sidecar, allow_filename: bool):
+def examine(provider, row: dict, source, allow_filename: bool):
     """Read one original. Returns `(capture, note)`; note is set when skipped."""
     import capture_date
 
     original = provider.resolve_local_path(row["provider_key"])
     if original is None:
         return None, f"NAS original missing: {row['provider_key']}"
+    sidecar, album_folder = source if source else (None, None)
     capture = capture_date.extract(
         original,
         original_filename=row.get("original_filename") or original.name,
         media_type=row.get("media_type"),
         sidecar=sidecar,
+        album_folder=album_folder,
         allow_filename=allow_filename,
     )
     return capture, None
@@ -184,15 +196,19 @@ def run(args: argparse.Namespace) -> int:
 def _run(args, main, staged_import, progress_path: Path) -> int:
     provider = main.LocalStorageProvider(main.PHOTO_STORAGE_ROOT)
 
-    sidecars = {}
+    sources = {}
     if args.import_source:
         source_root = Path(args.import_source)
         if not source_root.is_dir():
             print(f"Import source does not exist: {source_root}", file=sys.stderr)
             return 2
-        sidecars = sidecar_index(
+        sources = source_index(
             staged_import.load_progress(Path(args.import_progress)), source_root)
-        print(f"[backfill] {len(sidecars):,} Takeout sidecars available", flush=True)
+        with_sidecar = sum(1 for sidecar, _ in sources.values() if sidecar)
+        with_folder = sum(1 for _, folder in sources.values() if folder)
+        print(f"[backfill] {len(sources):,} imported files located: "
+              f"{with_sidecar:,} with a Takeout sidecar, "
+              f"{with_folder:,} with an album folder", flush=True)
 
     before = dict(main.db_query(SUMMARY_SQL)[0])
     print(
@@ -229,7 +245,7 @@ def _run(args, main, staged_import, progress_path: Path) -> int:
 
                 try:
                     capture, note = examine(
-                        provider, row, sidecars.get(photo_id), not args.no_filename_dates)
+                        provider, row, sources.get(photo_id), not args.no_filename_dates)
                 except Exception as exc:  # pragma: no cover - defence in depth
                     capture, note = None, f"{type(exc).__name__}: {exc}"
 

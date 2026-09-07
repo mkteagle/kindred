@@ -16,7 +16,7 @@ import unittest
 import uuid
 
 from backfill_capture_dates import (
-    PENDING_SQL, UPDATE_SQL, describe, examine, plan, sidecar_index,
+    PENDING_SQL, UPDATE_SQL, describe, examine, plan, source_index,
     update_parameters,
 )
 from capture_date import Capture
@@ -156,17 +156,37 @@ class SidecarIndexTests(unittest.TestCase):
             (root / "Album" / "IMG_1234.jpg").write_bytes(b"photo")
             (root / "Album" / "IMG_1234.jpg.json").write_text("{}")
             (root / "Album" / "IMG_5678.jpg").write_bytes(b"photo")
-            index = sidecar_index({"completed": {
+            index = source_index({"completed": {
                 "Album/IMG_1234.jpg": {"kindred_photo_id": "p1"},
                 "Album/IMG_5678.jpg": {"kindred_photo_id": "p2"},
                 "Album/gone.jpg": {"kindred_photo_id": "p3"},
                 "Album/no_receipt.jpg": {},
             }}, root)
-            self.assertEqual(set(index), {"p1"})
-            self.assertEqual(index["p1"].name, "IMG_1234.jpg.json")
+            # p2 and p3 have no sidecar but still carry their album folder,
+            # which is a date source in its own right.
+            self.assertEqual(set(index), {"p1", "p2", "p3"})
+            self.assertEqual(index["p1"][0].name, "IMG_1234.jpg.json")
+            self.assertIsNone(index["p2"][0])
+            self.assertEqual(index["p1"][1], "Album")
+
+    def test_the_album_folder_is_carried_for_dating(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "2004.03.20 Allison Junior Prom").mkdir()
+            index = source_index({"completed": {
+                "2004.03.20 Allison Junior Prom/IMG_0081.JPG": {"kindred_photo_id": "p1"},
+            }}, root)
+            self.assertEqual(index["p1"][1], "2004.03.20 Allison Junior Prom")
+
+    def test_a_file_at_the_root_has_no_album_folder(self):
+        with tempfile.TemporaryDirectory() as directory:
+            index = source_index({"completed": {
+                "IMG_0081.JPG": {"kindred_photo_id": "p1"},
+            }}, Path(directory))
+            self.assertEqual(index, {})
 
     def test_an_empty_checkpoint_yields_an_empty_index(self):
-        self.assertEqual(sidecar_index({}, Path("/nowhere")), {})
+        self.assertEqual(source_index({}, Path("/nowhere")), {})
 
 
 @unittest.skipUnless(HAS_PILLOW, "Pillow is required to write EXIF fixtures")
@@ -208,8 +228,20 @@ class ExamineTests(unittest.TestCase):
         stored = self.store("IMG_0002.jpg")
         sidecar = self.root / "IMG_0002.jpg.json"
         sidecar.write_text(json.dumps({"photoTakenTime": {"timestamp": "1555079400"}}))
-        capture, _ = examine(self.provider, self.row(stored, "IMG_0002.jpg"), sidecar, True)
+        capture, _ = examine(self.provider, self.row(stored, "IMG_0002.jpg"),
+                             (sidecar, None), True)
         self.assertEqual(capture.taken_at_source, "sidecar:photoTakenTime")
+
+    def test_an_album_folder_outranks_the_sidecar_beside_it(self):
+        # The case this library is full of: a scanned photo whose Google
+        # sidecar records when it reached Google, not when it was taken.
+        stored = self.store("IMG_0081.JPG")
+        sidecar = self.root / "IMG_0081.JPG.json"
+        sidecar.write_text(json.dumps({"photoTakenTime": {"timestamp": "1272699054"}}))
+        capture, _ = examine(self.provider, self.row(stored, "IMG_0081.JPG"),
+                             (sidecar, "2004.03.20 Allison Junior Prom"), True)
+        self.assertEqual(capture.taken_at_source, "folder")
+        self.assertEqual(capture.taken_at.year, 2004)
 
     def test_the_stored_original_name_never_hides_the_catalogued_one(self):
         # Managed originals are all called "original.jpg"; the date lives in
