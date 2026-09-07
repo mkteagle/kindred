@@ -128,7 +128,7 @@ struct TogetherPickerView: View {
                 .padding(.leading, 4)
                 .padding(.trailing, 10)
                 .padding(.vertical, 4)
-                .background(.white)
+                .background(KindredTheme.fillStrong)
                 .clipShape(Capsule())
                 .overlay(Capsule().stroke(KindredTheme.lineDark, lineWidth: 1))
             }
@@ -271,9 +271,9 @@ struct TogetherPickerView: View {
                             .overlay(
                                 Image(systemName: "checkmark")
                                     .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(KindredTheme.onAccent)
                             )
-                            .overlay(Circle().stroke(.white, lineWidth: 2))
+                            .overlay(Circle().stroke(KindredTheme.bg, lineWidth: 2))
                             .offset(x: 2, y: 2)
                     }
                 }
@@ -423,7 +423,7 @@ struct TogetherPickerView: View {
                         .overlay(
                             Image(systemName: "arrow.right")
                                 .font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(KindredTheme.onAccent)
                         )
                 }
                 .padding(.horizontal, 16)

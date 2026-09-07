@@ -171,7 +171,7 @@ struct SettingsView: View {
             RoundedRectangle(cornerRadius: KindredTheme.radiusMD)
                 .stroke(KindredTheme.line, lineWidth: 1)
         )
-        .shadow(color: Color(hex: 0x11161B).opacity(0.07), radius: 13, x: 0, y: 12)
+        .shadow(color: KindredTheme.cardShadow, radius: 13, x: 0, y: 12)
         .padding(.horizontal, 16)
         .padding(.top, 16)
     }
@@ -610,7 +610,7 @@ struct BackupDetailView: View {
         return ZStack {
             // Track
             Circle()
-                .stroke(Color(hex: 0x4A281A).opacity(0.08), lineWidth: 14)
+                .stroke(KindredTheme.fillStrong, lineWidth: 14)
 
             // Progress arc
             Circle()

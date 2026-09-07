@@ -291,7 +291,7 @@ struct MasonryClusterCard: View {
             RoundedRectangle(cornerRadius: KindredTheme.radiusSM)
                 .stroke(KindredTheme.line, lineWidth: 1)
         )
-        .shadow(color: Color(hex: 0x11161B).opacity(0.07), radius: 11, x: 0, y: 10)
+        .shadow(color: KindredTheme.cardShadow, radius: 11, x: 0, y: 10)
         .contextMenu {
             Button {
                 nameInput = cluster.label ?? ""

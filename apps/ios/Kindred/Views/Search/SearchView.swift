@@ -92,7 +92,7 @@ struct SearchView: View {
             RoundedRectangle(cornerRadius: KindredTheme.radiusSM)
                 .stroke(KindredTheme.lineDark, lineWidth: 1)
         )
-        .shadow(color: Color(hex: 0x11161B).opacity(0.06), radius: 11, x: 0, y: 10)
+        .shadow(color: KindredTheme.cardShadow, radius: 11, x: 0, y: 10)
         .padding(.horizontal, 20)
         .padding(.top, 14)
     }

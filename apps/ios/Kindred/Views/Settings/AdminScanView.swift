@@ -123,7 +123,7 @@ struct AdminScanView: View {
     private var idleCard: some View {
         HStack(spacing: 12) {
             RoundedRectangle(cornerRadius: 7)
-                .fill(Color(hex: 0x4A281A).opacity(0.06))
+                .fill(KindredTheme.fill)
                 .frame(width: 30, height: 30)
                 .overlay {
                     Image(systemName: "checkmark.circle")
@@ -298,7 +298,7 @@ struct AdminScanView: View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 3)
-                    .fill(Color(hex: 0x4A281A).opacity(0.1))
+                    .fill(KindredTheme.fillStrongest)
                     .frame(height: 6)
 
                 RoundedRectangle(cornerRadius: 3)

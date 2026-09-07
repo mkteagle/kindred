@@ -368,7 +368,7 @@ struct HomeView: View {
             RoundedRectangle(cornerRadius: KindredTheme.radiusSM)
                 .stroke(KindredTheme.line, lineWidth: 1)
         )
-        .shadow(color: Color(hex: 0x11161B).opacity(0.08), radius: 14, x: 0, y: 12)
+        .shadow(color: KindredTheme.cardShadow, radius: 14, x: 0, y: 12)
     }
 
     // MARK: - People Row

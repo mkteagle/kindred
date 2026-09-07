@@ -136,7 +136,7 @@ enum InboxItemKind: String {
 
     var iconColor: Color {
         switch self {
-        case .memory: return .white
+        case .memory: return KindredTheme.onAccent
         case .together: return KindredTheme.forest
         case .sync: return KindredTheme.pine
         case .household: return KindredTheme.ember
@@ -150,11 +150,11 @@ enum InboxItemKind: String {
         switch self {
         case .memory: return .clear // gradient handled separately
         case .together: return KindredTheme.forest.opacity(0.16)
-        case .sync: return Color(hex: 0x4A281A).opacity(0.08)
+        case .sync: return KindredTheme.fillStrong
         case .household: return KindredTheme.ember.opacity(0.12)
-        case .cover: return Color(hex: 0x4A281A).opacity(0.06)
+        case .cover: return KindredTheme.fill
         case .admin: return KindredTheme.rosehip.opacity(0.14)
-        case .signin: return Color(hex: 0x4A281A).opacity(0.06)
+        case .signin: return KindredTheme.fill
         }
     }
 
@@ -351,13 +351,13 @@ struct NotificationsSettingsView: View {
 
     private func channelPip(on: Bool, color: Color) -> some View {
         RoundedRectangle(cornerRadius: 5)
-            .fill(on ? color : Color(hex: 0x4A281A).opacity(0.08))
+            .fill(on ? color : KindredTheme.fillStrong)
             .frame(width: 18, height: 18)
             .overlay {
                 if on {
                     Image(systemName: "checkmark")
                         .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(KindredTheme.onAccent)
                 }
             }
     }
@@ -431,7 +431,7 @@ struct NotificationTypeDetailView: View {
                     .overlay {
                         Image(systemName: "sun.max")
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(KindredTheme.onAccent)
                     }
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -530,7 +530,7 @@ struct NotificationTypeDetailView: View {
                     .foregroundStyle(KindredTheme.mist)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
-                    .background(Color(hex: 0x4A281A).opacity(0.06))
+                    .background(KindredTheme.fill)
                     .clipShape(RoundedRectangle(cornerRadius: 4))
             } else {
                 Toggle("", isOn: isOn)
@@ -599,7 +599,7 @@ struct NotificationTypeDetailView: View {
                 .foregroundStyle(KindredTheme.ember)
         }
         .padding(14)
-        .background(Color(hex: 0x4A281A).opacity(0.06))
+        .background(KindredTheme.fill)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)

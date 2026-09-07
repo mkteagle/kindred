@@ -437,7 +437,7 @@ struct FullScreenPhotoView: View {
             VStack(alignment: .leading, spacing: 0) {
                 // Grabber
                 RoundedRectangle(cornerRadius: KindredTheme.radiusPill)
-                    .fill(Color(hex: 0x4A281A).opacity(0.22))
+                    .fill(KindredTheme.fillStrongest)
                     .frame(width: 38, height: 5)
                     .frame(maxWidth: .infinity)
                     .padding(.top, 10)
@@ -710,12 +710,12 @@ struct FullScreenPhotoView: View {
             HStack(spacing: 10) {
                 Image(systemName: icon)
                     .font(.system(size: 14, weight: .regular))
-                    .foregroundStyle(isDanger ? Color(hex: 0x9A3416) : .white.opacity(0.85))
+                    .foregroundStyle(isDanger ? KindredTheme.dangerText : .white.opacity(0.85))
                     .frame(width: 14)
 
                 Text(label)
                     .font(.body(13, weight: isDanger ? .semibold : .medium))
-                    .foregroundStyle(isDanger ? Color(hex: 0x9A3416) : .white.opacity(0.95))
+                    .foregroundStyle(isDanger ? KindredTheme.dangerText : .white.opacity(0.95))
 
                 Spacer()
 
@@ -734,7 +734,7 @@ struct FullScreenPhotoView: View {
                     Text("ADMIN")
                         .font(.mono(8, weight: .semibold))
                         .tracking(1.4)
-                        .foregroundStyle(Color(hex: 0xE88A5C))
+                        .foregroundStyle(KindredTheme.accent)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(KindredTheme.ember.opacity(0.22))
@@ -884,7 +884,7 @@ struct ShareSheetView: View {
         VStack(spacing: 0) {
             // Drag handle
             RoundedRectangle(cornerRadius: KindredTheme.radiusPill)
-                .fill(Color(hex: 0x4A281A).opacity(0.22))
+                .fill(KindredTheme.fillStrongest)
                 .frame(width: 38, height: 5)
                 .padding(.top, 10)
                 .padding(.bottom, 12)

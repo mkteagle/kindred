@@ -66,7 +66,7 @@ struct ExploreView: View {
             HStack(spacing: 14) {
                 Image(systemName: icon)
                     .font(.kindredLabel)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(KindredTheme.onAccent)
                     .frame(width: 32, height: 32)
                     .background(color)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
