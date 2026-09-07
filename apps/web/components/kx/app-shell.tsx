@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import type { User } from "@/types";
 import { KxSearchOverlay } from "./search-overlay";
 import { KxSidebar } from "./sidebar";
 import { KxTopbar } from "./topbar";
 import { KxUiProvider, useKxUi } from "./ui-state";
+import { KxUploadDialog } from "./upload-dialog";
 
 const API = "/api";
 
@@ -32,7 +33,6 @@ function ShellFrame({ user, children }: { user: User | null; children: React.Rea
   const { tile, loose, searchOpen, setSearchOpen, uploadOpen, setUploadOpen, exitSelect } = useKxUi();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
-  const router = useRouter();
 
   // ⌘/Ctrl+K from anywhere; Esc leaves select mode and closes the drawer.
   useEffect(() => {
@@ -55,14 +55,6 @@ function ShellFrame({ user, children }: { user: User | null; children: React.Rea
     setDrawerOpen(false);
   }, [pathname]);
 
-  // TODO: replace this route hop with the upload dialog.
-  useEffect(() => {
-    if (uploadOpen) {
-      setUploadOpen(false);
-      router.push("/upload");
-    }
-  }, [uploadOpen, setUploadOpen, router]);
-
   return (
     <div
       className="kx kx-shell"
@@ -77,6 +69,7 @@ function ShellFrame({ user, children }: { user: User | null; children: React.Rea
         {children}
       </div>
       {searchOpen && <KxSearchOverlay onClose={() => setSearchOpen(false)} />}
+      {uploadOpen && <KxUploadDialog onClose={() => setUploadOpen(false)} />}
     </div>
   );
 }

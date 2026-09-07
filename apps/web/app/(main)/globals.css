@@ -10273,6 +10273,177 @@ button.kx-avatar { cursor: pointer; }
   cursor: pointer;
 }
 
+/* ── Upload dialog ───────────────────────────────────────────────────── */
+
+.kx-overlay.upload {
+  padding: 64px 20px 40px;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.kx-dialog.upload {
+  display: block;
+  max-width: 640px;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.kx-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.kx-dialog-head h2 {
+  margin: 9px 0 6px;
+  font-family: var(--display);
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.kx-dialog-head p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-4);
+}
+
+.kx-albumrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.kx-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--fill-1);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.kx-dropzone {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 34px 20px;
+  margin-bottom: 18px;
+  border: 1px dashed var(--line-5);
+  border-radius: 12px;
+  background: var(--fill-1);
+  color: var(--ink);
+  font-family: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+
+.kx-dropzone:hover,
+.kx-dropzone.is-over { border-color: var(--accent); }
+
+.kx-dropzone svg { color: var(--accent); }
+
+.kx-dropzone-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.kx-queuehead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.kx-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.kx-queuerow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--fill-1);
+}
+
+.kx-queuerow img {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.kx-queuerow-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.kx-queuerow-name {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.kx-queuerow-name span { margin-left: auto; }
+
+.kx-progress {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--fill-3);
+  overflow: hidden;
+}
+
+.kx-progress > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #cc7f61, #d59851);
+}
+
+.kx-progress.done > span { background: var(--sage); }
+
+.kx-mono.done { color: var(--sage-ink); }
+.kx-mono.failed { color: var(--danger-ink); }
+
+.kx-removebutton {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.kx-removebutton:hover { background: var(--fill-4); }
+
+.kx-dialog-foot {
+  display: flex;
+  gap: 10px;
+}
+
 /* ── Search screen ───────────────────────────────────────────────────── */
 
 .kx-searchhead { max-width: 760px; }
