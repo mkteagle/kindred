@@ -9432,9 +9432,17 @@ button.kx-avatar { cursor: pointer; }
 
 /* ── Sidebar ─────────────────────────────────────────────────────────── */
 
+/* `position: sticky` makes the rail its own stacking context, and it is the
+   first child of the shell grid — so with `z-index: auto` the content column
+   paints over anything the rail puts outside its own box, however high that
+   thing's own z-index (which is what buried the collapsed-rail tooltips under
+   the page title). 25 lifts the rail just clear of the page and the topbar
+   (20), and stays under the user menu (30), the select bar (40), the drawer
+   scrim (45) and every dialog (70+). */
 .kx-sidebar {
   position: sticky;
   top: 0;
+  z-index: 25;
   height: 100vh;
   overflow-y: auto;
   display: flex;
@@ -9516,9 +9524,18 @@ button.kx-avatar { cursor: pointer; }
   color: var(--ink);
 }
 
-/* "Ways in" rows lead with an icon and sit a shade lighter. */
+/* Every row leads with an 18px glyph — the handoff only gave them to "ways in",
+   but the collapsed rail has nothing but the glyph to go on, so "library" rows
+   carry one too. "Ways in" still sits a shade lighter. */
 .kx-navrow.with-icon { font-weight: 500; }
-.kx-navrow.with-icon svg { flex: none; }
+.kx-navrow svg { flex: none; }
+
+.kx-navlabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .kx-navcount {
   margin-left: auto;
@@ -9633,13 +9650,40 @@ button.kx-avatar { cursor: pointer; }
   opacity: 0;
 }
 
+/* A tooltip the rail owns, rather than a `title`: it appears at once instead of
+   after the browser's delay, follows keyboard focus as well as the pointer, and
+   can be styled to match. `position: fixed` keeps the rail's own overflow from
+   clipping it; the coordinates are measured off the row in JS. It is never the
+   accessible name — collapsed rows carry an `aria-label` for that. */
+.kx-navtip {
+  position: fixed;
+  z-index: 60;
+  transform: translateY(-50%);
+  padding: 6px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  /* `--surface`, the opaque card ground, not the translucent `--panel-2` the
+     popovers use: this lands over 44px display type and mosaic tiles, and a
+     name you have to read through them is not a tooltip. */
+  background: var(--surface);
+  box-shadow: var(--shadow-popover);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: kx-fade .12s ease both;
+}
+
 @media (min-width: 901px) {
   .kx-shell { transition: grid-template-columns .28s var(--ease-rise); }
 
-  /* Everything under the brand fades, then leaves the tab order with the
-     pixels — `visibility` flips at the end of its own transition. On the way
-     open the fade waits for the rail to have somewhere to put the words. */
-  .kx-sidebar > *:not(.kx-brandbar) {
+  /* The sync card is the only block that leaves outright: it fades, then drops
+     out of the tab order with the pixels as `visibility` flips at the end of
+     its own transition. On the way open the fade waits for the rail to have
+     somewhere to put it. */
+  .kx-sidebar > .kx-sync {
     transition:
       opacity .18s ease .1s,
       visibility .18s .1s;
@@ -9652,10 +9696,13 @@ button.kx-avatar { cursor: pointer; }
   :root[data-sidebar="collapsed"] .kx-sidebar {
     padding-left: 8px;
     padding-right: 8px;
-    overflow: hidden;
+    /* Horizontal only: the wordmark and the row labels must not bleed out of
+       the 64px rail mid-transition, but a short viewport still has to be able
+       to scroll fifteen icons. */
+    overflow-x: hidden;
   }
 
-  :root[data-sidebar="collapsed"] .kx-sidebar > *:not(.kx-brandbar) {
+  :root[data-sidebar="collapsed"] .kx-sidebar > .kx-sync {
     opacity: 0;
     visibility: hidden;
     transition-delay: 0s;
@@ -9676,12 +9723,28 @@ button.kx-avatar { cursor: pointer; }
     left: 50%;
     transform: translate(-50%, -50%);
   }
+
+  /* The rows keep their glyph and lose their words. The group eyebrows go with
+     them — the 26px between groups is what separates them at this width, and
+     each <nav> is still named for assistive tech. */
+  :root[data-sidebar="collapsed"] .kx-navgroup > .kx-eyebrow { display: none; }
+
+  :root[data-sidebar="collapsed"] .kx-navrow {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  :root[data-sidebar="collapsed"] .kx-navlabel,
+  :root[data-sidebar="collapsed"] .kx-navcount { display: none; }
 }
 
 /* The drawer has its own way in and out — the collapse control has no meaning
-   there, and the rail is full width whenever it is on screen. */
+   there, and the rail is full width whenever it is on screen, so nothing is
+   ever reduced to a glyph that would need a tooltip. */
 @media (max-width: 900px) {
   .kx-railtoggle { display: none; }
+  .kx-navtip { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -9691,6 +9754,8 @@ button.kx-avatar { cursor: pointer; }
   .kx-railtoggle {
     transition: none;
   }
+
+  .kx-navtip { animation: none; }
 }
 
 /* ── Topbar ──────────────────────────────────────────────────────────── */

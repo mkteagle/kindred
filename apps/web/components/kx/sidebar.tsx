@@ -2,23 +2,30 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fmt } from "@/lib/constants";
-import { NavIcon, SidebarIcon } from "./icons";
+import { LIBRARY_ICON_PATHS, NavIcon, SidebarIcon } from "./icons";
 import { useFavorites } from "./favorites";
 import { useKxUi } from "./ui-state";
 import { useLatestSync, useLibraryCounts, useShareCount, useStats, relativeTime } from "./use-library";
 
-/** LIBRARY group — label, route, and where its count comes from. */
+/**
+ * LIBRARY group — label, route, glyph, and where its count comes from.
+ *
+ * The handoff spec gives these rows a label and a mono count and no icon. They
+ * carry one now because the rail collapses to 64px, and with the label gone the
+ * glyph is the only thing left to identify the row by.
+ */
 const LIBRARY_ROWS = [
-  { href: "/gallery", label: "All photos", count: "photos" as const },
-  { href: "/people", label: "People", count: "people" as const },
-  { href: "/animals", label: "Animals", count: "pets" as const },
-  { href: "/vehicles", label: "Vehicles", count: "vehicles" as const },
-  { href: "/videos", label: "Videos", count: "videos" as const },
-  { href: "/timeline", label: "Timeline", count: null },
-  { href: "/locations", label: "Locations", count: null },
-  { href: "/shares", label: "Shared", count: "shares" as const },
-  { href: "/favorites", label: "Favorites", count: "favorites" as const },
+  { href: "/gallery", label: "All photos", icon: LIBRARY_ICON_PATHS.allPhotos, count: "photos" as const },
+  { href: "/people", label: "People", icon: LIBRARY_ICON_PATHS.people, count: "people" as const },
+  { href: "/animals", label: "Animals", icon: LIBRARY_ICON_PATHS.animals, count: "pets" as const },
+  { href: "/vehicles", label: "Vehicles", icon: LIBRARY_ICON_PATHS.vehicles, count: "vehicles" as const },
+  { href: "/videos", label: "Videos", icon: LIBRARY_ICON_PATHS.videos, count: "videos" as const },
+  { href: "/timeline", label: "Timeline", icon: LIBRARY_ICON_PATHS.timeline, count: null },
+  { href: "/locations", label: "Locations", icon: LIBRARY_ICON_PATHS.locations, count: null },
+  { href: "/shares", label: "Shared", icon: LIBRARY_ICON_PATHS.shared, count: "shares" as const },
+  { href: "/favorites", label: "Favorites", icon: LIBRARY_ICON_PATHS.favorites, count: "favorites" as const },
 ];
 
 /**
@@ -34,6 +41,13 @@ const WAYS_IN_ROWS = [
   { href: "/landmarks", label: "Landmarks", icon: "M3 21l1.65-3.8a9 9 0 1114.7 0L21 21 M12 3v1m0 16v1m8.66-13.5l-.87.5M4.21 7.5l-.87.5m17.32 5l-.87-.5M4.21 12.5l-.87-.5" },
   { href: "/duplicates", label: "Duplicates", icon: "M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" },
 ];
+
+/** Where the rail tooltip should be drawn, in viewport coordinates. */
+interface RailTip {
+  label: string;
+  top: number;
+  left: number;
+}
 
 /**
  * The mark sits in a fixed square of its own rather than loose in the lockup,
@@ -83,6 +97,74 @@ function RailToggle() {
   );
 }
 
+/**
+ * One nav row, used by both groups. Expanded it is icon + label + count;
+ * collapsed the label and count go and the icon centres in the rail, so the row
+ * carries its own `aria-label` — the visible name is gone and the tooltip is
+ * decoration, never the accessible name.
+ */
+function NavRow({
+  href,
+  label,
+  icon,
+  count,
+  active,
+  wide,
+  collapsed,
+  onNavigate,
+  onShowTip,
+  onHideTip,
+}: {
+  href: string;
+  label: string;
+  icon: string;
+  count?: number | null;
+  active: boolean;
+  /** WAYS IN rows sit a shade lighter than LIBRARY rows, per the handoff. */
+  wide: boolean;
+  collapsed: boolean;
+  onNavigate: () => void;
+  onShowTip: (label: string, el: HTMLElement) => void;
+  onHideTip: () => void;
+}) {
+  const ref = useRef<HTMLAnchorElement | null>(null);
+
+  const reveal = useCallback(() => {
+    if (collapsed && ref.current) onShowTip(label, ref.current);
+  }, [collapsed, label, onShowTip]);
+
+  // Focus only counts when the browser would have drawn a ring for it, so a
+  // mouse click on a row does not leave its tooltip hanging after the pointer
+  // has gone.
+  const revealOnFocus = useCallback(() => {
+    if (ref.current?.matches(":focus-visible")) reveal();
+  }, [reveal]);
+
+  return (
+    <Link
+      ref={ref}
+      href={href}
+      className={`kx-navrow ${wide ? "with-icon" : ""} ${active ? "is-active" : ""}`}
+      aria-current={active ? "page" : undefined}
+      aria-label={label}
+      onPointerEnter={reveal}
+      onPointerLeave={onHideTip}
+      onFocus={revealOnFocus}
+      onBlur={onHideTip}
+      onClick={() => {
+        onHideTip();
+        onNavigate();
+      }}
+    >
+      <NavIcon d={icon} />
+      <span className="kx-navlabel">{label}</span>
+      {count !== null && count !== undefined && count > 0 && (
+        <span className="kx-navcount">{fmt.format(count)}</span>
+      )}
+    </Link>
+  );
+}
+
 function SyncCard() {
   const { data: sync } = useLatestSync();
   const when = relativeTime(sync?.finished_at ?? sync?.started_at);
@@ -111,10 +193,12 @@ function SyncCard() {
 
 export function KxSidebar({ open, onNavigate }: { open: boolean; onNavigate: () => void }) {
   const pathname = usePathname();
+  const { railCollapsed } = useKxUi();
   const { data: counts } = useLibraryCounts();
   const { data: stats } = useStats();
   const { data: shares } = useShareCount();
   const { count: favorites } = useFavorites();
+  const [tip, setTip] = useState<RailTip | null>(null);
 
   const countFor = (key: (typeof LIBRARY_ROWS)[number]["count"]): number | null => {
     switch (key) {
@@ -137,10 +221,29 @@ export function KxSidebar({ open, onNavigate }: { open: boolean; onNavigate: () 
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
+  const hideTip = useCallback(() => setTip(null), []);
+
+  // Measured off the row itself rather than assumed from the 64px rail, so the
+  // tooltip stays put if the rail's metrics ever change.
+  const showTip = useCallback((label: string, el: HTMLElement) => {
+    if (!window.matchMedia("(min-width: 901px)").matches) return;
+    const rect = el.getBoundingClientRect();
+    setTip({ label, top: rect.top + rect.height / 2, left: rect.right + 10 });
+  }, []);
+
+  // Expanding the rail (or opening the drawer) has to take the tooltip with it.
+  useEffect(() => {
+    setTip(null);
+  }, [railCollapsed, open, pathname]);
+
   return (
-    <aside className={`kx-sidebar ${open ? "is-open" : ""}`} id="kx-sidebar">
-      {/* The one part of the rail that survives collapsing. Everything below is
-          hidden with `visibility` so it leaves the tab order with the pixels. */}
+    <aside
+      className={`kx-sidebar ${open ? "is-open" : ""}`}
+      id="kx-sidebar"
+      onScroll={hideTip}
+    >
+      {/* The mark and the collapse control share this square; everything below
+          keeps its icon when the rail collapses and loses only its words. */}
       <div className="kx-brandbar">
         <BrandLockup />
         <RailToggle />
@@ -148,40 +251,52 @@ export function KxSidebar({ open, onNavigate }: { open: boolean; onNavigate: () 
 
       <nav className="kx-navgroup" aria-label="Library">
         <span className="kx-eyebrow">Library</span>
-        {LIBRARY_ROWS.map((row) => {
-          const count = countFor(row.count);
-          return (
-            <Link
-              key={row.href}
-              href={row.href}
-              className={`kx-navrow ${isActive(row.href) ? "is-active" : ""}`}
-              aria-current={isActive(row.href) ? "page" : undefined}
-              onClick={onNavigate}
-            >
-              <span>{row.label}</span>
-              {count !== null && count > 0 && <span className="kx-navcount">{fmt.format(count)}</span>}
-            </Link>
-          );
-        })}
+        {LIBRARY_ROWS.map((row) => (
+          <NavRow
+            key={row.href}
+            href={row.href}
+            label={row.label}
+            icon={row.icon}
+            count={countFor(row.count)}
+            active={isActive(row.href)}
+            wide={false}
+            collapsed={railCollapsed}
+            onNavigate={onNavigate}
+            onShowTip={showTip}
+            onHideTip={hideTip}
+          />
+        ))}
       </nav>
 
       <nav className="kx-navgroup" aria-label="Ways in">
         <span className="kx-eyebrow">Ways in</span>
         {WAYS_IN_ROWS.map((row) => (
-          <Link
+          <NavRow
             key={row.href}
             href={row.href}
-            className={`kx-navrow with-icon ${isActive(row.href) ? "is-active" : ""}`}
-            aria-current={isActive(row.href) ? "page" : undefined}
-            onClick={onNavigate}
-          >
-            <NavIcon d={row.icon} />
-            <span>{row.label}</span>
-          </Link>
+            label={row.label}
+            icon={row.icon}
+            active={isActive(row.href)}
+            wide
+            collapsed={railCollapsed}
+            onNavigate={onNavigate}
+            onShowTip={showTip}
+            onHideTip={hideTip}
+          />
         ))}
       </nav>
 
       <SyncCard />
+
+      {/* Not a `title`: that waits half a second, cannot be styled, and never
+          appears for keyboard focus. It is `position: fixed` so the rail's own
+          overflow cannot clip it, and `aria-hidden` because the row it names
+          already carries that name as its own `aria-label`. */}
+      {tip && (
+        <div className="kx-navtip" style={{ top: tip.top, left: tip.left }} aria-hidden="true">
+          {tip.label}
+        </div>
+      )}
     </aside>
   );
 }
