@@ -1,30 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { DEFAULT_THEME, THEME_KEY } from "./theme-script";
 
 export type Theme = "dark" | "light";
 
-/** Where the choice is remembered. Per browser profile, which is per user. */
-export const THEME_KEY = "kindred-theme";
-const DEFAULT_THEME: Theme = "dark";
-
-/**
- * Runs before the shell paints so the page never flashes the wrong ground.
- * Rendered as a plain inline script by the (main) layout — it has to be
- * synchronous, which rules out doing this from an effect.
- */
-export const THEME_BOOT_SCRIPT = `(function(){try{var t=localStorage.getItem(${JSON.stringify(
-  THEME_KEY,
-)});if(t!=="light"&&t!=="dark")t=${JSON.stringify(
-  DEFAULT_THEME,
-)};document.documentElement.setAttribute("data-theme",t);}catch(e){document.documentElement.setAttribute("data-theme",${JSON.stringify(
-  DEFAULT_THEME,
-)});}})();`;
+const FALLBACK = DEFAULT_THEME as Theme;
 
 function readTheme(): Theme {
-  if (typeof document === "undefined") return DEFAULT_THEME;
+  if (typeof document === "undefined") return FALLBACK;
   const attr = document.documentElement.getAttribute("data-theme");
-  return attr === "light" || attr === "dark" ? attr : DEFAULT_THEME;
+  return attr === "light" || attr === "dark" ? attr : FALLBACK;
 }
 
 /**
@@ -34,7 +20,7 @@ function readTheme(): Theme {
  * client render agrees with the server-rendered markup.
  */
 export function useTheme() {
-  const [theme, setThemeState] = useState<Theme>(DEFAULT_THEME);
+  const [theme, setThemeState] = useState<Theme>(FALLBACK);
 
   useEffect(() => {
     setThemeState(readTheme());

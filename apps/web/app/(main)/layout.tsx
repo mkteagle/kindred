@@ -1,6 +1,6 @@
 import { Providers } from "./providers";
 import { KxAppShell } from "@/components/kx/app-shell";
-import { THEME_BOOT_SCRIPT } from "@/components/kx/theme";
+import { THEME_BOOT_SCRIPT } from "@/components/kx/theme-script";
 import { SyncProgress } from "@/components/sync-progress";
 import "./globals.css";
 
