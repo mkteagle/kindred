@@ -86,7 +86,22 @@ impl SettingsStore {
         let config_path = app_data_dir.join(CONFIG_FILENAME);
         let settings = if config_path.exists() {
             let raw = std::fs::read_to_string(&config_path)?;
-            serde_json::from_str(&raw).unwrap_or_default()
+            match serde_json::from_str(&raw) {
+                Ok(parsed) => parsed,
+                Err(err) => {
+                    // Defaulting silently here un-pairs the app: the API key
+                    // and base_url live in this file, so a torn write or a bad
+                    // parse would quietly point it at nothing with no
+                    // diagnostic. Keep the file for recovery and say so.
+                    eprintln!(
+                        "[settings] {} is unreadable ({}); keeping a copy at {}.bak \
+                         and starting from defaults",
+                        config_path.display(), err, config_path.display()
+                    );
+                    let _ = std::fs::copy(&config_path, config_path.with_extension("json.bak"));
+                    Settings::default()
+                }
+            }
         } else {
             Settings::default()
         };

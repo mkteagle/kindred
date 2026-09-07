@@ -327,6 +327,13 @@ pub async fn media_ref(
     // A cache hit must not need a configured server: that is the whole point
     // of the offline cache, and the failure mode it exists for.
     if let Some(found) = state.cache.lookup(&photo_id, &variant)? {
+        // Apply the pin even on a hit, as media::ensure does. Without this,
+        // "keep favorites offline" only ever pins photos that were not already
+        // cached — anything already present as an unpinned browse artefact
+        // stays evictable no matter how often it is asked to be kept.
+        if let Some(pin) = pin.as_deref() {
+            let _ = state.cache.set_pin(&photo_id, &variant, Some(pin));
+        }
         return Ok(MediaRef {
             photo_id,
             variant,

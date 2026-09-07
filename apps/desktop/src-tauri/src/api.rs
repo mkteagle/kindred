@@ -61,7 +61,20 @@ fn check_path(path: &str) -> Result<()> {
     if path.contains("..") {
         return Err(AppError::Other("path traversal is not allowed".into()));
     }
-    if ALLOWED_PREFIXES.iter().any(|p| path.starts_with(p)) {
+    // Match on a segment boundary, not a bare prefix. This allowlist exists to
+    // stop a compromised webview reaching arbitrary endpoints on the household
+    // server, and "/albums".starts_with would also admit "/albumsomething".
+    let allowed = ALLOWED_PREFIXES.iter().any(|prefix| {
+        // Some prefixes are written with a trailing slash ("/library/") and
+        // some without ("/albums"); normalise so one rule covers both.
+        let prefix = prefix.strip_suffix('/').unwrap_or(prefix);
+        match path.strip_prefix(prefix) {
+            Some("") => true,
+            Some(rest) => rest.starts_with('/') || rest.starts_with('?'),
+            None => false,
+        }
+    });
+    if allowed {
         Ok(())
     } else {
         Err(AppError::Other(format!("path is not allowlisted: {}", path)))
@@ -283,5 +296,23 @@ mod tests {
         assert!(check_path("/photos/../../etc/passwd").is_err());
         assert!(check_path("/flickr/delete").is_err());
         assert!(check_path("/api-keys").is_err());
+    }
+
+    #[test]
+    fn a_prefix_match_cannot_smuggle_a_longer_path() {
+        // The allowlist is what stops a compromised webview reaching arbitrary
+        // endpoints on the household server. Matching a bare prefix would let
+        // anything beginning with an allowed word through.
+        assert!(check_path("/albumsomething").is_err());
+        assert!(check_path("/eventsX").is_err());
+        assert!(check_path("/searching-for-trouble").is_err());
+    }
+
+    #[test]
+    fn the_allowlisted_paths_themselves_still_pass(){
+        // The exact prefix, a deeper segment, and a query all remain valid.
+        assert!(check_path("/albums").is_ok());
+        assert!(check_path("/albums/abc/photos").is_ok());
+        assert!(check_path("/search?q=beach").is_ok());
     }
 }

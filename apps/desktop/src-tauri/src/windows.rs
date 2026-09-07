@@ -196,17 +196,27 @@ fn attach_geometry_tracking(
     kind: String,
 ) {
     let label = window.label().to_string();
+    // Window events report physical pixels while the builder's inner_size and
+    // position take logical ones. Recording physical and restoring it as
+    // logical doubles a window on every relaunch on a 2x display, so convert
+    // here and keep the stored geometry logical throughout.
+    let scale_of = {
+        let window = window.clone();
+        move || window.scale_factor().unwrap_or(1.0).max(0.1)
+    };
     window.on_window_event(move |event| match event {
         WindowEvent::Moved(position) => {
+            let scale = scale_of();
             registry.record_geometry(&kind, |g| {
-                g.x = position.x;
-                g.y = position.y;
+                g.x = (f64::from(position.x) / scale).round() as i32;
+                g.y = (f64::from(position.y) / scale).round() as i32;
             });
         }
         WindowEvent::Resized(size) => {
+            let scale = scale_of();
             registry.record_geometry(&kind, |g| {
-                g.width = size.width;
-                g.height = size.height;
+                g.width = (f64::from(size.width) / scale).round() as u32;
+                g.height = (f64::from(size.height) / scale).round() as u32;
             });
         }
         WindowEvent::Focused(false) | WindowEvent::CloseRequested { .. } => {
