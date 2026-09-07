@@ -35,23 +35,36 @@ const WAYS_IN_ROWS = [
   { href: "/duplicates", label: "Duplicates", icon: "M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" },
 ];
 
+/**
+ * The mark sits in a fixed square of its own rather than loose in the lockup,
+ * because the collapse control is laid over exactly that square: the two need
+ * the same footprint to trade places cleanly.
+ */
 function BrandLockup() {
   return (
     <Link href="/gallery" className="kx-brand" aria-label="Kindred, home">
-      <img src="/logo.svg" alt="" className="kx-mark" data-mark-theme="light" />
-      <img src="/logo-light.svg" alt="" className="kx-mark" data-mark-theme="dark" />
-      <img src="/wordmark.svg" alt="Kindred" className="kx-wordmark" data-mark-theme="light" />
-      <img src="/wordmark-light.svg" alt="Kindred" className="kx-wordmark" data-mark-theme="dark" />
+      <span className="kx-brand-mark">
+        <img src="/logo.svg" alt="" className="kx-mark" data-mark-theme="light" />
+        <img src="/logo-light.svg" alt="" className="kx-mark" data-mark-theme="dark" />
+      </span>
+      <span className="kx-brand-word">
+        <img src="/wordmark.svg" alt="Kindred" className="kx-wordmark" data-mark-theme="light" />
+        <img src="/wordmark-light.svg" alt="Kindred" className="kx-wordmark" data-mark-theme="dark" />
+      </span>
     </Link>
   );
 }
 
 /**
- * Collapse and expand are the same control in the same place — under the logo
- * — so whichever state you are in, the way back is where you last left it.
- * It stays out of the way until the brand area is hovered or something inside
- * it takes focus: `opacity` alone, never `visibility`, so the button keeps its
- * place in the tab order and shows itself the moment it is focused.
+ * Collapse and expand are the same control in the same place — over the mark,
+ * which is the one thing the rail keeps in either state. Hovering the mark
+ * cross-fades it into the affordance; moving away fades it back. It stays out
+ * of the way until then with `opacity` alone, never `visibility`, so the button
+ * keeps its place in the tab order and shows itself the moment it is focused.
+ *
+ * In the expanded rail the swap is scoped to the mark and not the whole lockup:
+ * the wordmark stays a plain link home, and the control lives in the same
+ * square whether the rail is 232px or 64px wide.
  */
 function RailToggle() {
   const { railCollapsed, toggleRail } = useKxUi();
@@ -61,7 +74,6 @@ function RailToggle() {
       type="button"
       className="kx-railtoggle"
       onClick={toggleRail}
-      title={label}
       aria-label={label}
       aria-expanded={!railCollapsed}
       aria-controls="kx-sidebar"

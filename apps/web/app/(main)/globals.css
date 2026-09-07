@@ -9448,9 +9448,28 @@ button.kx-avatar { cursor: pointer; }
 .kx-brand {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 4px 6px;
+  gap: 5px;
+  padding: 4px var(--brand-pad-x, 6px);
   text-decoration: none;
+}
+
+/* The mark lives in a fixed square rather than sitting loose in the lockup:
+   the collapse control is laid over exactly this box, so the two need the same
+   footprint to swap places cleanly. */
+.kx-brand-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  transition: opacity .16s var(--ease-rise);
+}
+
+.kx-brand-word {
+  display: flex;
+  align-items: center;
+  min-width: 0;
 }
 
 /* Both marks ship in the markup and CSS picks the pair. The files are never
@@ -9553,58 +9572,65 @@ button.kx-avatar { cursor: pointer; }
    Desktop only: below 900px the sidebar is a drawer, and the rules that shrink
    it are fenced behind min-width: 901px so the two never argue. */
 
+/* The lockup and the collapse control occupy the same square. The button is
+   laid over the mark rather than parked next to it, so hovering the mark turns
+   it into the expand affordance and moving away turns it back — one control,
+   one place, in both rail states. */
 .kx-brandbar {
+  position: relative;
+  --brand-pad-x: 6px;
   display: flex;
   align-items: center;
-  gap: 6px;
 }
 
 .kx-brandbar .kx-brand { min-width: 0; }
 
 /* The toggle keeps out of the way until you go looking for it: `opacity` only,
    never `visibility` or `display`, so it stays in the tab order and shows
-   itself the moment it takes focus rather than only under a pointer. */
+   itself the moment it takes focus rather than only under a pointer. It is
+   opaque and painted in the rail's own colour, so it still covers the mark it
+   replaces in a browser with no `:has()` to fade the mark out. */
 .kx-railtoggle {
-  flex: none;
-  margin-left: auto;
-  width: 30px;
-  height: 30px;
+  position: absolute;
+  left: var(--brand-pad-x);
+  top: 50%;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
   padding: 0;
-  border: 1px solid var(--line-2);
+  border: 0;
   border-radius: 8px;
   background: var(--bg);
-  color: var(--ink-3);
+  color: var(--ink-2);
   cursor: pointer;
   opacity: 0;
-  transform: translateX(-4px);
+  transform: translateY(-50%);
   transition:
     opacity .16s var(--ease-rise),
-    transform .16s var(--ease-rise),
     color .16s ease,
-    border-color .16s ease;
+    box-shadow .16s ease;
 }
 
+/* Hover state is a ring rather than a fill: a translucent fill would let the
+   mark underneath show through the swap. */
 .kx-railtoggle:hover {
   color: var(--ink);
-  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--line-3);
 }
 
-.kx-brandbar:hover .kx-railtoggle,
-.kx-railtoggle:focus-visible {
-  opacity: 1;
-  transform: none;
-}
+/* The half of the cross-fade that brings the glyph in. `:focus-visible` rather
+   than `:focus` so clicking the control with a mouse does not leave it stuck
+   on screen after the pointer has gone. */
+.kx-railtoggle:hover,
+.kx-railtoggle:focus-visible { opacity: 1; }
 
-/* Tabbing into the rail reveals the toggle before you reach it, so it is never
-   a control you have to know is there. `:focus-visible` rather than
-   `:focus-within` — a mouse click on the toggle should not leave it stuck on
-   screen — and its own rule, so browsers without `:has()` lose only this and
-   keep the rule above. */
-.kx-brandbar:has(:focus-visible) .kx-railtoggle {
-  opacity: 1;
-  transform: none;
+/* The half that takes the mark out. Its own rule, so a browser without `:has()`
+   loses only the fade and still gets the swap from the opaque button above. */
+.kx-brandbar:has(.kx-railtoggle:hover) .kx-brand-mark,
+.kx-brandbar:has(.kx-railtoggle:focus-visible) .kx-brand-mark {
+  opacity: 0;
 }
 
 @media (min-width: 901px) {
@@ -9635,33 +9661,20 @@ button.kx-avatar { cursor: pointer; }
     transition-delay: 0s;
   }
 
-  /* Collapsed, the brand row becomes a column: mark on top, the toggle waiting
-     in a slot beneath it. The slot is always laid out, so the pointer never
-     falls out of the hover target as the button appears. */
-  :root[data-sidebar="collapsed"] .kx-brandbar {
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  :root[data-sidebar="collapsed"] .kx-sidebar .kx-brand {
+  /* Collapsed, the mark centres in the rail and the toggle centres with it —
+     same square, same place, still swapping on hover and focus. */
+  :root[data-sidebar="collapsed"] .kx-brandbar .kx-brand {
+    flex: 1 1 auto;
     justify-content: center;
-    padding: 4px 0;
+    padding-left: 0;
+    padding-right: 0;
   }
 
-  :root[data-sidebar="collapsed"] .kx-sidebar .kx-brand .kx-wordmark { display: none; }
+  :root[data-sidebar="collapsed"] .kx-brandbar .kx-brand-word { display: none; }
 
   :root[data-sidebar="collapsed"] .kx-railtoggle {
-    margin-left: 0;
-    transform: translateY(-6px);
-  }
-
-  :root[data-sidebar="collapsed"] .kx-brandbar:hover .kx-railtoggle,
-  :root[data-sidebar="collapsed"] .kx-railtoggle:focus-visible {
-    transform: none;
-  }
-
-  :root[data-sidebar="collapsed"] .kx-brandbar:has(:focus-visible) .kx-railtoggle {
-    transform: none;
+    left: 50%;
+    transform: translate(-50%, -50%);
   }
 }
 
@@ -9674,6 +9687,7 @@ button.kx-avatar { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   .kx-shell,
   .kx-sidebar > *,
+  .kx-brand-mark,
   .kx-railtoggle {
     transition: none;
   }
