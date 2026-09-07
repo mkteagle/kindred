@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Spinner } from "@/components/ui";
 import type { TimelineResponse, TimelineMonth } from "@/types";
@@ -15,11 +15,15 @@ function formatMonth(monthStr: string): string {
 }
 
 function MonthSection({ month }: { month: TimelineMonth }) {
-  const [expanded, setExpanded] = useState(false);
+  const PAGE_SIZE = 24;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const { openLightbox } = useLightbox();
-  const preview = month.photos.slice(0, 12);
-  const remaining = month.photos.length - preview.length;
-  const visible = expanded ? month.photos : preview;
+  const visible = month.photos.slice(0, visibleCount);
+  const remaining = Math.max(0, month.photos.length - visible.length);
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [month.month]);
 
   const lbPhotos: LightboxPhoto[] = month.photos.map((p) => ({
     photo_id: p.photo_id,
@@ -39,8 +43,12 @@ function MonthSection({ month }: { month: TimelineMonth }) {
           </span>
         </div>
         {remaining > 0 && (
-          <Button small variant="ghost" onClick={() => setExpanded((v) => !v)}>
-            {expanded ? "Show less" : `Show all ${fmt.format(month.count)}`}
+          <Button
+            small
+            variant="ghost"
+            onClick={() => setVisibleCount((count) => Math.min(count + PAGE_SIZE, month.photos.length))}
+          >
+            Load {fmt.format(Math.min(PAGE_SIZE, remaining))} more
           </Button>
         )}
       </div>
@@ -66,10 +74,14 @@ function MonthSection({ month }: { month: TimelineMonth }) {
           </button>
         ))}
       </div>
-      {!expanded && remaining > 0 && (
-        <p className="summary-note" style={{ textAlign: "left", marginTop: 10 }}>
+      {remaining > 0 && (
+        <Button
+          variant="ghost"
+          onClick={() => setVisibleCount((count) => Math.min(count + PAGE_SIZE, month.photos.length))}
+          style={{ marginTop: 10 }}
+        >
           +{fmt.format(remaining)} more photo{remaining !== 1 ? "s" : ""}
-        </p>
+        </Button>
       )}
     </section>
   );
