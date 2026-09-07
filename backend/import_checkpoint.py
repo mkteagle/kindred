@@ -108,14 +108,16 @@ def load(path):
 
 def save(path, progress, relative=None):
     path.parent.mkdir(parents=True, exist_ok=True)
+    if not isinstance(progress, Progress):
+        journal = journal_path(path)
+        if journal.exists() and journal.stat().st_size:
+            raise ValueError('Refusing plain-dictionary save with a nonempty journal; load the merged checkpoint first')
     if relative is None or not isinstance(progress, Progress):
         # Also supports old callers passing ordinary dictionaries. Persist the
         # merged snapshot before clearing its journal; either crash order replays.
         snapshot = dict(progress)
         if isinstance(progress, Progress):
             snapshot['_journal_sequence'] = progress.sequence
-        elif journal_path(path).exists():
-            snapshot['_journal_sequence'] = load(path).sequence
         atomic_write(path, snapshot)
         journal = journal_path(path)
         if journal.exists():

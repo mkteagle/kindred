@@ -110,3 +110,21 @@ class CheckpointTests(unittest.TestCase):
             checkpoint.compact(path)
             self.assertEqual(json.loads(path.read_text())['completed'], progress['completed'])
             self.assertEqual(checkpoint.journal_path(path).read_bytes(), b'')
+
+    def test_stale_plain_snapshot_cannot_discard_journaled_receipts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'progress.json'
+            checkpoint.save(path, {'completed': {'old': {'id': 1}}, 'failed': {}})
+            stale = json.loads(path.read_text())
+            progress = checkpoint.load(path)
+            progress['completed']['new'] = {'id': 2}
+            checkpoint.save(path, progress, 'new')
+            snapshot_before = path.read_bytes()
+            journal_before = checkpoint.journal_path(path).read_bytes()
+            with self.assertRaisesRegex(ValueError, 'plain-dictionary'):
+                checkpoint.save(path, stale)
+            self.assertEqual(path.read_bytes(), snapshot_before)
+            self.assertEqual(checkpoint.journal_path(path).read_bytes(), journal_before)
+            self.assertEqual(checkpoint.load(path), progress)
+            checkpoint.save(path, checkpoint.load(path))
+            self.assertIn('new', json.loads(path.read_text())['completed'])
