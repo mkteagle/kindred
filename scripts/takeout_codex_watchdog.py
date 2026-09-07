@@ -113,6 +113,7 @@ def main():
     parser.add_argument('--codex', default=CODEX)
     parser.add_argument('--state-dir', type=Path, default=Path.home() / 'Library/Logs/KindredTakeout')
     parser.add_argument('--once', action='store_true', help='Read-only snapshot, no model invocation')
+    parser.add_argument('--recover-now', action='store_true', help='Inspect an already confirmed stall immediately')
     parser.add_argument('--poll-seconds', type=int, default=60)
     parser.add_argument('--stall-seconds', type=int, default=600)
     args = parser.parse_args()
@@ -125,7 +126,9 @@ def main():
         try:
             current = snapshot()
             now = time.monotonic()
-            if progressed(previous, current):
+            if args.recover_now and previous is None:
+                last_progress = now - args.stall_seconds
+            elif progressed(previous, current):
                 last_progress = now
                 failures = 0
             previous = current
