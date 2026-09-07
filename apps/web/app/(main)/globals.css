@@ -12373,3 +12373,68 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
   font-weight: 700;
   letter-spacing: .04em;
 }
+
+/* ── The merge picker, inside the new chrome ─────────────────────────────
+   `dialogs.tsx` is a parchment-era component the redesign has not reached.
+   Its card is painted `#fffdf8` with `color: var(--ash)`, and the shell
+   aliases `--ash` to the dark theme's cream ink — so inside `.kx` it was
+   white text on a white card: the names were rendered, and invisible.
+   Repaint it with the panel tokens until the dialog itself is ported.
+   Reached from both this screen's "Merge into…" and the review screen's M. */
+
+.kx dialog.confirm {
+  border: 1px solid var(--line-3);
+  border-radius: 14px;
+  background: var(--panel-2);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  color: var(--ink);
+  box-shadow: var(--shadow-dialog);
+}
+
+.kx dialog.confirm::backdrop {
+  background: var(--scrim-dialog);
+  backdrop-filter: blur(5px);
+}
+
+.kx .confirm-body h3 { color: var(--ink); }
+.kx .confirm-body p { color: var(--ink-4); }
+
+.kx .merge-search {
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--fill-1);
+  color: var(--ink);
+  font-family: inherit;
+}
+
+.kx .merge-search::placeholder { color: var(--ink-3); }
+.kx .merge-search:focus { border-color: var(--accent); }
+
+.kx .merge-option { border-radius: 8px; color: var(--ink); }
+.kx .merge-option:hover { background: var(--fill-2); }
+.kx .merge-option-avatar { border-color: var(--line-2); background: var(--tile-bg); }
+.kx .merge-option-name { color: var(--ink); }
+
+.kx .merge-option-count {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--ink-3);
+}
+
+/* The dialog's own footer button is the parchment `.button`, which paints
+   itself on `--paper` — the page ground, not the panel's. */
+.kx .confirm-actions .button {
+  border: 1px solid var(--line-3);
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.kx .confirm-actions .button:hover:not(:disabled) {
+  background: var(--fill-2);
+  box-shadow: none;
+}
