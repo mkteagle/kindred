@@ -265,4 +265,437 @@ button.btn-danger:not(:disabled):hover { background: rgba(154, 52, 22, 0.06); }
 }
 ::-webkit-scrollbar-thumb:hover { background: rgba(74, 40, 26, 0.35); }
 ::-webkit-scrollbar-track { background: transparent; }
-</content>
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Kindred desktop — the redesign.
+
+   Ported from the shared handoff README's token tables rather than
+   re-derived, so the three apps and the web app stay in step. Dark first: a
+   light theme exists on web and is deliberately not guessed at here.
+
+   The parchment tokens above belong to the bulk-uploader window, which keeps
+   its own look and is reached from File → Bulk Uploader. Everything below is
+   prefixed `--k-` and is what the four library windows draw with.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Brand */
+  --k-forest: #495645;
+  --k-terracotta: #cc7f61;
+  --k-amber: #d59851;
+  --k-sage: #8fa085;
+  --k-sage-ink: #a8bb9c;
+  --k-on-accent: #14150f;
+
+  /* Danger */
+  --k-danger-line: rgba(183, 62, 87, 0.35);
+  --k-danger-fill: rgba(183, 62, 87, 0.12);
+  --k-danger-ink: #e08095;
+
+  /* Dark surfaces */
+  --k-bg: #0c0e0c;
+  --k-chrome: rgba(23, 26, 22, 0.96);
+  --k-sheet: #191c17;
+  --k-stage: #080908;
+  --k-tile: #191c18;
+
+  /* Hairlines and fills */
+  --k-line: rgba(241, 241, 236, 0.08);
+  --k-line-2: rgba(241, 241, 236, 0.1);
+  --k-line-3: rgba(241, 241, 236, 0.14);
+  --k-line-4: rgba(241, 241, 236, 0.16);
+  --k-fill: rgba(241, 241, 236, 0.05);
+  --k-fill-2: rgba(241, 241, 236, 0.08);
+  --k-fill-3: rgba(241, 241, 236, 0.09);
+  --k-fill-4: rgba(241, 241, 236, 0.11);
+
+  /* Ink */
+  --k-ink: #f1f1ec;
+  --k-ink-2: #cfd0c9;
+  --k-ink-3: #b6b8b0;
+  --k-ink-4: #9ba095;
+
+  /* Shape — 8px is the brand radius for cards and sheets on desktop, the same
+     rule iOS follows. Photo tiles stay tight so the grid reads as one field. */
+  --k-radius: 8px;
+  --k-radius-row: 7px;
+  --k-radius-tile: 2px;
+
+  --k-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── Window shells ──────────────────────────────────────────────────────── */
+
+.k-root {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--k-bg);
+  color: var(--k-ink);
+  font-family: var(--font-body);
+  font-size: 13px;
+  overflow: hidden;
+}
+
+.k-title-bar {
+  flex: none;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  background: var(--k-chrome);
+  border-bottom: 1px solid var(--k-line);
+  /* Native chrome: the bar itself drags the window, controls inside it do not. */
+  -webkit-app-region: drag;
+  user-select: none;
+}
+.k-title-bar button,
+.k-title-bar input,
+.k-title-bar a {
+  -webkit-app-region: no-drag;
+}
+/* macOS puts the traffic lights at the top left; leave them room. */
+.k-title-bar-lights { width: 68px; flex: none; }
+.k-title-bar-title {
+  margin: 0 auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: var(--k-ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.k-title-bar-build {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--k-ink-4);
+  flex: none;
+}
+
+.k-body { flex: 1 1 auto; display: flex; min-height: 0; }
+
+/* ── Type ───────────────────────────────────────────────────────────────── */
+
+.k-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--k-terracotta);
+}
+.k-eyebrow-quiet {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--k-ink-4);
+}
+.k-mono {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--k-ink-4);
+}
+.k-mono-11 {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: var(--k-ink-4);
+}
+.k-display {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+  color: var(--k-ink);
+}
+
+/* ── Keyboard chips ─────────────────────────────────────────────────────── */
+
+.k-kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  border: 1px solid var(--k-line-4);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--k-ink-4);
+  flex: none;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+
+.k-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--k-radius);
+  border: 1px solid var(--k-line-4);
+  background: transparent;
+  color: var(--k-ink);
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 12px;
+  white-space: nowrap;
+  transition: background 160ms var(--k-ease), border-color 160ms var(--k-ease);
+}
+.k-btn:hover:not(:disabled) { background: var(--k-fill-2); }
+.k-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.k-btn-primary {
+  background: var(--k-terracotta);
+  border-color: var(--k-terracotta);
+  color: var(--k-on-accent);
+  font-weight: 800;
+}
+.k-btn-primary:hover:not(:disabled) { background: var(--k-amber); border-color: var(--k-amber); }
+.k-btn-danger {
+  border-color: var(--k-danger-line);
+  background: var(--k-danger-fill);
+  color: var(--k-danger-ink);
+}
+.k-btn-danger:hover:not(:disabled) { background: rgba(183, 62, 87, 0.2); }
+.k-btn-quiet { border-color: transparent; color: var(--k-ink-2); font-weight: 600; }
+.k-btn-quiet:hover:not(:disabled) { background: var(--k-fill-2); color: var(--k-ink); }
+
+/* ── Focus ──────────────────────────────────────────────────────────────── */
+
+/* A desktop app is judged on keyboard reachability, so the ring is loud and
+   never removed — only suppressed for pointer interaction via :focus-visible. */
+.k-root :focus-visible {
+  outline: 2px solid var(--k-terracotta);
+  outline-offset: 2px;
+}
+.k-root :focus:not(:focus-visible) { outline: none; }
+
+/* ── Rows, cards, pills ─────────────────────────────────────────────────── */
+
+.k-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--k-radius-row);
+  border: none;
+  background: transparent;
+  color: var(--k-ink-2);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  transition: background 160ms var(--k-ease);
+}
+.k-row:hover { background: var(--k-fill); }
+.k-row[aria-current="true"],
+.k-row[aria-selected="true"] {
+  background: var(--k-fill-2);
+  color: var(--k-ink);
+  font-weight: 600;
+}
+.k-row-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--k-ink-4);
+}
+
+.k-card {
+  border-radius: var(--k-radius);
+  background: var(--k-fill);
+  border: 1px solid var(--k-line-2);
+}
+
+.k-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--k-fill-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: var(--k-ink-2);
+  border: none;
+}
+.k-pill-outline { background: transparent; border: 1px solid var(--k-line-3); }
+.k-pill-name {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--k-ink);
+  letter-spacing: 0;
+}
+
+/* ── Fields ─────────────────────────────────────────────────────────────── */
+
+.k-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--k-radius);
+  background: var(--k-fill);
+  border: 1px solid var(--k-line-2);
+}
+.k-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--k-ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+.k-input::placeholder { color: var(--k-ink-4); }
+.k-input:focus { outline: none; }
+.k-field:focus-within { border-color: var(--k-terracotta); }
+
+/* ── Photo tiles ────────────────────────────────────────────────────────── */
+
+.k-tile {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: var(--k-tile);
+  border-radius: var(--k-radius-tile);
+  overflow: hidden;
+}
+.k-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transition: opacity 220ms var(--k-ease);
+}
+.k-tile img.is-loaded { opacity: 1; }
+.k-tile[aria-selected="true"] {
+  outline: 3px solid var(--k-terracotta);
+  outline-offset: -3px;
+}
+.k-tile[aria-selected="true"] img { opacity: 0.78; }
+.k-tile-badge {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: rgba(12, 14, 12, 0.76);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  color: var(--k-ink-2);
+}
+/* A photo that is not on this machine reads differently from one that is —
+   which is the entire point when the server cannot be reached. */
+.k-tile-offline {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--k-ink-4);
+  opacity: 0.55;
+}
+
+/* ── Toggle ─────────────────────────────────────────────────────────────── */
+
+.k-toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  flex: none;
+  border-radius: 999px;
+  border: none;
+  background: var(--k-line-3);
+  transition: background 160ms var(--k-ease);
+}
+.k-toggle::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--k-ink-4);
+  transition: transform 160ms var(--k-ease), background 160ms var(--k-ease);
+}
+.k-toggle[aria-checked="true"] { background: var(--k-terracotta); }
+.k-toggle[aria-checked="true"]::after {
+  transform: translateX(18px);
+  background: var(--k-on-accent);
+}
+
+/* ── Progress ───────────────────────────────────────────────────────────── */
+
+.k-meter {
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(241, 241, 236, 0.12);
+  overflow: hidden;
+}
+.k-meter-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--k-forest), var(--k-terracotta), var(--k-amber));
+}
+
+/* ── Motion ─────────────────────────────────────────────────────────────── */
+
+@keyframes k-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+.k-rise { animation: k-rise 280ms var(--k-ease) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .k-rise { animation: none; }
+  .k-tile img { transition: none; }
+}
+
+/* ── Scrollbars in dark chrome ──────────────────────────────────────────── */
+
+.k-root ::-webkit-scrollbar { width: 10px; height: 10px; }
+.k-root ::-webkit-scrollbar-thumb { background: rgba(241, 241, 236, 0.14); border-radius: 999px; }
+.k-root ::-webkit-scrollbar-thumb:hover { background: rgba(241, 241, 236, 0.24); }
+.k-root ::-webkit-scrollbar-track { background: transparent; }
+
+.k-scroll { overflow-y: auto; overflow-x: hidden; }
+
+/* Skip link — the keyboard route past the sidebar into the grid. */
+.k-skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 20;
+  padding: 8px 12px;
+  border-radius: var(--k-radius);
+  background: var(--k-terracotta);
+  color: var(--k-on-accent);
+  font-weight: 800;
+  font-size: 12px;
+}
+.k-skip:focus { left: 12px; top: 48px; }
+
