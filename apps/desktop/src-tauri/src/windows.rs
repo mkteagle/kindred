@@ -164,11 +164,16 @@ pub fn open(
     // title and the build tag — not an OS title bar with our bar underneath it.
     // Overlay puts the real traffic lights over the webview; `.k-title-bar`
     // leaves a 68px gutter for them and takes the drag region itself.
+    //
+    // The bulk uploader is excluded: it draws no bar of its own, so overlaid
+    // traffic lights would land on its content.
     #[cfg(target_os = "macos")]
     {
-        builder = builder
-            .title_bar_style(tauri::TitleBarStyle::Overlay)
-            .hidden_title(true);
+        if kind != "uploader" {
+            builder = builder
+                .title_bar_style(tauri::TitleBarStyle::Overlay)
+                .hidden_title(true);
+        }
     }
 
     builder = match remembered {
