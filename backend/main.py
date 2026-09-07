@@ -4131,16 +4131,30 @@ def get_scenes(distance_threshold: float = 0.82):
         emb = clip_embed_text(f"a photo of a {label}")
         vec = np.array(emb, dtype=np.float32)
         rows = db_query("""
-            SELECT pe.photo_id, pe.clip_embedding <=> %s AS distance,
+            -- The nearest-neighbour CTE has to stay unfiltered: an HNSW
+            -- index answers "the N closest to this vector", not "everything
+            -- within a distance of it". Putting the threshold in the WHERE
+            -- clause made every label a sequential scan of the whole
+            -- embedding table, and 24 labels a request turned a page into a
+            -- half-minute wait. Take the closest 50, then apply the
+            -- threshold to those -- the same rows, since the ones it keeps
+            -- are always among the closest.
+            SET LOCAL hnsw.ef_search = 100;
+            WITH nearest AS (
+                SELECT pe.photo_id, pe.clip_embedding <=> %s AS distance
+                FROM photo_embeddings pe
+                ORDER BY pe.clip_embedding <=> %s
+                LIMIT 50
+            )
+            SELECT nearest.photo_id, nearest.distance,
                    d.photo_url, d.thumb_url, d.flickr_url, d.photo_title, d.owner
-            FROM photo_embeddings pe
+            FROM nearest
             JOIN LATERAL (
                 SELECT DISTINCT ON (photo_id) photo_url, thumb_url, flickr_url, photo_title, owner
-                FROM detections WHERE photo_id = pe.photo_id LIMIT 1
+                FROM detections WHERE photo_id = nearest.photo_id LIMIT 1
             ) d ON true
-            WHERE pe.clip_embedding <=> %s < %s
-            ORDER BY distance ASC
-            LIMIT 50
+            WHERE nearest.distance < %s
+            ORDER BY nearest.distance ASC
         """, (vec, vec, distance_threshold))
 
         if rows:
@@ -4219,16 +4233,30 @@ def get_objects(distance_threshold: float = 0.80):
         emb = clip_embed_text(f"a photo containing a {label}")
         vec = np.array(emb, dtype=np.float32)
         rows = db_query("""
-            SELECT pe.photo_id, pe.clip_embedding <=> %s AS distance,
+            -- The nearest-neighbour CTE has to stay unfiltered: an HNSW
+            -- index answers "the N closest to this vector", not "everything
+            -- within a distance of it". Putting the threshold in the WHERE
+            -- clause made every label a sequential scan of the whole
+            -- embedding table, and 27 labels a request turned a page into a
+            -- half-minute wait. Take the closest 30, then apply the
+            -- threshold to those -- the same rows, since the ones it keeps
+            -- are always among the closest.
+            SET LOCAL hnsw.ef_search = 64;
+            WITH nearest AS (
+                SELECT pe.photo_id, pe.clip_embedding <=> %s AS distance
+                FROM photo_embeddings pe
+                ORDER BY pe.clip_embedding <=> %s
+                LIMIT 30
+            )
+            SELECT nearest.photo_id, nearest.distance,
                    d.photo_url, d.thumb_url, d.flickr_url, d.photo_title, d.owner
-            FROM photo_embeddings pe
+            FROM nearest
             JOIN LATERAL (
                 SELECT DISTINCT ON (photo_id) photo_url, thumb_url, flickr_url, photo_title, owner
-                FROM detections WHERE photo_id = pe.photo_id LIMIT 1
+                FROM detections WHERE photo_id = nearest.photo_id LIMIT 1
             ) d ON true
-            WHERE pe.clip_embedding <=> %s < %s
-            ORDER BY distance ASC
-            LIMIT 30
+            WHERE nearest.distance < %s
+            ORDER BY nearest.distance ASC
         """, (vec, vec, distance_threshold))
 
         if rows:
