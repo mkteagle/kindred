@@ -133,6 +133,43 @@ services:
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}
     networks: [kindred-internal]
 
+  # Local language model, used to turn a natural-language search into facets.
+  #
+  # Behind the "llm" profile so it never starts by accident: a model is the
+  # largest single memory consumer on this box, and the ML workers already run
+  # it near capacity. Enable deliberately, once there is headroom:
+  #
+  #   COMPOSE_PROFILES=public,llm
+  #
+  # mem_limit is a hard ceiling rather than a guideline — if the model would
+  # push the host into swap, it is killed instead of dragging the indexing
+  # workers and Postgres down with it.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: [llm]
+    restart: unless-stopped
+    environment:
+      # One model resident, unloaded promptly. Search is bursty, not constant.
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_KEEP_ALIVE: "5m"
+    volumes:
+      - ./data/ollama:/root/.ollama
+    mem_limit: 3g
+    # Leave headroom for the indexing workers, which matter more than search.
+    cpus: 4.0
+    devices:
+      # Intel UHD (Alder Lake) for SYCL offload where the image supports it.
+      # Harmless when unused; the model simply runs on CPU.
+      - /dev/dri:/dev/dri
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks: [kindred-internal]
+
 networks:
   kindred-internal:
     driver: bridge

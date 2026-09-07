@@ -42,6 +42,11 @@ API_KEY = os.environ.get("API_KEY", "")
 PHOTO_STORAGE_ROOT = os.environ.get("PHOTO_STORAGE_ROOT", "")
 PUBLIC_API_URL = os.environ.get("PUBLIC_API_URL", "https://api.kindredphotos.app").rstrip("/")
 PUBLIC_WEB_URL = os.environ.get("PUBLIC_WEB_URL", "https://kindredphotos.app").rstrip("/")
+# Local language model. Absent by default: the compose service sits behind
+# the "llm" profile, and every caller treats it as optional.
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "").rstrip("/")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:1.5b-instruct")
+OLLAMA_TIMEOUT = float(os.environ.get("OLLAMA_TIMEOUT", "20"))
 
 app = FastAPI(title="Kindred API")
 CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "").split(",") if os.environ.get("CORS_ORIGINS") else [
@@ -3752,7 +3757,7 @@ async def _process_uploaded_photo(
 
 
 @app.get("/search")
-def search_photos(
+async def search_photos(
     q: str = "",
     media: str = Query("all", description="all, photo, or video"),
     date_from: str | None = Query(None, description="ISO date, inclusive"),
@@ -3762,6 +3767,7 @@ def search_photos(
     category: str | None = Query(None, description="Cluster category, required with cluster_id"),
     album_id: str | None = Query(None, description="Restrict to one album"),
     sort: str = Query("newest", description="Ordering when there is no free text"),
+    smart: bool = Query(False, description="Let the local model infer facets from the query"),
     limit: int = Query(60, ge=1, le=200),
 ):
     """Search the catalog by free text, facets, or both.
@@ -3775,15 +3781,32 @@ def search_photos(
     """
     import search_api
 
+    query = q.strip()
+    inferred = None
+
+    # Explicit facets always win: a filter the person set in the UI is never
+    # overridden by something the model guessed.
+    if smart and query:
+        inferred = await _parse_query(query)
+        if inferred:
+            if media == "all":
+                media = inferred["media"]
+            if not date_from and not date_to:
+                date_from, date_to = inferred["date_from"], inferred["date_to"]
+            if not cluster_id and inferred["cluster_id"]:
+                cluster_id, category = inferred["cluster_id"], inferred["category"]
+            # What is left is the visual part of the query, if anything.
+            query = inferred["text"] or ("" if inferred["cluster_id"] else query)
+
     facets = search_api.Facets(
         media=media, date_from=date_from, date_to=date_to, date_field=date_field,
         cluster_id=cluster_id, category=category, album_id=album_id,
     )
-    query = q.strip()
 
     if not query:
         results = search_api.browse(db_query, facets, sort=sort, limit=limit)
-        return {"results": results, "query": "", "facets": _facet_summary(facets)}
+        return {"results": results, "query": "", "facets": _facet_summary(facets),
+                "inferred": inferred}
 
     ranked = []
 
@@ -3820,7 +3843,8 @@ def search_photos(
     ranked.append(literal)
 
     results = search_api.merge(*ranked, limit=limit)
-    return {"results": results, "query": query, "facets": _facet_summary(facets)}
+    return {"results": results, "query": query, "facets": _facet_summary(facets),
+            "inferred": inferred}
 
 
 def _facet_summary(facets) -> dict:
@@ -3855,6 +3879,86 @@ def _matching_clusters(query: str, limit: int = 3) -> list[dict]:
         LIMIT %s
     """, (query, f"{query}%", f"%{query}%", f"{query}%", query, limit))
     return [dict(row) for row in rows]
+
+
+# ── Natural-language search ──────────────────────────────────────────────────
+# A small local model reads a query and names a person, a media kind and a
+# relative period; query_parser resolves those against vocabularies and data we
+# hold. The model never contributes a value that reaches SQL.
+#
+# Every failure here is non-fatal by construction. No model configured, model
+# down, model slow, model talking nonsense — all fall back to searching the
+# raw text, which is exactly what /search did before.
+
+async def _ollama_generate(prompt: str) -> str | None:
+    """One completion from the local model, or None if it cannot be had."""
+    if not OLLAMA_URL:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
+            response = await client.post(
+                f"{OLLAMA_URL}/api/generate",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "prompt": prompt,
+                    "stream": False,
+                    # Deterministic: the same query should parse the same way
+                    # twice, and this is extraction rather than writing.
+                    "options": {"temperature": 0, "num_predict": 200},
+                },
+            )
+        if response.status_code != 200:
+            print(f"[assistant] ollama returned {response.status_code}")
+            return None
+        return response.json().get("response")
+    except Exception as exc:
+        print(f"[assistant] ollama unavailable: {exc}")
+        return None
+
+
+def _known_people() -> list[dict]:
+    """Named clusters the parser is allowed to resolve a person to."""
+    rows = db_query(
+        """
+        SELECT id AS cluster_id, category, label FROM clusters
+        WHERE label IS NOT NULL AND label <> ''
+        ORDER BY label
+        LIMIT 500
+        """
+    )
+    return [dict(row) for row in rows]
+
+
+async def _parse_query(query: str) -> dict | None:
+    """Facets a local model inferred from `query`, or None to search plainly."""
+    import query_parser
+    from datetime import date as _date
+
+    people = _known_people()
+    raw = await _ollama_generate(
+        query_parser.build_prompt(query, [p["label"] for p in people])
+    )
+    parsed = query_parser.parse_response(raw)
+    if parsed is None:
+        return None
+    return query_parser.to_facets(parsed, people, _date.today())
+
+
+@app.get("/search/parse")
+async def parse_search_query(q: str, user=Depends(get_current_user)):
+    """Show how the local model reads a query, without running the search.
+
+    Useful on its own for debugging, and it is what the web client calls to
+    display "showing videos of Jen from last summer" above the results.
+    """
+    if not q.strip():
+        raise HTTPException(400, "Query required")
+    if not OLLAMA_URL:
+        return {"available": False, "facets": None,
+                "reason": "No local model configured"}
+    facets = await _parse_query(q.strip())
+    return {"available": facets is not None, "facets": facets,
+            "reason": None if facets else "The model could not read that query"}
 
 
 # ── Scenes / Landmarks (cached) ──────────────────────────────────────────────
