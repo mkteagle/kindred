@@ -9,6 +9,7 @@ import sys
 import time
 
 DATA = Path(os.environ.get('KINDRED_WORKER_DATA', '/app/data'))
+SCRIPTS = Path(__file__).resolve().parent
 SOURCE = os.environ.get('KINDRED_IMPORT_SOURCE', '/data/photos/imports/AllPhotos')
 
 
@@ -39,9 +40,9 @@ def run():
         attempt = 0
         while True:
             attempt += 1
-            imported = phase('import', [str(DATA / 'resume_nas_library.py'), SOURCE,
+            imported = phase('import', [str(SCRIPTS / 'resume_nas_library.py'), SOURCE,
                                       '--progress', str(DATA / 'staged-import-progress.json'), '--defer-analysis'])
-            indexed = phase('index', [str(DATA / 'index_nas_library.py')])
+            indexed = phase('index', [str(SCRIPTS / 'index_nas_library.py')])
             if imported == 0 and indexed == 0:
                 status(phase='complete', import_exit=0, index_exit=0, attempts=attempt)
                 return 0

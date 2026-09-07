@@ -77,3 +77,50 @@ A PID file alone is not proof of a live worker. Check Docker's container/process
 state and advancing logs. The worker retries unsuccessful passes after five
 minutes and exits successfully when both passes finish without failures.
 Use `library_status.py` inside the API container to verify final counts.
+
+## Git-based production releases
+
+The NAS Git checkout is `/volume1/docker/Files/kindred-git`. The original
+`/volume1/docker/Files/kindred/deploy/ugreen` directory remains the runtime
+location for `.env`, database files, originals, model caches, and checkpoints.
+Do not copy those data directories into Git.
+
+From an SSH session on the NAS, deploy the current remote main branch with:
+
+```sh
+sudo /volume1/docker/Files/kindred-git/deploy/ugreen/deploy.py deploy
+```
+
+The command fetches Git, fast-forwards the clean NAS checkout, resolves one exact
+commit, creates a clean release worktree, builds commit-tagged API/web images,
+and recreates only Kindred's API, web, and library-worker containers. Database,
+tunnel, Firefox, and other Docker projects are outside the deployment operation.
+Production source bind mounts are removed: the running code comes from the
+image, not a separately copied Python file.
+
+After recreation it checks the running image's Git revision label and container
+health, then tests library counts, gallery loading, and an image preview. A failed
+rollout restores the previous application containers. Normal Docker layer caching
+is retained; source changes still produce a new build and deployment is verified
+against the exact commit. `--no-cache` is not needed for ordinary code updates.
+
+```sh
+# Inspect deployed commit, image IDs, and current container status.
+sudo /volume1/docker/Files/kindred-git/deploy/ugreen/deploy.py status
+
+# Deploy an explicit Git commit or tag.
+sudo /volume1/docker/Files/kindred-git/deploy/ugreen/deploy.py deploy --ref COMMIT_OR_TAG
+
+# Restore the preceding verified release without pulling or building.
+sudo /volume1/docker/Files/kindred-git/deploy/ugreen/deploy.py rollback
+```
+
+Release worktrees, rendered Compose snapshots, and current/previous deployment
+records live under `data/deployments/`. The verified Compose file is copied to
+the UGOS project's existing `docker-compose.yaml` path, so the native app agrees
+with the deployed configuration. No credentials are printed by verification.
+
+A push to GitHub does not itself deploy: run the deployment command after pushing.
+The NAS repository uses public HTTPS reads and does not require GitHub credentials.
+SSH must be enabled in UGOS while connecting; check its automatic shutdown timer
+if port 22 starts refusing connections again.
