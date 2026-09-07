@@ -671,10 +671,52 @@ function PhotoLightboxOverlay({
       {/* ── Side meta panel ─────────────────────────────────── */}
       {infoOpen && (
         <aside className="lb-info-panel">
+          {/* Kind, title and the compact meta block the redesign leads with.
+              What used to be the "when" and "where" sections lives here. */}
+          <div className="lb-info-head">
+            <div>
+              <span className="lb-info-kind">{isVideo ? "Video" : "Photo"}</span>
+              <h3 className="lb-info-title">
+                {currentPhoto?.photo_title || detections?.photo_title || "Untitled"}
+              </h3>
+            </div>
+            <button className="lb-info-close" onClick={onClose} aria-label="Close">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="lb-info-meta">
+            {(metadata?.date_taken || currentPhoto?.date_taken) && (
+              <span>
+                {new Date(metadata?.date_taken || currentPhoto?.date_taken || "").toLocaleString("en-GB", {
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }).replace(",", " ·")}
+              </span>
+            )}
+            {metadata?.location_name && <span>{metadata.location_name}</span>}
+            {metadata?.width && metadata?.height && (
+              <span>
+                {metadata.width} × {metadata.height}
+                {isVideo && currentPhoto?.duration_seconds
+                  ? ` · ${Math.floor(currentPhoto.duration_seconds / 60)}:${String(
+                      Math.round(currentPhoto.duration_seconds % 60),
+                    ).padStart(2, "0")}`
+                  : ""}
+              </span>
+            )}
+          </div>
+
           {/* People */}
           {peopleTags.length > 0 && (
             <section className="lb-info-section">
-              <h4 className="lb-info-label">People</h4>
+              <h4 className="lb-info-label">People here</h4>
               <div className="lb-info-chips">
                 {peopleTags.map((d) => (
                   <span key={d.id} className="lb-person-chip">
@@ -704,31 +746,13 @@ function PhotoLightboxOverlay({
               </section>
             ))}
 
-          {/* When */}
-          {(metadata?.date_taken || currentPhoto?.date_taken) && (
-            <section className="lb-info-section">
-              <h4 className="lb-info-label">When</h4>
-              <p className="lb-info-value">
-                {new Date(metadata?.date_taken || currentPhoto?.date_taken || "").toLocaleDateString("en-US", {
-                  weekday: "long",
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })}
-              </p>
-            </section>
-          )}
-
-          {/* Where */}
-          {metadata?.location_name && (
+          {/* Where — the name is in the meta block above; this is the fix */}
+          {metadata?.latitude != null && metadata?.longitude != null && (
             <section className="lb-info-section">
               <h4 className="lb-info-label">Where</h4>
-              <p className="lb-info-value">{metadata.location_name}</p>
-              {metadata.latitude && metadata.longitude && (
-                <p className="lb-info-coords">
-                  {metadata.latitude.toFixed(4)}, {metadata.longitude.toFixed(4)}
-                </p>
-              )}
+              <p className="lb-info-coords">
+                {metadata.latitude.toFixed(4)}, {metadata.longitude.toFixed(4)}
+              </p>
             </section>
           )}
 
@@ -786,7 +810,7 @@ function PhotoLightboxOverlay({
           {/* Tags */}
           {metadata?.tags && (
             <section className="lb-info-section">
-              <h4 className="lb-info-label">Tags</h4>
+              <h4 className="lb-info-label">Also in view</h4>
               <div className="lb-info-chips">
                 {(Array.isArray(metadata.tags) ? metadata.tags : String(metadata.tags || "").split(","))
                   .map((t: string) => t.trim())
@@ -799,6 +823,17 @@ function PhotoLightboxOverlay({
               </div>
             </section>
           )}
+
+          <div className="lb-info-footer">
+            <button className="lb-info-share" onClick={handleCopyLink}>
+              {copySuccess ? "Link copied" : "Share"}
+            </button>
+            {/* TODO: favourites need somewhere to live — there is no per-user
+                favourite endpoint on the backend yet. */}
+            <button className="lb-info-fav" disabled title="Favourites are not stored yet">
+              Favorite
+            </button>
+          </div>
         </aside>
       )}
 

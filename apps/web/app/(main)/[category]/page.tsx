@@ -6,6 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button, Spinner } from "@/components/ui";
 import { ClusterCard } from "@/components/cluster-card";
+import { KxClusterBrowse } from "@/components/kx/cluster-browse";
 import Link from "next/link";
 import { MergeDialog } from "@/components/dialogs";
 import { ReviewMode } from "@/components/review-mode";
@@ -891,6 +892,10 @@ export default function CategoryPage() {
   const hasClusters = sorted.length > 0;
   const [namedCollapsed, setNamedCollapsed] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  /* The redesigned browse grid is what this route opens on. Labelling,
+     merging and review are a click away behind "Manage" — they are a
+     different job from looking through the library. */
+  const [managing, setManaging] = useState(false);
 
   if (authLoading) {
     return (
@@ -898,6 +903,10 @@ export default function CategoryPage() {
         <Spinner />
       </div>
     );
+  }
+
+  if (!managing) {
+    return <KxClusterBrowse category={activeCategory} onManage={() => setManaging(true)} />;
   }
 
   return (
@@ -976,6 +985,9 @@ export default function CategoryPage() {
                 ? "Tap a card name to label it. Open a card to review the matching photos."
                 : "Detected from the scan model and grouped into reviewable collections."}
             </p>
+            <button className="button ghost small" onClick={() => setManaging(false)}>
+              &larr; Back to browsing
+            </button>
           </div>
           {stats && (
             <div className="summary-note">
