@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,6 +68,13 @@ class MosaicBounds {
         rects[id] = rect
     }
 
+    /**
+     * Drop a tile that has scrolled out of the list.
+     *
+     * Without this a recycled row leaves its last on-screen rectangle behind,
+     * and a sweep over that patch of screen would select whatever used to be
+     * there rather than what is there now.
+     */
     fun forget(id: String) {
         rects.remove(id)
     }
@@ -123,6 +131,7 @@ fun Modifier.mosaicSweep(
  * treatment — a 3dp terracotta outline inset by 3dp, the photo at 78% opacity,
  * and a filled check. Unselected tiles in selection mode show the empty circle.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun PhotoTile(
     tile: MosaicTile,
@@ -138,6 +147,12 @@ fun PhotoTile(
         !selectionActive -> ""
         selected -> ", selected"
         else -> ", not selected"
+    }
+
+    if (bounds != null) {
+        DisposableEffect(bounds, tile.id) {
+            onDispose { bounds.forget(tile.id) }
+        }
     }
 
     Box(

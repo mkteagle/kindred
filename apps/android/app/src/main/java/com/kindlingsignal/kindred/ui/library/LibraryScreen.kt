@@ -1,285 +1,286 @@
 package com.kindlingsignal.kindred.ui.library
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
-import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
-import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material3.Icon
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.kindlingsignal.kindred.data.model.ClusterCategory
-import com.kindlingsignal.kindred.data.model.ClusterSummary
-import com.kindlingsignal.kindred.ui.components.MasonryClusterCard
-import com.kindlingsignal.kindred.ui.theme.KindredColors
+import com.kindlingsignal.kindred.ui.components.KindredDayHeader
+import com.kindlingsignal.kindred.ui.components.KindredEmptyState
+import com.kindlingsignal.kindred.ui.components.KindredFilterChip
+import com.kindlingsignal.kindred.ui.components.KindredIconAction
+import com.kindlingsignal.kindred.ui.components.KindredMenuIcon
+import com.kindlingsignal.kindred.ui.components.KindredOverflowAction
+import com.kindlingsignal.kindred.ui.components.KindredTopAppBar
+import com.kindlingsignal.kindred.ui.components.MosaicTile
+import com.kindlingsignal.kindred.ui.components.SelectionAppBar
+import com.kindlingsignal.kindred.ui.components.SwappableAppBar
+import com.kindlingsignal.kindred.ui.components.mosaicSweep
+import com.kindlingsignal.kindred.ui.components.photoMosaic
+import com.kindlingsignal.kindred.ui.components.rememberMosaicBounds
 import com.kindlingsignal.kindred.ui.theme.KindredShape
+import com.kindlingsignal.kindred.ui.theme.KindredTheme
 import com.kindlingsignal.kindred.ui.theme.KindredType
 
 /**
- * Library screen with search bar, People/Pets/Vehicles chip tabs, stats summary,
- * and masonry grid of ClusterCards.
- * Matches iOS LibraryView.
+ * Screens 2 and 3 — Library, and the select mode it turns into.
+ *
+ * The mosaic runs at 116dp rows with 2x2 and 2x1 spans. Long-pressing a tile
+ * starts selection and swaps the top app bar for the contextual one; dragging
+ * from there sweeps across tiles; long-pressing a day header takes the day.
+ * Every selection change fires a haptic tick.
+ *
+ * The People, Animals and Videos chips push their own screens rather than
+ * filtering in place: the handoff draws each as a full screen with its own back
+ * chevron and title, so a chip that only filtered the mosaic would leave those
+ * screens unreachable.
  */
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun LibraryScreen(
-    onClusterClick: (category: String, clusterId: String) -> Unit = { _, _ -> },
+    onMenuClick: () -> Unit,
+    onOpenPeople: () -> Unit,
+    onOpenAnimals: () -> Unit,
+    onOpenVideos: () -> Unit,
+    onSearchClick: () -> Unit,
+    onPhotoClick: (List<MosaicTile>, Int) -> Unit,
+    snackbarHostState: SnackbarHostState,
     modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val selectedCategory = uiState.selectedCategory
-    var searchQuery by remember { mutableStateOf(TextFieldValue("")) }
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val colors = KindredTheme.colors
+    val haptics = LocalHapticFeedback.current
+    val bounds = rememberMosaicBounds()
+    val listState = rememberLazyListState()
 
-    val allClusters = uiState.clusters
+    fun tick() = haptics.performHapticFeedback(HapticFeedbackType.LongPress)
 
-    val clusters = remember(allClusters, searchQuery.text) {
-        if (searchQuery.text.isEmpty()) allClusters
-        else allClusters.filter {
-            (it.label ?: "").contains(searchQuery.text, ignoreCase = true)
+    // Page as the mosaic nears its end rather than on a "load more" button —
+    // keyset paging means the next page costs the same as the first.
+    val nearEnd by remember {
+        derivedStateOf {
+            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            last >= listState.layoutInfo.totalItemsCount - 4
+        }
+    }
+    LaunchedEffect(listState) {
+        snapshotFlow { nearEnd }.collect { if (it) viewModel.loadMore() }
+    }
+
+    state.snackbar?.let { message ->
+        LaunchedEffect(message) {
+            snackbarHostState.showSnackbar(message)
+            viewModel.dismissSnackbar()
         }
     }
 
-    val stats = uiState.stats
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(KindredColors.Paper)
-            .statusBarsPadding(),
-    ) {
-        // Top bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    Box(modifier = modifier.fillMaxSize()) {
+        PullToRefreshBox(
+            isRefreshing = state.isRefreshing,
+            onRefresh = viewModel::refresh,
+            modifier = Modifier.fillMaxSize(),
         ) {
-            Column {
-                Text(
-                    text = "Library",
-                    style = KindredType.Title,
-                    color = KindredColors.Ash,
-                )
-                val totalDetections = (stats?.people?.detections ?: 0) +
-                        (stats?.pets?.detections ?: 0) +
-                        (stats?.vehicles?.detections ?: 0)
-                val totalPhotos = (stats?.people?.photos ?: 0) +
-                        (stats?.pets?.photos ?: 0) +
-                        (stats?.vehicles?.photos ?: 0)
-                Text(
-                    text = "$totalDetections detections across $totalPhotos photos",
-                    style = KindredType.Meta,
-                    color = KindredColors.Mist,
-                )
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            // Filter button
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(KindredColors.Card)
-                    .border(1.dp, KindredColors.Line, CircleShape)
-                    .clickable { /* TODO: sort filter */ },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.FilterList,
-                    contentDescription = "Filter",
-                    tint = KindredColors.Pine,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
-        }
-
-        // Search bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(top = 6.dp, bottom = 4.dp)
-                .clip(KindredShape.RadiusSM)
-                .background(KindredColors.Card)
-                .border(1.dp, KindredColors.Line, KindredShape.RadiusSM)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Search,
-                contentDescription = null,
-                tint = KindredColors.Mist,
-                modifier = Modifier.size(16.dp),
-            )
-            Box(modifier = Modifier.weight(1f)) {
-                if (searchQuery.text.isEmpty()) {
-                    Text(
-                        text = "Find a named person\u2026",
-                        style = KindredType.Caption,
-                        color = KindredColors.Mist,
-                    )
-                }
-                BasicTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    textStyle = KindredType.Caption.copy(color = KindredColors.Ash),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            if (searchQuery.text.isNotEmpty()) {
-                Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = "Clear",
-                    tint = KindredColors.Mist,
-                    modifier = Modifier
-                        .size(16.dp)
-                        .clickable { searchQuery = TextFieldValue("") },
-                )
-            }
-        }
-
-        // Chip filter row
-        Row(
-            modifier = Modifier
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            ClusterCategory.entries.forEach { category ->
-                val isActive = selectedCategory == category
-                val groupCount = when (category) {
-                    ClusterCategory.PEOPLE -> stats?.people?.groups
-                    ClusterCategory.PETS -> stats?.pets?.groups
-                    ClusterCategory.VEHICLES -> stats?.vehicles?.groups
-                } ?: 0
-
-                CategoryChip(
-                    label = category.displayName,
-                    count = groupCount,
-                    isActive = isActive,
-                    onClick = { viewModel.selectCategory(category) },
-                )
-            }
-        }
-
-        // Masonry grid
-        if (clusters.isEmpty()) {
-            // Empty state
-            Box(
+            LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(32.dp),
-                contentAlignment = Alignment.Center,
+                    .mosaicSweep(
+                        bounds = bounds,
+                        enabled = true,
+                        onSweepStart = { id ->
+                            if (!state.selectionActive) viewModel.startSelection(id)
+                            else viewModel.addToSelection(id)
+                            tick()
+                        },
+                        onSweep = { id ->
+                            viewModel.addToSelection(id)
+                            tick()
+                        },
+                    ),
+                contentPadding = contentPadding,
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    Text(
-                        text = if (searchQuery.text.isNotEmpty()) "No matches"
-                        else "No ${selectedCategory.displayName.lowercase()} yet",
-                        style = KindredType.H3,
-                        color = KindredColors.Ash,
-                    )
-                    Text(
-                        text = if (searchQuery.text.isNotEmpty()) "Try a different name."
-                        else "Sync your library to get started.",
-                        style = KindredType.Body,
-                        color = KindredColors.Mist,
-                    )
-                }
-            }
-        } else {
-            val heights = listOf(160, 120, 140, 170, 130, 150)
-
-            LazyVerticalStaggeredGrid(
-                columns = StaggeredGridCells.Fixed(2),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 14.dp),
-                contentPadding = PaddingValues(bottom = 120.dp),
-                verticalItemSpacing = 10.dp,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items(clusters, key = { it.id }) { cluster ->
-                    val index = clusters.indexOf(cluster)
-                    MasonryClusterCard(
-                        cluster = cluster,
-                        imageHeight = heights[index % heights.size].dp,
-                        modifier = Modifier.clickable {
-                            onClusterClick(selectedCategory.apiName, cluster.id)
+                item("bar") {
+                    SwappableAppBar(
+                        selectionActive = state.selectionActive,
+                        standard = {
+                            KindredTopAppBar(
+                                title = "Library",
+                                navigationIcon = KindredMenuIcon,
+                                navigationLabel = "Open navigation menu",
+                                onNavigationClick = onMenuClick,
+                            ) {
+                                KindredIconAction(
+                                    icon = Icons.Outlined.Search,
+                                    contentDescription = "Search photos",
+                                    onClick = onSearchClick,
+                                )
+                                KindredOverflowAction(onClick = { })
+                            }
+                        },
+                        contextual = {
+                            SelectionAppBar(
+                                count = state.selectedCount,
+                                onClose = viewModel::clearSelection,
+                                onShare = viewModel::shareSelection,
+                                onFavorite = viewModel::favoriteSelection,
+                                onDelete = viewModel::deleteSelection,
+                                onOverflow = { },
+                            )
                         },
                     )
                 }
+
+                item("chips") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        KindredFilterChip("All", selected = true, onClick = { })
+                        KindredFilterChip("People", selected = false, onClick = onOpenPeople)
+                        KindredFilterChip("Animals", selected = false, onClick = onOpenAnimals)
+                        KindredFilterChip("Videos", selected = false, onClick = onOpenVideos)
+                    }
+                }
+
+                item("chips-gap") { Spacer(Modifier.height(10.dp)) }
+
+                if (state.days.isEmpty()) {
+                    item("empty") {
+                        KindredEmptyState(
+                            title = if (state.isLoading) "Opening the library" else "Nothing in the library yet",
+                            body = state.error
+                                ?: "Photos land here once they are on your server.",
+                        )
+                    }
+                }
+
+                state.days.forEach { day ->
+                    item("header-${day.key}") {
+                        val fullySelected = state.selection != null &&
+                            day.tiles.isNotEmpty() && day.tiles.all { it.id in state.selection!! }
+
+                        KindredDayHeader(
+                            title = day.title,
+                            subtitle = null,
+                            modifier = Modifier
+                                .combinedClickable(
+                                    onClick = { },
+                                    onLongClick = {
+                                        viewModel.selectDay(day.key)
+                                        tick()
+                                    },
+                                )
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                        ) {
+                            if (fullySelected) {
+                                Text(
+                                    text = "All ${day.tiles.size} selected",
+                                    style = KindredType.ButtonSmall,
+                                    color = colors.onAccentInk,
+                                    modifier = Modifier
+                                        .clip(KindredShape.Chip)
+                                        .background(colors.terracotta)
+                                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                                )
+                            } else {
+                                Text(
+                                    text = "SELECT ALL ${day.tiles.size}",
+                                    style = KindredType.MetaSmall,
+                                    color = colors.terracotta,
+                                    modifier = Modifier
+                                        .clip(KindredShape.Chip)
+                                        .clickable(role = Role.Button) {
+                                            viewModel.selectDay(day.key)
+                                            tick()
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                        .semantics {
+                                            contentDescription =
+                                                "Select all ${day.tiles.size} photos from ${day.title}"
+                                        },
+                                )
+                            }
+                        }
+                    }
+
+                    photoMosaic(
+                        tiles = day.tiles,
+                        keyPrefix = "lib-${day.key}",
+                        rowHeight = 116.dp,
+                        selectionActive = state.selectionActive,
+                        selectedIds = state.selection.orEmpty(),
+                        bounds = bounds,
+                        onTileClick = { tile ->
+                            if (state.selectionActive) {
+                                viewModel.toggle(tile.id)
+                                tick()
+                            } else {
+                                val all = state.allTiles
+                                onPhotoClick(all, all.indexOf(tile))
+                            }
+                        },
+                        onTileLongClick = { tile ->
+                            viewModel.startSelection(tile.id)
+                            tick()
+                        },
+                    )
+
+                    item("day-gap-${day.key}") { Spacer(Modifier.height(14.dp)) }
+                }
+
+                if (state.selectionActive) {
+                    item("hint") {
+                        Text(
+                            text = "Long-press to start · drag across tiles to sweep · " +
+                                "long-press the day header to take the whole day",
+                            style = KindredType.MetaSmall,
+                            color = colors.inkMeta,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        )
+                    }
+                }
+
+                item("tail") { Spacer(Modifier.height(120.dp)) }
             }
         }
-    }
-}
-
-/**
- * Category chip -- active state uses Ash background, inactive uses Card.
- * Matches iOS KindredChip.
- */
-@Composable
-private fun CategoryChip(
-    label: String,
-    count: Int,
-    isActive: Boolean,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .clip(KindredShape.RadiusSM)
-            .background(if (isActive) KindredColors.Ash else KindredColors.Card)
-            .border(
-                1.dp,
-                if (isActive) KindredColors.Ash else KindredColors.Line,
-                KindredShape.RadiusSM,
-            )
-            .clickable { onClick() }
-            .padding(horizontal = 13.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-    ) {
-        Text(
-            text = label,
-            style = KindredType.body(13, androidx.compose.ui.text.font.FontWeight.Bold),
-            color = if (isActive) KindredColors.Paper else KindredColors.Pine,
-        )
-
-        Text(
-            text = "$count",
-            style = KindredType.mono(10),
-            color = if (isActive) KindredColors.Gold else KindredColors.Pine,
-            modifier = Modifier
-                .clip(RoundedCornerShape(999.dp))
-                .background(
-                    if (isActive) KindredColors.Paper.copy(alpha = 0.18f)
-                    else KindredColors.Forest.copy(alpha = 0.1f)
-                )
-                .padding(horizontal = 6.dp, vertical = 2.dp),
-        )
     }
 }
