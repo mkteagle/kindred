@@ -7,6 +7,7 @@ import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
 import { PlayIcon } from "@/components/kx/icons";
 import { useKxUi } from "@/components/kx/ui-state";
 import { useLibraryCounts, useStats } from "@/components/kx/use-library";
+import { KxEmptyLibrary, KxErrorBanner, KxSkeletonGrid } from "@/components/kx/states";
 import { formatDuration, groupByDay, thumbUrl, tileSpan, type LibraryPhoto } from "@/components/kx/photos";
 
 type Page = { photos: LibraryPhoto[]; next_cursor: string | null };
@@ -323,19 +324,15 @@ export default function LibraryPage() {
             />
           )}
 
-          {isPending && <p className="kx-status" role="status">Loading your library…</p>}
-          {!isPending && !error && photos.length === 0 && (
-            <p className="kx-status">No photos have been added yet.</p>
-          )}
+          {isPending && <KxSkeletonGrid count={18} />}
+          {!isPending && !error && photos.length === 0 && <KxEmptyLibrary />}
           {error && (
-            <p className="kx-error" role="alert">
-              {(error as Error).message}
-              <button className="kx-button" onClick={() => void (photos.length ? fetchNextPage() : refetch())}>
-                Retry
-              </button>
-            </p>
+            <KxErrorBanner
+              detail={(error as Error).message}
+              onRetry={() => void (photos.length ? fetchNextPage() : refetch())}
+            />
           )}
-          {isFetchingNextPage && <p className="kx-status" role="status">Loading more…</p>}
+          {isFetchingNextPage && <KxSkeletonGrid count={6} />}
           {/* An explicit control as well as the observer: infinite scroll fails
               silently if the sentinel never enters the viewport. */}
           {hasNextPage && !isFetchingNextPage && (

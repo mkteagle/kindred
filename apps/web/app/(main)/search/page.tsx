@@ -8,6 +8,7 @@ import type { SearchResult } from "@/types";
 import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
 import { SearchIcon } from "@/components/kx/icons";
 import { rememberSearch } from "@/components/kx/search-overlay";
+import { KxEmptyResults, KxSkeletonCards } from "@/components/kx/states";
 
 type Media = "all" | "photo" | "video";
 
@@ -107,6 +108,14 @@ function SearchContent() {
     const qs = params.toString();
     router.replace(qs ? `/search?${qs}` : "/search", { scroll: false });
   }, [params, router]);
+
+  const clearFilters = () => {
+    setMedia("all");
+    setDateFrom("");
+    setDateTo("");
+    setPerson("");
+    setDatesOpen(false);
+  };
 
   const hasFacets = media !== "all" || Boolean(dateFrom || dateTo || person);
   // Free text needs a few characters to be meaningful; facets stand on their
@@ -236,10 +245,16 @@ function SearchContent() {
         )}
       </div>
 
-      {enabled && isLoading && <p className="kx-status" role="status">Searching…</p>}
+      {enabled && isLoading && (
+        <div style={{ marginTop: 34 }}>
+          <KxSkeletonCards count={8} minWidth={210} height={158} />
+        </div>
+      )}
 
       {enabled && !isLoading && results.length === 0 && (
-        <p className="kx-status">Nothing matched. Try widening the dates, or clearing a filter.</p>
+        <div style={{ marginTop: 34 }}>
+          <KxEmptyResults onClear={clearFilters} />
+        </div>
       )}
 
       {!enabled && (

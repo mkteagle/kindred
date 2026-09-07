@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { BACKEND, fmt, toBackendCategory } from "@/lib/constants";
 import type { ClusterSummary, ClustersSummaryResponse } from "@/types";
+import { KxEmpty, KxErrorBanner, KxSkeletonCards } from "./states";
 
 const PAGE_SIZE = 60;
 
@@ -54,7 +55,7 @@ export function KxClusterBrowse({
   const backendCat = toBackendCategory(category);
   const sentinel = useRef<HTMLDivElement>(null);
 
-  const { data, error, isPending, isFetchingNextPage, hasNextPage, fetchNextPage } =
+  const { data, error, isPending, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } =
     useInfiniteQuery<ClustersSummaryResponse>({
       queryKey: ["kx-cluster-browse", backendCat],
       initialPageParam: 0,
@@ -103,14 +104,13 @@ export function KxClusterBrowse({
         </div>
       </div>
 
-      {isPending && <p className="kx-status" role="status">Loading…</p>}
-      {error && (
-        <p className="kx-error" role="alert">
-          {(error as Error).message}
-        </p>
-      )}
+      {isPending && <KxSkeletonCards count={12} minWidth={150} round />}
+      {error && <KxErrorBanner detail={(error as Error).message} onRetry={() => void refetch()} />}
       {!isPending && !error && clusters.length === 0 && (
-        <p className="kx-status">Nothing has been grouped yet. Run a scan and they will appear here.</p>
+        <KxEmpty
+          title="Nothing here yet."
+          body="Nothing has been grouped yet. Run a scan and they will appear here."
+        />
       )}
 
       <div className="kx-peoplegrid">
@@ -150,7 +150,7 @@ export function KxClusterBrowse({
         })}
       </div>
 
-      {isFetchingNextPage && <p className="kx-status" role="status">Loading more…</p>}
+      {isFetchingNextPage && <KxSkeletonCards count={6} minWidth={150} round />}
       {hasNextPage && !isFetchingNextPage && (
         <div className="kx-loadmore">
           <button className="kx-button" onClick={() => void fetchNextPage()}>

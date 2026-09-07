@@ -163,6 +163,57 @@ export const FullscreenIcon = (p: IconProps) => (
   </Stroke>
 );
 
+/** The error banner's glyph — always drawn in `--danger-ink`. */
+export const AlertIcon = (p: IconProps) => (
+  <Stroke size={18} {...p}>
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" y1="8" x2="12" y2="12" />
+    <line x1="12" y1="16" x2="12.01" y2="16" />
+  </Stroke>
+);
+
+export const ChevronDownIcon = (p: IconProps) => (
+  <Stroke size={11} strokeWidth={2.5} {...p}>
+    <polyline points="6 9 12 15 18 9" />
+  </Stroke>
+);
+
+export const PinIcon = (p: IconProps) => (
+  <Stroke size={16} {...p}>
+    <path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+    <path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+  </Stroke>
+);
+
+export const PlusIcon = (p: IconProps) => (
+  <Stroke size={13} strokeWidth={2} {...p}>
+    <line x1="12" y1="5" x2="12" y2="19" />
+    <line x1="5" y1="12" x2="19" y2="12" />
+  </Stroke>
+);
+
+/**
+ * The favourite heart. It is the one glyph that fills: an empty outline until
+ * the member favourites the photo, solid accent after.
+ */
+export function HeartIcon({ size = 15, filled = false }: { size?: number; filled?: boolean }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 00-7.8 7.8L12 21.2l8.8-8.8a5.5 5.5 0 000-7.8z" />
+    </svg>
+  );
+}
+
 /** Solid play triangle — the only filled glyph in the set. */
 export function PlayIcon({ size = 14 }: { size?: number }) {
   return (

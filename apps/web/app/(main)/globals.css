@@ -10887,3 +10887,188 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
   height: 34px;
   padding: 0;
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Redesign — states reference
+   ────────────────────────────────────────────────────────────────────────
+   The four patterns every grid and panel reuses: a grid-shaped skeleton,
+   the empty card, the unreachable-server banner and the in-progress row.
+   A grid never gets a spinner — a spinner discards the layout and then
+   hands it back, which reads as the page rebuilding itself.
+   ══════════════════════════════════════════════════════════════════════ */
+
+@keyframes kx-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .55; }
+}
+
+.kx-skel {
+  display: block;
+  border-radius: 3px;
+  background: var(--fill-2);
+  animation: kx-pulse 1.6s ease-in-out infinite;
+}
+
+/* Every third tile sits a shade brighter so the block reads as photographs
+   of differing weight rather than one flat panel. */
+.kx-skel.deep { background: var(--fill-3); }
+.kx-skel.wide { grid-column: span 2; }
+.kx-skel.big { grid-column: span 2; grid-row: span 2; }
+.kx-skel.card { border-radius: 12px; }
+.kx-skel.row { border-radius: 8px; }
+
+.kx-skel.round {
+  border-radius: 999px;
+  aspect-ratio: 1;
+}
+
+/* The mosaic's own geometry, so nothing shifts when the photos arrive. */
+.kx-skelgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--tile), 1fr));
+  grid-auto-rows: var(--tile);
+  gap: var(--gap);
+}
+
+.kx-skelcards {
+  display: grid;
+  gap: 14px;
+}
+
+.kx-skelrows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Empty ───────────────────────────────────────────────────────────── */
+
+.kx-emptycard {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  min-height: 190px;
+  padding: 26px 22px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--fill-1);
+}
+
+.kx-emptycard strong {
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.kx-emptycard p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-4);
+}
+
+.kx-emptycard .kx-button {
+  align-self: flex-start;
+  margin-top: 4px;
+  text-decoration: none;
+}
+
+/* Two empties side by side on the reference screen; one alone elsewhere. */
+.kx-emptyrow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+/* ── Error banner and progress row ───────────────────────────────────── */
+
+.kx-banner {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 13px 16px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--fill-1);
+}
+
+.kx-banner.danger {
+  border-color: var(--danger-line);
+  background: var(--danger-fill);
+}
+
+.kx-banner.danger > svg { color: var(--danger-ink); flex: none; }
+.kx-banner.danger strong { color: var(--danger-ink); }
+
+.kx-banner-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.kx-banner-copy strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.kx-banner .kx-button {
+  margin-left: auto;
+  flex: none;
+}
+
+@keyframes kx-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* A ring, not a disc: the accent is only the leading arc, so it reads as
+   progress rather than decoration. */
+.kx-spinner-ring {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  border: 2px solid var(--line-3);
+  border-top-color: var(--accent);
+  animation: kx-spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kx-skel { animation: none; }
+  .kx-spinner-ring { animation-duration: 3s; }
+}
+
+/* ── States reference screen ─────────────────────────────────────────── */
+
+.kx-stateset {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.kx-stateset > section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* The sync card's link through to the states reference. */
+.kx-sync-link {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.kx-sync-link:hover { color: var(--amber); }

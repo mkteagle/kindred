@@ -7,6 +7,7 @@ import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
 import { PlayIcon } from "@/components/kx/icons";
 import { useLibraryCounts } from "@/components/kx/use-library";
 import { formatDuration, thumbUrl, type LibraryPhoto } from "@/components/kx/photos";
+import { KxEmpty, KxEmptyResults, KxErrorBanner, KxSkeletonCards } from "@/components/kx/states";
 
 type Page = { photos: LibraryPhoto[]; next_cursor: string | null };
 
@@ -126,14 +127,16 @@ export default function VideosPage() {
         ))}
       </div>
 
-      {isPending && <p className="kx-status" role="status">Loading your videos…</p>}
-      {!isPending && !error && visible.length === 0 && (
-        <p className="kx-status">
-          {videos.length === 0
-            ? "No videos yet. Anything you upload in a video format will appear here."
-            : "Nothing loaded so far matches that filter. Keep scrolling, or clear it."}
-        </p>
-      )}
+      {isPending && <KxSkeletonCards count={8} minWidth={260} height={190} />}
+      {!isPending && !error && visible.length === 0 &&
+        (videos.length === 0 ? (
+          <KxEmpty
+            title="Nothing here yet."
+            body="No videos yet. Anything you upload in a video format will appear here."
+          />
+        ) : (
+          <KxEmptyResults onClear={() => setFilter("all")} />
+        ))}
 
       <div className="kx-videogrid">
         {visible.map((video, index) => {
@@ -161,14 +164,12 @@ export default function VideosPage() {
       </div>
 
       {error && (
-        <p className="kx-error" role="alert">
-          {(error as Error).message}
-          <button className="kx-button" onClick={() => void (videos.length ? fetchNextPage() : refetch())}>
-            Retry
-          </button>
-        </p>
+        <KxErrorBanner
+          detail={(error as Error).message}
+          onRetry={() => void (videos.length ? fetchNextPage() : refetch())}
+        />
       )}
-      {isFetchingNextPage && <p className="kx-status" role="status">Loading more videos…</p>}
+      {isFetchingNextPage && <KxSkeletonCards count={4} minWidth={260} height={190} />}
       {hasNextPage && !isFetchingNextPage && (
         <div className="kx-loadmore">
           <button className="kx-button" onClick={() => void fetchNextPage()}>

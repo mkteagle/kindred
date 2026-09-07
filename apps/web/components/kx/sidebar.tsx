@@ -57,6 +57,11 @@ function SyncCard() {
     <div className="kx-sync">
       <span className="kx-sync-label">Sync</span>
       <span className="kx-sync-caption">{caption}</span>
+      {/* The states reference hangs off the sync card, where someone already
+          looking at whether the library is healthy will find it. */}
+      <Link href="/states" className="kx-sync-link">
+        Empty · loading · error
+      </Link>
       <div className="kx-sync-bar">
         <span style={{ width: running ? "40%" : "100%" }} />
       </div>
