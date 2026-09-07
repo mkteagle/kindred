@@ -23,6 +23,9 @@ export interface LightboxPhoto {
   photo_url?: string;
   photo_title?: string;
   date_taken?: string;
+  /** "video" swaps the still image for a real player. */
+  media_kind?: "photo" | "video";
+  duration_seconds?: number | null;
 }
 
 interface LightboxState {
@@ -443,6 +446,10 @@ function PhotoLightboxOverlay({
 
   const imageUrl = `${BACKEND}/photos/${photoId}/image?size=h`;
   const thumbUrl = currentPhoto?.thumb_url || "";
+  const isVideo = currentPhoto?.media_kind === "video";
+  // Videos stream the NAS original; the poster is the cached frame ffmpeg cut.
+  const videoUrl = `${BACKEND}/photos/${photoId}/local?variant=original`;
+  const posterUrl = `${BACKEND}/photos/${photoId}/local?variant=thumb`;
 
   return (
     <div
@@ -596,8 +603,26 @@ function PhotoLightboxOverlay({
         onTouchMove={handleTouchMove}
         style={{ cursor: zoom > 1 ? (dragging ? "grabbing" : "grab") : "zoom-in" }}
       >
+        {/* Video: a real player, with zoom and pan deliberately left out —
+            they fight the transport controls and mean nothing for playback. */}
+        {isVideo && (
+          <video
+            key={photoId}
+            className="lb-main-video"
+            src={videoUrl}
+            poster={posterUrl}
+            controls
+            autoPlay
+            playsInline
+            preload="metadata"
+            onLoadedData={() => setImageLoaded(true)}
+            onError={() => setImageError(true)}
+            onClick={(e) => e.stopPropagation()}
+          />
+        )}
+
         {/* Blur-up placeholder */}
-        {!imageLoaded && thumbUrl && (
+        {!isVideo && !imageLoaded && thumbUrl && (
           <img
             src={thumbUrl}
             alt=""
@@ -607,6 +632,7 @@ function PhotoLightboxOverlay({
         )}
 
         {/* Full image */}
+        {!isVideo && (
         <img
           ref={imageRef}
           src={`${imageUrl}&retry=${imageAttempt}`}
@@ -621,6 +647,7 @@ function PhotoLightboxOverlay({
             transition: dragging ? "none" : "transform 0.2s ease",
           }}
         />
+        )}
 
         {/* Loading caption */}
         {!imageLoaded && !imageError && (

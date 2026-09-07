@@ -159,7 +159,12 @@ export default function VideosPage() {
             <VideoTile
               key={video.photo_id}
               video={video}
-              onOpen={() => openLightbox(video.photo_id, videos)}
+              onOpen={() =>
+                openLightbox(
+                  video.photo_id,
+                  videos.map((v) => ({ ...v, media_kind: "video" as const })),
+                )
+              }
             />
           ))}
         </div>
@@ -171,6 +176,18 @@ export default function VideosPage() {
           </p>
         )}
         {isFetchingNextPage && <p role="status">Loading more videos…</p>}
+        {/* Explicit control as well as the observer: infinite scroll fails
+            silently if the sentinel never enters the viewport. */}
+        {hasNextPage && !isFetchingNextPage && (
+          <div className="load-more">
+            <button className="button" onClick={() => void fetchNextPage()}>
+              Load more videos
+            </button>
+          </div>
+        )}
+        {!hasNextPage && videos.length > 0 && (
+          <p className="load-more-end">That&rsquo;s everything.</p>
+        )}
         <div ref={sentinel} aria-hidden="true" style={{ height: 1 }} />
       </main>
     </div>

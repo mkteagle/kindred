@@ -62,6 +62,12 @@ export default function GalleryPage() {
     </div>
     {error && <p role="alert">{error.message} <button onClick={() => { void (photos.length ? fetchNextPage() : refetch()); }}>Retry</button></p>}
     {isFetchingNextPage && <p role="status">Loading photos…</p>}
+    {hasNextPage && !isFetchingNextPage && (
+      <div className="load-more">
+        <button className="button" onClick={() => void fetchNextPage()}>Load more photos</button>
+      </div>
+    )}
+    {!hasNextPage && photos.length > 0 && <p className="load-more-end">That&rsquo;s everything.</p>}
     <div ref={sentinel} aria-hidden="true" style={{ height: 1 }} />
   </main></div>;
 }

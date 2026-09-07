@@ -41,6 +41,7 @@ SCAN_SECRET = os.environ.get("SCAN_SECRET", "")
 API_KEY = os.environ.get("API_KEY", "")
 PHOTO_STORAGE_ROOT = os.environ.get("PHOTO_STORAGE_ROOT", "")
 PUBLIC_API_URL = os.environ.get("PUBLIC_API_URL", "https://api.kindredphotos.app").rstrip("/")
+PUBLIC_WEB_URL = os.environ.get("PUBLIC_WEB_URL", "https://kindredphotos.app").rstrip("/")
 
 app = FastAPI(title="Kindred API")
 CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "").split(",") if os.environ.get("CORS_ORIGINS") else [
@@ -57,12 +58,21 @@ from starlette.middleware.base import BaseHTTPMiddleware
 AUTH_SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/app-config",
                    "/auth/setup", "/auth/login", "/auth/register", "/auth/flickr-login"}
 
+# Share links are their own capability: the handlers under this prefix validate
+# the token, its liveness and its scope themselves, and must stay reachable
+# without a session or API key. Nothing else may be added to this prefix.
+PUBLIC_SHARE_PREFIX = "/public/shares/"
+
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: FastAPIRequest, call_next):
         from fastapi.responses import JSONResponse
         path = request.url.path
         # Skip auth for public endpoints
         if path in AUTH_SKIP_PATHS or path.startswith("/docs"):
+            return await call_next(request)
+        if path.startswith(PUBLIC_SHARE_PREFIX):
+            # Deliberately anonymous. A share token grants exactly its own
+            # subject, so no session is established and none is honoured here.
             return await call_next(request)
         if path == "/scan/auto":
             # Optionally extract user (session OR API key) so admin auth can substitute
@@ -461,6 +471,20 @@ class ResumableUploadRequest(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     album_id: str | None = None
+
+class ShareCreateRequest(BaseModel):
+    subject_type: str
+    photo_id: str | None = None
+    album_id: str | None = None
+    title: str = ""
+    password: str | None = None
+    allow_download: bool = False
+    expires_in_days: int | None = None
+
+
+class ShareUnlockRequest(BaseModel):
+    password: str | None = None
+
 
 class AlbumCreateRequest(BaseModel):
     name: str
@@ -4889,6 +4913,288 @@ async def get_album(reference: str, user=Depends(get_current_user)):
         "SELECT COUNT(*) AS n FROM album_photos WHERE album_id = %s", (album["id"],)
     )
     return _album_response(album, int(counts[0]["n"]))
+
+
+# ── Share links ──────────────────────────────────────────────────────────────
+# Anonymous read access to exactly one photo or one album. A share token is a
+# bearer capability, so it is stored only as a hash, it carries its own scope,
+# and its validity is decided on every request rather than exchanged for a
+# session. Nothing here reaches the catalog or search.
+
+SHARE_MAX_ITEMS = 2000
+
+
+def _share_signing_key() -> bytes:
+    import shares
+    return shares.signing_key(API_KEY)
+
+
+def _share_by_token(token: str) -> dict | None:
+    import shares
+    rows = db_query("SELECT * FROM shares WHERE token_hash = %s", (shares.hash_token(token),))
+    return rows[0] if rows else None
+
+
+def _share_photo_ids(share: dict) -> list[str]:
+    """The photos a share covers, in display order."""
+    if share["subject_type"] == "photo":
+        return [str(share["photo_id"])]
+    rows = db_query(
+        """
+        SELECT p.id::text AS photo_id
+        FROM album_photos ap
+        JOIN photos p ON p.id = ap.photo_id
+        LEFT JOIN photo_copies n ON n.photo_id = p.id AND n.provider='nas' AND n.status='available'
+        LEFT JOIN photo_copies f ON f.photo_id = p.id AND f.provider='flickr' AND f.status='available'
+        WHERE ap.album_id = %s AND (n.photo_id IS NOT NULL OR f.photo_id IS NOT NULL)
+        ORDER BY COALESCE(p.taken_at, p.created_at) DESC, p.id DESC
+        LIMIT %s
+        """,
+        (share["album_id"], SHARE_MAX_ITEMS),
+    )
+    return [row["photo_id"] for row in rows]
+
+
+def _share_items(share: dict, token: str, photo_ids: list[str]) -> list[dict]:
+    """Viewer-facing entries, each with a media URL scoped to this share.
+
+    Password-protected shares get a short-lived HMAC on every URL, so an
+    unlocked page can render <img> tags without the password ever travelling
+    in a URL and without minting a session.
+    """
+    import shares as shares_module
+
+    if not photo_ids:
+        return []
+    rows = db_query(
+        """
+        SELECT p.id::text AS photo_id, p.media_kind, p.duration_seconds,
+               COALESCE(NULLIF(p.title,''), p.original_filename, 'Untitled') AS photo_title,
+               COALESCE(p.taken_at, p.created_at) AS date_taken
+        FROM photos p WHERE p.id::text = ANY(%s)
+        """,
+        (photo_ids,),
+    )
+    by_id = {row["photo_id"]: row for row in rows}
+
+    signature_params = ""
+    expires_unix = 0
+    key = None
+    if shares_module.requires_password(share):
+        key = _share_signing_key()
+        expires_unix = int(
+            (datetime.now(timezone.utc)
+             + timedelta(seconds=shares_module.MEDIA_URL_TTL_SECONDS)).timestamp()
+        )
+
+    items = []
+    for photo_id in photo_ids:
+        row = by_id.get(photo_id)
+        if not row:
+            continue
+        base = f"{PUBLIC_API_URL}/public/shares/{token}/media/{photo_id}"
+        if key is not None:
+            signature = shares_module.sign_media(key, str(share["id"]), photo_id, expires_unix)
+            signature_params = f"&exp={expires_unix}&sig={signature}"
+        items.append({
+            "photo_id": photo_id,
+            "photo_title": row["photo_title"],
+            "media_kind": row["media_kind"],
+            "duration_seconds": row["duration_seconds"],
+            "date_taken": str(row["date_taken"]),
+            "thumb_url": f"{base}?variant=thumb{signature_params}",
+            "preview_url": f"{base}?variant=preview{signature_params}",
+            "clip_url": (f"{base}?variant=clip{signature_params}"
+                         if row["media_kind"] == "video" else None),
+        })
+    return items
+
+
+@app.post("/shares")
+def create_share(body: ShareCreateRequest, user=Depends(get_current_user)):
+    """Mint a share link. The token is returned once and never stored in clear."""
+    import shares
+
+    try:
+        photo_id, album_id = shares.normalise_subject(
+            body.subject_type, body.photo_id, body.album_id
+        )
+    except shares.ShareError as exc:
+        raise HTTPException(exc.status, exc.reason)
+
+    if photo_id:
+        if not db_query("SELECT 1 FROM photos WHERE id = %s", (photo_id,)):
+            raise HTTPException(404, "Photo not found")
+        title = body.title.strip()
+    else:
+        album = _album_row(str(album_id))
+        if not album:
+            raise HTTPException(404, "Album not found")
+        title = body.title.strip() or album["name"]
+
+    expires_at = None
+    if body.expires_in_days is not None:
+        if not 1 <= body.expires_in_days <= 3650:
+            raise HTTPException(400, "expires_in_days must be between 1 and 3650")
+        expires_at = datetime.now(timezone.utc) + timedelta(days=body.expires_in_days)
+
+    password_hash = hash_password(body.password) if body.password else None
+
+    token, token_hash = shares.mint_token()
+    rows = db_query(
+        """
+        INSERT INTO shares (token_hash, subject_type, photo_id, album_id, title,
+                            password_hash, allow_download, expires_at, created_by)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING *
+        """,
+        (token_hash, body.subject_type, photo_id, album_id, title, password_hash,
+         body.allow_download, expires_at, user.get("user_id")),
+    )
+    return {**_owner_share_view(rows[0]), "url": f"{PUBLIC_WEB_URL}/s/{token}", "token": token}
+
+
+@app.get("/shares")
+def list_shares(user=Depends(get_current_user)):
+    """Every live share, newest first. Tokens are unrecoverable by design."""
+    rows = db_query(
+        """
+        SELECT s.*, a.name AS album_name
+        FROM shares s
+        LEFT JOIN albums a ON a.id = s.album_id
+        WHERE s.revoked_at IS NULL
+        ORDER BY s.created_at DESC
+        """
+    )
+    return {"shares": [_owner_share_view(row) for row in rows]}
+
+
+@app.delete("/shares/{share_id}")
+def revoke_share(share_id: str, user=Depends(get_current_user)):
+    """Revoke a share. The link stops working immediately and for good."""
+    try:
+        share_id = str(uuid.UUID(share_id))
+    except ValueError:
+        raise HTTPException(400, "Invalid share id")
+    rows = db_query(
+        "UPDATE shares SET revoked_at = now() WHERE id = %s AND revoked_at IS NULL RETURNING id",
+        (share_id,),
+    )
+    if not rows:
+        raise HTTPException(404, "Share not found")
+    return {"status": "revoked", "id": share_id}
+
+
+def _owner_share_view(row: dict) -> dict:
+    """What the household sees. Still never includes the token."""
+    return {
+        "id": str(row["id"]),
+        "subject_type": row["subject_type"],
+        "photo_id": str(row["photo_id"]) if row.get("photo_id") else None,
+        "album_id": str(row["album_id"]) if row.get("album_id") else None,
+        "album_name": row.get("album_name"),
+        "title": row.get("title") or "",
+        "password_protected": bool(row.get("password_hash")),
+        "allow_download": bool(row.get("allow_download")),
+        "expires_at": row["expires_at"].isoformat() if row.get("expires_at") else None,
+        "view_count": int(row.get("view_count") or 0),
+        "last_viewed_at": row["last_viewed_at"].isoformat() if row.get("last_viewed_at") else None,
+        "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
+    }
+
+
+# ── Public share access (no authentication) ──────────────────────────────────
+
+@app.get("/public/shares/{token}")
+def view_share(token: str):
+    """Resolve a share link for an anonymous viewer.
+
+    A revoked, expired or unknown token is a plain 404 — never a message that
+    distinguishes them, which would let a stranger probe for real links.
+    """
+    import shares
+
+    share = _share_by_token(token)
+    try:
+        shares.check_live(share)
+    except shares.ShareError as exc:
+        raise HTTPException(exc.status, exc.reason)
+
+    if shares.requires_password(share):
+        return shares.public_view(share, items=[], unlocked=False)
+
+    _record_share_view(share["id"])
+    items = _share_items(share, token, _share_photo_ids(share))
+    return shares.public_view(share, items=items, unlocked=True)
+
+
+@app.post("/public/shares/{token}/unlock")
+def unlock_share(token: str, body: ShareUnlockRequest):
+    """Exchange a share password for its contents.
+
+    Returns signed, short-lived media URLs rather than a session, so the
+    capability stays scoped to this share and cannot widen.
+    """
+    import shares
+
+    share = _share_by_token(token)
+    try:
+        shares.check_live(share)
+    except shares.ShareError as exc:
+        raise HTTPException(exc.status, exc.reason)
+
+    if not shares.requires_password(share):
+        _record_share_view(share["id"])
+        items = _share_items(share, token, _share_photo_ids(share))
+        return shares.public_view(share, items=items, unlocked=True)
+
+    if not verify_password(body.password or "", share["password_hash"]):
+        raise HTTPException(401, "Incorrect password")
+
+    _record_share_view(share["id"])
+    items = _share_items(share, token, _share_photo_ids(share))
+    return shares.public_view(share, items=items, unlocked=True)
+
+
+@app.get("/public/shares/{token}/media/{photo_id}")
+def share_media(token: str, photo_id: str, variant: str = "thumb",
+                exp: int | None = None, sig: str | None = None):
+    """Serve one photo or video from inside a share.
+
+    Membership is re-checked here against the share's own scope: an id in the
+    request is never trusted, so a valid token for one album cannot be pointed
+    at a photo outside it.
+    """
+    import shares
+
+    share = _share_by_token(token)
+    try:
+        shares.check_live(share)
+    except shares.ShareError as exc:
+        raise HTTPException(exc.status, exc.reason)
+
+    if not shares.scope_allows(share, photo_id, _share_photo_ids(share)):
+        raise HTTPException(404, "Not found in this share")
+
+    if shares.requires_password(share):
+        if not shares.verify_media(_share_signing_key(), str(share["id"]), photo_id,
+                                   int(exp or 0), sig or ""):
+            raise HTTPException(403, "This link has expired; reopen the share")
+
+    if variant == "original" and not share.get("allow_download"):
+        raise HTTPException(403, "Downloads are not enabled for this share")
+
+    return get_local_photo(photo_id, variant, None)
+
+
+def _record_share_view(share_id) -> None:
+    try:
+        db_query(
+            "UPDATE shares SET view_count = view_count + 1, last_viewed_at = now() WHERE id = %s",
+            (share_id,), fetch=False,
+        )
+    except Exception as exc:
+        print(f"[shares] could not record view for {share_id}: {exc}")
 
 
 @app.post("/scan/auto")
