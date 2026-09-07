@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 import {
   Avatar,
@@ -268,9 +269,31 @@ export function LibraryWindow() {
               .catch((e) => setNotice(String(e)));
           }
           break;
+        case "upload":
+          void desktop.openWindow("uploader");
+          break;
+        case "shortcuts":
+          void desktop.openWindow("settings", { pane: "shortcuts" });
+          break;
+        case "share":
+          setNotice(
+            "Sharing a loose selection needs a /shares body that takes photo ids — add the photos to an album first.",
+          );
+          break;
+        case "reveal":
+          if (selectedIds[0]) {
+            void desktop
+              .prepareOriginals([selectedIds[0]])
+              .then((paths) => revealItemInDir(paths[0]))
+              .catch((e) => setNotice(String(e)));
+          }
+          break;
         case "toggle-sidebar":
         case "toggle-inspector":
-          // The library window has no inspector; the viewer handles these.
+        case "step-previous":
+        case "step-next":
+          // The library window has no inspector or filmstrip; the viewer
+          // handles these, and only the focused window acts on a command.
           break;
         default:
           break;
