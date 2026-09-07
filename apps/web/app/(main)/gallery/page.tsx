@@ -42,16 +42,28 @@ export default function LibraryPage() {
 
   const [marquee, setMarquee] = useState<Marquee | null>(null);
   const [activeYear, setActiveYear] = useState<number | null>(null);
-  const [pendingYear, setPendingYear] = useState<number | null>(null);
+  /**
+   * The year the scrubber has seeked to, or null for the whole library.
+   *
+   * The list is newest-first, so seeking is a matter of starting the query at
+   * the end of that year and letting the keyset cursor carry on backwards.
+   * Paging forward until the year turned up — the previous approach — meant
+   * roughly 250 sequential requests to reach 2003 in a library this size,
+   * which reads as the scrubber simply not working.
+   */
+  const [seekYear, setSeekYear] = useState<number | null>(null);
 
   const { data, error, isPending, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } =
     useInfiniteQuery<Page>({
-      queryKey: ["library-mosaic"],
+      queryKey: ["library-mosaic", seekYear],
       initialPageParam: null as string | null,
       queryFn: async ({ pageParam }) => {
         // Keyset paging: page N costs the same as page 1, however deep the scroll.
         const cursor = pageParam ? `&cursor=${encodeURIComponent(pageParam as string)}` : "";
-        const response = await fetch(`${BACKEND}/library/photos?sort=newest&media=all&limit=96${cursor}`);
+        const from = seekYear ? `&date_to=${seekYear}-12-31` : "";
+        const response = await fetch(
+          `${BACKEND}/library/photos?sort=newest&media=all&limit=96${from}${cursor}`,
+        );
         if (!response.ok) throw new Error("The library could not be loaded.");
         return response.json();
       },
@@ -138,19 +150,24 @@ export default function LibraryPage() {
     return () => observer.disconnect();
   }, [sections]);
 
-  // Jumping to a year that has not been paged in yet keeps fetching until the
-  // section appears or the library runs out.
-  useEffect(() => {
-    if (pendingYear === null) return;
-    const target = sections.find((section) => section.year === pendingYear);
-    if (target) {
-      sectionNodes.current.get(target.key)?.scrollIntoView({ block: "start", behavior: "smooth" });
-      setPendingYear(null);
-      return;
-    }
-    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
-    else if (!hasNextPage) setPendingYear(null);
-  }, [pendingYear, sections, hasNextPage, isFetchingNextPage, fetchNextPage]);
+  // Seeking refetches from the chosen year, so the first page already contains
+  // it. Scroll to the top of the new list rather than hunting for a section
+  // that is now the very first thing rendered.
+  const seekToYear = useCallback(
+    (year: number) => {
+      const loaded = sections.find((section) => section.year === year);
+      if (loaded) {
+        // Already on screen — no refetch needed, just go there.
+        sectionNodes.current.get(loaded.key)?.scrollIntoView({ block: "start", behavior: "smooth" });
+        setActiveYear(year);
+        return;
+      }
+      setSeekYear(year);
+      setActiveYear(year);
+      window.scrollTo({ top: 0, behavior: "auto" });
+    },
+    [sections],
+  );
 
   /* ── Selection ───────────────────────────────────────────────────── */
 
@@ -355,12 +372,25 @@ export default function LibraryPage() {
         </div>
 
         <nav className="kx-scrubber" aria-label="Jump to year">
+          {seekYear !== null && (
+            <button
+              className="kx-scrubber-all"
+              onClick={() => {
+                setSeekYear(null);
+                setActiveYear(null);
+                window.scrollTo({ top: 0, behavior: "auto" });
+              }}
+              title="Show the whole library again"
+            >
+              All
+            </button>
+          )}
           {years.map((year) => (
             <button
               key={year}
               className={year === activeYear ? "is-active" : ""}
               aria-current={year === activeYear ? "true" : undefined}
-              onClick={() => setPendingYear(year)}
+              onClick={() => seekToYear(year)}
             >
               {year}
             </button>

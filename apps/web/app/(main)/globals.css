@@ -12288,3 +12288,9 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
 }
 
 .kx-sync-link:hover { color: var(--amber); }
+
+/* "All" resets a year seek back to the whole library. */
+.kx-scrubber-all {
+  font-weight: 700;
+  letter-spacing: .04em;
+}
