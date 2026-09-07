@@ -12,6 +12,8 @@ tsconfig.tsbuildinfo
 # Backend
 backend/data/
 backend/.venv/
+deploy/ugreen/.env
+deploy/ugreen/data/
 __pycache__
 *.pyc
 
