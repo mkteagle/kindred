@@ -28,6 +28,8 @@ class CatalogTests(unittest.TestCase):
             CREATE TABLE photo_copies (photo_id TEXT, provider TEXT, status TEXT,
                 provider_key TEXT, remote_url TEXT);
             CREATE TABLE processed_photos (photo_id TEXT);
+            CREATE TABLE photo_favorites (photo_id TEXT, user_id TEXT, created_at TEXT);
+            INSERT INTO photo_favorites VALUES ('b','u1','2024'),('c','u2','2024');
             INSERT INTO photos (id,legacy_photo_id,media_type,title,original_filename,
                 taken_at,created_at,duration_seconds) VALUES
                 ('a',NULL,'image/heic','A','a.heic','2020-05-01','2024-01-01',NULL),
@@ -119,6 +121,25 @@ class CatalogTests(unittest.TestCase):
                                             min_duration=10)['photos']], ["c"])
         self.assertEqual(
             gallery(self.query, 'newest', 48, media='video', min_duration=60)['photos'], [])
+
+    def test_favourites_are_scoped_to_one_member(self):
+        # Two members favourite different photos; neither sees the other's.
+        self.assertEqual(
+            [r["photo_id"] for r in gallery(self.query, 'newest', 48, favorited_by='u1')['photos']],
+            ["b"])
+        self.assertEqual(
+            [r["photo_id"] for r in gallery(self.query, 'newest', 48, favorited_by='u2')['photos']],
+            ["c"])
+
+    def test_a_member_with_no_favourites_sees_an_empty_list_not_everything(self):
+        self.assertEqual(gallery(self.query, 'newest', 48, favorited_by='nobody')['photos'], [])
+
+    def test_favourites_combine_with_the_media_facet(self):
+        self.assertEqual(
+            gallery(self.query, 'newest', 48, media='video', favorited_by='u1')['photos'], [])
+        self.assertEqual(
+            [r["photo_id"] for r in gallery(self.query, 'newest', 48, media='video',
+                                            favorited_by='u2')['photos']], ["c"])
 
     def test_gallery_parameterizes_every_value_for_psycopg(self):
         query = Mock(return_value=[])

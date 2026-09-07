@@ -5960,6 +5960,73 @@ def get_library_photos(sort: str = "newest",
                    date_from=date_from, date_to=date_to, min_duration=min_duration)
 
 
+@app.get("/favorites")
+def get_favorites(sort: str = "newest",
+                  media: str = Query("all", description="all, photo, or video"),
+                  cursor: str | None = Query(None),
+                  limit: int = Query(48, ge=1, le=100),
+                  user=Depends(get_current_user)):
+    """The signed-in member's favourites, paged like the library mosaic."""
+    from library_api import gallery
+
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(403, "A household account is required for favourites")
+    return gallery(db_query, sort, limit, media=media, cursor=cursor,
+                   favorited_by=user_id)
+
+
+@app.get("/favorites/count")
+def get_favorites_count(user=Depends(get_current_user)):
+    """Count for the sidebar row. The member's own, never a household total."""
+    user_id = user.get("user_id")
+    if not user_id:
+        return {"count": 0}
+    rows = db_query(
+        "SELECT count(*) AS n FROM photo_favorites WHERE user_id = %s", (user_id,)
+    )
+    return {"count": int(rows[0]["n"])}
+
+
+@app.put("/photos/{photo_id}/favorite")
+def add_favorite(photo_id: str, user=Depends(get_current_user)):
+    """Favourite a photo. Idempotent, so a double tap is not an error."""
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(403, "A household account is required for favourites")
+    try:
+        photo_id = str(uuid.UUID(photo_id))
+    except ValueError:
+        raise HTTPException(400, "Invalid photo id")
+    if not db_query("SELECT 1 FROM photos WHERE id = %s", (photo_id,)):
+        raise HTTPException(404, "Photo not found")
+    db_query(
+        """
+        INSERT INTO photo_favorites (photo_id, user_id) VALUES (%s, %s)
+        ON CONFLICT (photo_id, user_id) DO NOTHING
+        """,
+        (photo_id, user_id), fetch=False,
+    )
+    return {"photo_id": photo_id, "favorited": True}
+
+
+@app.delete("/photos/{photo_id}/favorite")
+def remove_favorite(photo_id: str, user=Depends(get_current_user)):
+    """Unfavourite. Also idempotent — removing what is not there is success."""
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(403, "A household account is required for favourites")
+    try:
+        photo_id = str(uuid.UUID(photo_id))
+    except ValueError:
+        raise HTTPException(400, "Invalid photo id")
+    db_query(
+        "DELETE FROM photo_favorites WHERE photo_id = %s AND user_id = %s",
+        (photo_id, user_id), fetch=False,
+    )
+    return {"photo_id": photo_id, "favorited": False}
+
+
 @app.get("/library/years")
 def get_library_years(media: str = Query("all", description="all, photo, or video"),
                       user=Depends(get_current_user)):

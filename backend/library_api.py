@@ -102,7 +102,7 @@ def counts(query):
 
 
 def gallery(query, sort, limit, media="all", cursor=None,
-            date_from=None, date_to=None, min_duration=None):
+            date_from=None, date_to=None, min_duration=None, favorited_by=None):
     """One page of the catalog, ordered by `sort` and filtered by `media`.
 
     Pages by keyset rather than OFFSET: the cursor carries the last row's sort
@@ -113,6 +113,13 @@ def gallery(query, sort, limit, media="all", cursor=None,
         raise HTTPException(400, 'Unsupported gallery sort')
     order_expr, direction = SORTS[sort]
     kind_sql, params = facet_clauses(media, date_from, date_to, min_duration)
+
+    if favorited_by:
+        # Favourites are one member's own, so this is always scoped to a user
+        # rather than being a household-wide flag on the photo.
+        kind_sql += (" AND EXISTS (SELECT 1 FROM photo_favorites pf"
+                     " WHERE pf.photo_id = p.id AND pf.user_id = %s)")
+        params.append(favorited_by)
 
     keyset = "TRUE"
     if cursor:
