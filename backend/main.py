@@ -6177,12 +6177,13 @@ def get_timeline(
 
 def _merge_unindexed_originals(page: list[dict], months: int, media: str, auth_query: str) -> None:
     """Fold NAS originals the catalog does not know about into a timeline page."""
-    indexed = {row["photo_id"] for bucket in page for row in bucket["photos"]}
+    on_page = {row["photo_id"] for bucket in page for row in bucket["photos"]}
     buckets = {bucket["month"]: bucket for bucket in page}
 
+    candidates: dict[str, tuple[Path, datetime, bool]] = {}
     for source in managed_originals(Path(PHOTO_STORAGE_ROOT)):
         photo_id = source.parent.name
-        if photo_id in indexed:
+        if photo_id in on_page or photo_id in candidates:
             continue
         is_video = source.suffix.lower() in VIDEO_EXTENSIONS
         if (media == "photo" and is_video) or (media == "video" and not is_video):
@@ -6192,7 +6193,23 @@ def _merge_unindexed_originals(page: list[dict], months: int, media: str, auth_q
             modified = datetime.fromtimestamp(source.stat().st_mtime, tz=timezone.utc)
         except (ValueError, OSError):
             continue
-        indexed.add(photo_id)
+        candidates[photo_id] = (source, modified, is_video)
+
+    if not candidates:
+        return
+
+    # Missing from this page does not make an original unindexed -- it is
+    # usually just on an older page. Ask the catalog. Otherwise every
+    # catalogued original the page did not happen to include reappears under
+    # its file mtime, which is the import date, so the entire library piles
+    # into the current month and buries the real history.
+    known = {row["photo_id"] for row in db_query(
+        "SELECT id::text AS photo_id FROM photos WHERE id::text = ANY(%s)",
+        (list(candidates),))}
+
+    for photo_id, (source, modified, is_video) in candidates.items():
+        if photo_id in known:
+            continue
         key = modified.strftime("%Y-%m")
         bucket = buckets.get(key)
         if bucket is None:
