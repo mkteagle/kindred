@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 import main
+from storage.local import managed_originals
 
 
 def scalar(sql: str) -> int:
@@ -49,7 +50,7 @@ status = {
         "SELECT count(*) FROM detections WHERE category IN ('pets','vehicles')"
     ),
     "managed_original_files": sum(
-        1 for _ in storage_root.glob("??/*/original.*")
+        1 for _ in managed_originals(storage_root)
     ),
     "thumbnail_files": sum(
         1 for _ in Path("/app/data/thumbnails").glob("*.jpg")

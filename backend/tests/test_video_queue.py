@@ -74,3 +74,10 @@ class VideoTests(unittest.TestCase):
             self.assertEqual(info['codec'], 'h264')
             self.assertLess(info['size'], video_mirror.MAX_BYTES)
             self.assertEqual(source.read_bytes(), before)
+
+    def test_enqueue_existing_job_does_not_acquire_worker_lock(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, KINDRED_WORKER_DATA=directory):
+            photo_id = str(uuid.uuid4())
+            video_queue.enqueue(photo_id, Path('/durable.mov'), {'title': 'T'}, 'private')
+            with patch.object(video_queue.fcntl, 'flock', side_effect=AssertionError('would block')):
+                video_queue.enqueue(photo_id, Path('/durable.mov'), {}, 'private')

@@ -20,7 +20,9 @@ def managed_original(photo_id: str) -> Path | None:
     except (ValueError, TypeError):
         return None
     root = Path(os.environ["PHOTO_STORAGE_ROOT"])
-    matches = list(root.glob(f"{photo_id[:2]}/{photo_id}/original.*"))
+    matches = list(root.glob(f"videos/{photo_id[:2]}/{photo_id}/original.*"))
+    if not matches:
+        matches = list(root.glob(f"{photo_id[:2]}/{photo_id}/original.*"))
     return matches[0] if len(matches) == 1 else None
 
 

@@ -25,6 +25,7 @@ from pgvector.psycopg2 import register_vector
 from datetime import datetime, timedelta, timezone
 from db_migrations import apply_migrations
 from storage import LocalStorageProvider
+from storage.local import managed_originals
 from backup_status import build_backup_status_items
 from resumable_uploads import ChunkAppendError, append_chunk
 from review_account import build_review_auth_response, review_credentials_match
@@ -5289,7 +5290,7 @@ def get_timeline(request: FastAPIRequest):
     # This bounded layout excludes import staging and other arbitrary files.
     if PHOTO_STORAGE_ROOT:
         storage_root = Path(PHOTO_STORAGE_ROOT)
-        for source in storage_root.glob("??/*/original.*"):
+        for source in managed_originals(storage_root):
             photo_id = source.parent.name
             if photo_id in indexed_photo_ids:
                 continue

@@ -23,10 +23,17 @@ videos. The library worker completing does not mean the video queue is complete.
 
 Current scope is the NAS checkpoint importer. Browser/resumable API upload paths
 still need explicit queue response/UI contracts and album propagation for every
-part. A dedicated original-video directory migration is intentionally separate:
-existing provider paths, album hardlinks and checkpoint recovery must be migrated
-together, with checksums and a rollback plan. No existing originals are moved by
-this change. YouTube uploads are not enabled.
+part. New managed videos are stored under `originals/videos/xx/UUID/original.ext`.
+For existing managed originals, run `python /app/migrate_video_originals.py` to
+verify checksums and preview destinations, then repeat with `--apply`. The script
+creates a same-filesystem hardlink at the new path and atomically replaces the
+old path with a relative symlink before updating the catalog. Every interruption
+leaves the original readable, and rerunning completes interrupted database updates.
+Existing album links and queued jobs remain readable through the legacy alias.
+Checkpoint source paths in the staged export are unchanged. File counts and gallery
+fallbacks include the new layout without counting legacy aliases twice. Keep aliases
+until all external consumers have migrated; never delete staged sources as part of
+this operation. No migration runs automatically during deployment. YouTube uploads are not enabled.
 
 As with other Flickr uploads, a process crash after Flickr accepts a part but
 before its receipt reaches disk can leave an unrecorded remote copy. Such an

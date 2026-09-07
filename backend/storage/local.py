@@ -12,6 +12,22 @@ from .base import StoredPhoto, StorageProvider
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
+VIDEO_EXTENSIONS = {'.mp4', '.mov', '.m4v', '.m4p', '.avi', '.wmv', '.mpeg',
+                    '.mpg', '.3gp', '.m2ts', '.ogg', '.ogv'}
+
+
+def managed_originals(root):
+    """Bounded catalog fallback, including videos without counting legacy aliases."""
+    seen = set()
+    for pattern in ('videos/??/*/original.*', '??/*/original.*'):
+        for path in Path(root).glob(pattern):
+            resolved = path.resolve()
+            if resolved in seen or not path.is_file():
+                continue
+            seen.add(resolved)
+            yield path
+
+
 class LocalStorageProvider(StorageProvider):
     name = "nas"
 
@@ -30,7 +46,8 @@ class LocalStorageProvider(StorageProvider):
         stable_id = str(uuid.UUID(photo_id))
         source = Path(source)
         digest = sha256()
-        destination_dir = self.root / stable_id[:2] / stable_id
+        base = self.root / 'videos' if self._safe_suffix(filename) in VIDEO_EXTENSIONS else self.root
+        destination_dir = base / stable_id[:2] / stable_id
         destination_dir.mkdir(parents=True, exist_ok=True)
         destination = destination_dir / f"original{self._safe_suffix(filename)}"
 
@@ -113,7 +130,7 @@ class LocalStorageProvider(StorageProvider):
         attempt = 1
         while True:
             if candidate.is_symlink():
-                if os.readlink(candidate) == relative_target:
+                if os.readlink(candidate) == relative_target or candidate.resolve() == target:
                     return candidate.relative_to(self.root).as_posix()
             elif not candidate.exists():
                 # Symlink atomically so a concurrent upload of the same name
