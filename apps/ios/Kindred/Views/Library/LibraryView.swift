@@ -139,7 +139,7 @@ struct LibraryView: View {
                         .padding(.vertical, 24)
                 }
 
-                Color.clear.frame(height: gallery.isSelecting ? 110 : 100)
+                Color.clear.frame(height: gallery.isSelecting ? 110 : 32)
             }
         }
         .coordinateSpace(name: "library")

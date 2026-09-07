@@ -46,11 +46,12 @@ struct HomeView: View {
                     latestDaySection
                         .kindredEntry(hasAppeared, delay: 0.18)
 
-                    Color.clear.frame(height: isIPad ? 32 : 110)
+                    Color.clear.frame(height: 32)
                 }
                 .frame(maxWidth: isIPad ? 900 : .infinity, alignment: .leading)
                 .frame(maxWidth: .infinity)
             }
+            .accessibilityIdentifier("home.scrollView")
             .background(KindredTheme.bg.ignoresSafeArea())
             .navigationBarHidden(true)
             .fullScreenCover(item: $viewing) { photo in

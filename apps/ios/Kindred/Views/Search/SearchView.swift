@@ -70,7 +70,7 @@ struct SearchView: View {
                         resultGrid
                     }
 
-                    Color.clear.frame(height: 100)
+                    Color.clear.frame(height: 32)
                 }
             }
             .coordinateSpace(name: "search")

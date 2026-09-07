@@ -16,32 +16,39 @@ struct ContentView: View {
     // MARK: - iPhone
 
     private var iPhoneLayout: some View {
-        ZStack(alignment: .bottom) {
+        ZStack {
             KindredTheme.bg.ignoresSafeArea()
 
-            // Kept mounted rather than switched, so scroll position and a
-            // half-typed search survive a trip to another tab.
-            HomeView(onNavigateToTab: { tab in
-                withAnimation(KindredTheme.ease(0.16)) { selectedTab = tab }
-            })
-            .opacity(selectedTab == 0 ? 1 : 0)
-            .allowsHitTesting(selectedTab == 0)
+            VStack(spacing: 0) {
+                ZStack {
+                    // Kept mounted rather than switched, so scroll position and a
+                    // half-typed search survive a trip to another tab.
+                    HomeView(onNavigateToTab: { tab in
+                        withAnimation(KindredTheme.ease(0.16)) { selectedTab = tab }
+                    })
+                    .opacity(selectedTab == 0 ? 1 : 0)
+                    .allowsHitTesting(selectedTab == 0)
 
-            LibraryView()
-                .opacity(selectedTab == 1 ? 1 : 0)
-                .allowsHitTesting(selectedTab == 1)
+                    LibraryView()
+                        .opacity(selectedTab == 1 ? 1 : 0)
+                        .allowsHitTesting(selectedTab == 1)
 
-            SearchView()
-                .opacity(selectedTab == 2 ? 1 : 0)
-                .allowsHitTesting(selectedTab == 2)
+                    SearchView()
+                        .opacity(selectedTab == 2 ? 1 : 0)
+                        .allowsHitTesting(selectedTab == 2)
 
-            SettingsView()
-                .opacity(selectedTab == 3 ? 1 : 0)
-                .allowsHitTesting(selectedTab == 3)
+                    SettingsView()
+                        .opacity(selectedTab == 3 ? 1 : 0)
+                        .allowsHitTesting(selectedTab == 3)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Keep scrolling content inside its own row, above the bar.
+                .clipped()
 
-            if !KindredChrome.shared.hidesTabBar {
-                KindredTabBar(selectedTab: $selectedTab)
-                    .transition(.move(edge: .bottom))
+                if !KindredChrome.shared.hidesTabBar {
+                    KindredTabBar(selectedTab: $selectedTab)
+                        .transition(.move(edge: .bottom))
+                }
             }
         }
         .ignoresSafeArea(.keyboard)

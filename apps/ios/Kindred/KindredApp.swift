@@ -21,6 +21,12 @@ struct KindredApp: App {
 
     init() {
         configureAppearance()
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-test-home") {
+            DemoDataProvider.shared.isActive = true
+            return
+        }
+        #endif
         Analytics.configure()
         SyncManager.shared.configure()
         Task {
@@ -114,6 +120,19 @@ struct RootView: View {
 
     @ViewBuilder
     private var content: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-test-home") {
+            ContentView()
+        } else {
+            sessionContent
+        }
+        #else
+        sessionContent
+        #endif
+    }
+
+    @ViewBuilder
+    private var sessionContent: some View {
         if session.isAuthenticated {
             ContentView()
                 .task {

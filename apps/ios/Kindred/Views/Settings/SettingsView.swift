@@ -334,7 +334,7 @@ struct SettingsView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 24)
-        .padding(.bottom, isIPad ? 32 : 110)
+        .padding(.bottom, 32)
         .accessibilityElement(children: .combine)
     }
 

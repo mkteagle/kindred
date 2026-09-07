@@ -18,6 +18,39 @@ final class KindredScreenshots: XCTestCase {
         super.tearDown()
     }
 
+    func testHomeScrollsAndPreservesPositionAcrossTabs() {
+        app.terminate()
+        app.launchArguments = ["--ui-test-home"]
+        app.launch()
+
+        let home = app.buttons["Home"]
+        XCTAssertTrue(home.waitForExistence(timeout: 5))
+        home.tap()
+        let scrollView = app.scrollViews["home.scrollView"]
+        XCTAssertTrue(scrollView.waitForExistence(timeout: 5))
+        XCTAssertLessThanOrEqual(scrollView.frame.maxY, home.frame.minY,
+                                 "Home content must end above the bottom navigation")
+        let greeting = app.staticTexts["A quieter view\nof your week."]
+        XCTAssertTrue(greeting.waitForExistence(timeout: 5))
+        let originalY = greeting.frame.minY
+        let window = app.windows.firstMatch
+        let start = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.80))
+        let end = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
+        start.press(forDuration: 0.05, thenDragTo: end)
+        let moved = NSPredicate { _, _ in greeting.frame.minY < originalY - 5 }
+        expectation(for: moved, evaluatedWith: nil)
+        waitForExpectations(timeout: 3)
+        let scrolledY = greeting.frame.minY
+
+        app.buttons["Settings"].tap()
+        home.tap()
+        XCTAssertEqual(greeting.frame.minY, scrolledY, accuracy: 5)
+        end.press(forDuration: 0.05, thenDragTo: start)
+        let returned = NSPredicate { _, _ in greeting.frame.minY > scrolledY + 5 }
+        expectation(for: returned, evaluatedWith: nil)
+        waitForExpectations(timeout: 3)
+    }
+
     func testCaptureAllScreenshots() {
         // ── 10. Onboarding ──────────────────────────────────
         let getStarted = app.buttons["Get started"]
