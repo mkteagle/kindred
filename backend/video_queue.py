@@ -44,7 +44,7 @@ async def process(main, path):
         except BlockingIOError:
             return
         job = json.loads(path.read_text())
-        if job['status'] == 'done' or job.get('next_attempt', 0) > time.time():
+        if job['status'] in ('done', 'failed') or job.get('next_attempt', 0) > time.time():
             return
         job.update(status='running', attempts=job['attempts'] + 1)
         video_mirror.save(path, job)
@@ -59,7 +59,7 @@ async def process(main, path):
                 main._set_replication_status(replication_id, 'running')
                 metadata = job['metadata']
                 flickr_id = await video_mirror.mirror(main, photo_id, Path(job['source']),
-                    metadata['title'], metadata['description'], credentials, job['privacy'])
+                    metadata['title'], metadata['description'], credentials, job['privacy'], metadata=metadata)
                 # Only the complete set counts as a Flickr mirror.
                 main._record_flickr_copy(photo_id, flickr_id, credentials.get('user_id', ''))
                 main._set_replication_status(replication_id, 'done')
@@ -67,9 +67,11 @@ async def process(main, path):
             job.update(status='done', error=None)
         except Exception as exc:
             error = f'{type(exc).__name__}: {exc}'[:1000]
-            job.update(status='retry', error=error, next_attempt=time.time() + 300)
+            state = ('failed' if isinstance(exc, video_mirror.VideoRejected) else
+                     'processing' if isinstance(exc, video_mirror.VideoProcessing) else 'retry')
+            job.update(status=state, error=error, next_attempt=time.time() + 300)
             if replication_id is not None:
-                main._set_replication_status(replication_id, 'retry', error)
+                main._set_replication_status(replication_id, 'failed' if state == 'failed' else 'retry', error)
             print(f"[video] {job['photo_id']}: {error}", flush=True)
         video_mirror.save(path, job)
 

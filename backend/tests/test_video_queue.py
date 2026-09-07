@@ -33,7 +33,7 @@ class VideoTests(unittest.TestCase):
                 destination.write_bytes(b'derivative')
             main = Mock()
             main._upload_to_flickr = AsyncMock(side_effect=['first', RuntimeError('network')])
-            with patch.object(video_mirror, 'probe', side_effect=probe), patch.object(video_mirror, 'convert', side_effect=convert):
+            with patch.object(video_mirror, 'probe', side_effect=probe), patch.object(video_mirror, 'convert', side_effect=convert), patch.object(video_mirror, 'remote_status', AsyncMock(return_value='ready')):
                 with self.assertRaises(RuntimeError):
                     asyncio.run(video_mirror.mirror(main, 'test', source, 'title', '', {}, 'private'))
                 manifest = json.loads((Path(directory) / 'video-mirrors/test/manifest.json').read_text())
@@ -81,3 +81,53 @@ class VideoTests(unittest.TestCase):
             video_queue.enqueue(photo_id, Path('/durable.mov'), {'title': 'T'}, 'private')
             with patch.object(video_queue.fcntl, 'flock', side_effect=AssertionError('would block')):
                 video_queue.enqueue(photo_id, Path('/durable.mov'), {}, 'private')
+
+    def test_processing_parts_wait_without_reupload_and_metadata_reaches_every_part(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'manifest.json'
+            manifest = {'complete': False, 'parts': {
+                '1': {'flickr_id': 'one', 'start': 0},
+                '2': {'flickr_id': 'two', 'start': 540}}}
+            main = Mock()
+            main._flickr_set_dates = AsyncMock()
+            main._flickr_set_location = AsyncMock()
+            metadata = {'taken_at_unix': 1000, 'latitude': 1, 'longitude': 2}
+            with patch.object(video_mirror, 'remote_status', AsyncMock(side_effect=['ready', 'processing'])):
+                with self.assertRaises(video_mirror.VideoProcessing):
+                    asyncio.run(video_mirror.verify_parts(main, path, manifest, {}, metadata))
+            self.assertFalse(manifest['complete'])
+            self.assertEqual(manifest['parts']['2']['flickr_id'], 'two')
+            with patch.object(video_mirror, 'remote_status', AsyncMock(return_value='ready')):
+                asyncio.run(video_mirror.verify_parts(main, path, manifest, {}, metadata))
+            self.assertEqual(main._flickr_set_dates.await_count, 2)
+            main._flickr_set_dates.assert_any_await('one', 1000, {})
+            main._flickr_set_dates.assert_any_await('two', 1540, {})
+            self.assertEqual(main._flickr_set_location.await_count, 2)
+            main._upload_to_flickr.assert_not_called()
+
+    def test_remote_failure_preserves_receipt_and_blocks_completion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'manifest.json'
+            manifest = {'complete': False, 'parts': {'1': {'flickr_id': 'one', 'start': 0}}}
+            with patch.object(video_mirror, 'remote_status', AsyncMock(return_value='failed')):
+                with self.assertRaises(video_mirror.VideoRejected):
+                    asyncio.run(video_mirror.verify_parts(Mock(), path, manifest, {}, {}))
+            saved = json.loads(path.read_text())
+            self.assertFalse(saved['complete'])
+            self.assertEqual(saved['parts']['1']['flickr_id'], 'one')
+            self.assertEqual(saved['parts']['1']['remote_status'], 'failed')
+
+    def test_queue_distinguishes_remote_processing_from_rejected_video(self):
+        for exception, expected in [(video_mirror.VideoProcessing('pending'), 'processing'),
+                                    (video_mirror.VideoRejected('rejected'), 'failed')]:
+            with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, KINDRED_WORKER_DATA=directory):
+                photo_id = str(uuid.uuid4())
+                video_queue.enqueue(photo_id, Path('/original.mov'), {'title': 'T', 'description': ''}, 'private')
+                path = video_queue.queue_root() / photo_id / 'job.json'
+                main = Mock()
+                main._existing_flickr_copy.return_value = None
+                main.get_flickr_credentials.return_value = {'user_id': 'owner'}
+                with patch.object(video_mirror, 'mirror', AsyncMock(side_effect=exception)):
+                    asyncio.run(video_queue.process(main, path))
+                self.assertEqual(json.loads(path.read_text())['status'], expected)
+                main._record_flickr_copy.assert_not_called()

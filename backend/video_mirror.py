@@ -64,7 +64,64 @@ def convert(source: Path, destination: Path, start: float, duration: float):
         temporary.unlink(missing_ok=True)
 
 
-async def mirror(main, photo_id, source, title, description, creds, privacy):
+class VideoProcessing(RuntimeError):
+    """Accepted upload is still being transcoded remotely."""
+
+
+class VideoRejected(RuntimeError):
+    """Flickr rejected a recorded upload; preserve receipts for investigation."""
+
+
+async def remote_status(main, flickr_id, creds):
+    import urllib.parse
+    import httpx
+    url = 'https://api.flickr.com/services/rest'
+    params = {'method': 'flickr.photos.getInfo', 'photo_id': flickr_id,
+              'format': 'json', 'nojsoncallback': '1'}
+    signed = main._flickr_oauth_sign(url, params, creds, method='GET')
+    authorization = 'OAuth ' + ', '.join(
+        f'{key}="{urllib.parse.quote(str(value), "")}"' for key, value in signed.items())
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.get(url, params=params, headers={'Authorization': authorization})
+    response.raise_for_status()
+    data = response.json()
+    if data.get('stat') != 'ok':
+        raise RuntimeError(f"Flickr getInfo {flickr_id}: {data.get('message', 'unknown error')}")
+    video = data.get('photo', {}).get('video', {})
+    if str(video.get('failed')) == '1':
+        return 'failed'
+    if (str(video.get('ready')) == '1' and str(video.get('pending')) == '0'
+            and str(video.get('failed')) == '0'):
+        return 'ready'
+    return 'processing'
+
+
+async def verify_parts(main, manifest_path, manifest, creds, metadata):
+    pending, failed = [], []
+    for number, part in manifest['parts'].items():
+        state = await remote_status(main, part['flickr_id'], creds)
+        part['remote_status'] = state
+        save(manifest_path, manifest)
+        if state == 'failed':
+            failed.append(number)
+        elif state != 'ready':
+            pending.append(number)
+        elif not part.get('metadata_applied'):
+            if metadata.get('taken_at_unix'):
+                await main._flickr_set_dates(part['flickr_id'],
+                    int(metadata['taken_at_unix']) + int(part['start']), creds)
+            if metadata.get('latitude') is not None and metadata.get('longitude') is not None:
+                await main._flickr_set_location(part['flickr_id'], float(metadata['latitude']),
+                                                float(metadata['longitude']), creds)
+            part['metadata_applied'] = True
+            save(manifest_path, manifest)
+    if failed:
+        raise VideoRejected('Flickr processing failed for parts ' + ', '.join(failed))
+    if pending:
+        raise VideoProcessing('Flickr is still processing parts ' + ', '.join(pending))
+
+
+async def mirror(main, photo_id, source, title, description, creds, privacy, metadata=None):
     """Resume numbered uploads and return a copy ID only after ALL parts exist."""
     source = Path(source)
     info = await asyncio.to_thread(probe, source)
@@ -77,6 +134,7 @@ async def mirror(main, photo_id, source, title, description, creds, privacy):
     if manifest['fingerprint'] != fingerprint:
         raise ValueError('Original changed since video mirroring began; refusing to mix versions')
     parts = part_plan(info['duration'])
+    manifest['complete'] = False
     manifest['duration'] = info['duration']
     manifest['part_count'] = len(parts)
     save(manifest_path, manifest)
@@ -102,6 +160,7 @@ async def mirror(main, photo_id, source, title, description, creds, privacy):
         save(manifest_path, manifest)
         destination.unlink(missing_ok=True)
         print(f'[video] {source.name}: uploaded part {number}/{len(parts)} as {flickr_id}', flush=True)
+    await verify_parts(main, manifest_path, manifest, creds, metadata or {})
     manifest['complete'] = True
     save(manifest_path, manifest)
     return manifest['parts']['1']['flickr_id']

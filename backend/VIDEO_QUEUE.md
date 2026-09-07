@@ -38,3 +38,14 @@ this operation. No migration runs automatically during deployment. YouTube uploa
 As with other Flickr uploads, a process crash after Flickr accepts a part but
 before its receipt reaches disk can leave an unrecorded remote copy. Such an
 ambiguous upload cannot be made exactly-once without remote reconciliation.
+
+Upload acceptance is not playback readiness. After all IDs are saved, the worker
+checks authenticated `flickr.photos.getInfo` for every part. Flickr's video fields
+must report `ready=1`, `pending=0`, `failed=0` before the aggregate copy is available.
+Pending jobs keep a `processing` state and recheck after five minutes without
+uploading recorded parts again. Explicit remote failures stop the job as `failed`
+for investigation, preserving every ID; re-uploading rejected parts requires an
+intentional repair. Capture timestamps (offset by each part's start) and location
+are applied to every ready part, with durable metadata receipts.
+
+API semantics: https://code.flickr.net/2008/05/01/videos-in-the-flickr-api/
