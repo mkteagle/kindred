@@ -171,8 +171,29 @@ actor UploadQueueStore {
 struct UploadSummary: Sendable {
     let succeededIdentifiers: Set<String>
     let failedIdentifiers: Set<String>
+    /// Why nothing was attempted, when that is the reason there are no results.
+    ///
+    /// "Nothing to upload" and "refused to upload" both produce empty sets, and
+    /// conflating them let auto-backup report a successful sync it had not
+    /// performed: waiting for Wi-Fi looked identical to being up to date.
+    let skippedReason: String?
 
+    var wasSkipped: Bool { skippedReason != nil }
+
+    init(succeededIdentifiers: Set<String>, failedIdentifiers: Set<String>,
+         skippedReason: String? = nil) {
+        self.succeededIdentifiers = succeededIdentifiers
+        self.failedIdentifiers = failedIdentifiers
+        self.skippedReason = skippedReason
+    }
+
+    /// Ran, and there was genuinely nothing to do.
     static let empty = UploadSummary(succeededIdentifiers: [], failedIdentifiers: [])
+
+    /// Did not run. Not a success, and not a per-photo failure either.
+    static func skipped(_ reason: String) -> UploadSummary {
+        UploadSummary(succeededIdentifiers: [], failedIdentifiers: [], skippedReason: reason)
+    }
 }
 
 /// Serial, durable upload coordinator used by manual backup and auto-sync.
@@ -199,19 +220,20 @@ final class FlickrUploader {
     func uploadAssets(_ assets: [PHAsset]) async -> UploadSummary {
         guard !isUploading else {
             lastError = "A backup is already running."
-            return .empty
+            return .skipped(lastError!)
         }
         guard SyncManager.shared.canUploadNow else {
             lastError = "Waiting for Wi-Fi. Turn off \u{201c}Only on Wi-Fi\u{201d} in Settings to back up over cellular."
-            return .empty
+            return .skipped(lastError!)
         }
+        // Skipped, not failed. Marking every asset failed here told iOS the
+        // background task had failed on every run, and it responds by
+        // scheduling the next one less often -- so an expired session quietly
+        // made auto-backup rarer and rarer instead of waiting for a sign-in.
         guard SessionManager.shared.isAuthenticated,
               let accountID = SessionManager.shared.currentUser?.id else {
             lastError = "Your session expired. Please sign in again."
-            return UploadSummary(
-                succeededIdentifiers: [],
-                failedIdentifiers: Set(assets.map(\.localIdentifier))
-            )
+            return .skipped(lastError!)
         }
 
         let activeIdentifiers = await BackgroundUploadSession.shared.activeLocalIdentifiers()

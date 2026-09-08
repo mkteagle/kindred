@@ -83,9 +83,24 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
         }
     }
 
+    /// Coalesces a burst of library changes into one sync.
+    ///
+    /// Every capture, edit and iCloud download fires this, and a burst of
+    /// twenty photos fired twenty of them. Each one enumerated the entire photo
+    /// library before deciding what was new, so taking a burst cost twenty full
+    /// scans -- slow, and enough battery that iOS starts holding the background
+    /// task back. One scan a few seconds after the last change does the same
+    /// work once.
+    private var pendingChangeSync: Task<Void, Never>?
+
     nonisolated func photoLibraryDidChange(_ changeInstance: PHChange) {
         Task { @MainActor in
-            if self.autoSyncEnabled && !self.isSyncing {
+            guard self.autoSyncEnabled else { return }
+            self.pendingChangeSync?.cancel()
+            self.pendingChangeSync = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled else { return }
+                guard !self.isSyncing else { return }
                 await self.syncNewPhotos()
             }
         }
@@ -134,6 +149,15 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
         }
 
         let summary = await FlickrUploader.shared.uploadAssets(toSync)
+        // A skipped run uploaded nothing and must not be stamped as a sync.
+        // Both sets are empty when the uploader refuses to start -- waiting for
+        // Wi-Fi, a run already going, a signed-out session -- and reading that
+        // as success is what made the app claim it had just backed up when it
+        // had not.
+        guard !summary.wasSkipped else {
+            lastRunSucceeded = false
+            return
+        }
         lastRunSucceeded = summary.failedIdentifiers.isEmpty && !Task.isCancelled
         if lastRunSucceeded {
             recordSuccessfulSync()
