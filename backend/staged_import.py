@@ -22,6 +22,7 @@ from collections.abc import Iterator
 from itertools import islice
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import sys
@@ -45,14 +46,81 @@ VIDEO_EXTENSIONS = {
 }
 
 
+# This library was organised by hand into dated album folders long before it
+# reached Google -- "2003.09.06 Lagoon", "2004 Austin Baptism", "12.2009-3.2010
+# Love Notes". Four thousand of them, and the name is a person saying when
+# something happened, which is enough to import in chronological order without
+# opening a single file.
+# Anchored patterns come first. A name beginning "12.2009-3.2010" is a range
+# starting in December 2009, but an unanchored year-month search finds "2009-3"
+# inside it and calls it March -- right year, wrong end of the range.
+_ALBUM_DATES = (
+    # 12.2009 -- month first, as in "12.2009-3.2010 Love Notes"
+    re.compile(r"^(?P<month>0?[1-9]|1[0-2])[.\-_](?P<year>(?:19|20)\d{2})(?:\D|$)"),
+    # 2004.03.20, 2004-03-20
+    re.compile(r"(?P<year>(?:19|20)\d{2})[.\-_](?P<month>0?[1-9]|1[0-2])[.\-_](?P<day>0?[1-9]|[12]\d|3[01])(?:\D|$)"),
+    # 2004.03
+    re.compile(r"(?P<year>(?:19|20)\d{2})[.\-_](?P<month>0?[1-9]|1[0-2])(?:\D|$)"),
+    # 2003, anywhere: "2003 - 2004 CEU Basketball Games"
+    re.compile(r"(?P<year>(?:19|20)\d{2})(?:\D|$)"),
+)
+
+
+def album_sort_key(name: str) -> tuple:
+    """Order album folders oldest first, undated ones last.
+
+    Deliberately looser than capture_date.parse_folder_datetime, which refuses
+    a bare year because dating every photo in "2004 Austin Baptism" to the 1st
+    of January would be a false precision. For *ordering* a year is plenty --
+    it puts 2004 before 2010, which is the whole question -- so a bare year is
+    accepted here and nowhere else.
+
+    Folders with no date sort after every dated one rather than among them, by
+    name, so the order stays stable between runs.
+    """
+    text = name.strip()
+    for pattern in _ALBUM_DATES:
+        match = pattern.search(text)
+        if not match:
+            continue
+        parts = match.groupdict()
+        year = int(parts["year"])
+        month = int(parts.get("month") or 1)
+        day = int(parts.get("day") or 1)
+        if not (1 <= month <= 12 and 1 <= day <= 31):
+            continue
+        return (0, year, month, day, text.lower())
+    return (1, 0, 0, 0, text.lower())
+
+
 def iter_media(root: Path) -> Iterator[Path]:
-    """Stream supported originals deterministically without holding the tree in RAM."""
-    for directory, dirnames, filenames in os.walk(root):
-        dirnames.sort()
-        for filename in sorted(filenames):
-            path = Path(directory) / filename
-            if path.suffix.lower() in SUPPORTED_EXTENSIONS:
-                yield path
+    """Stream supported originals oldest album first, without holding the tree in RAM.
+
+    Order matters because this import takes days: whatever runs first is what
+    the library contains in the meantime. Walking alphabetically meant "2003
+    Lagoon" and "Weekend in Lehi" arrived in name order, so what showed up was
+    arbitrary. Oldest first means the library fills in as a timeline.
+    """
+    root = Path(root)
+    try:
+        entries = sorted(root.iterdir(), key=lambda path: path.name)
+    except OSError:
+        return
+
+    # Loose files at the top level first, then each album in date order.
+    for path in entries:
+        if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS:
+            yield path
+
+    albums = [path for path in entries if path.is_dir()]
+    albums.sort(key=lambda path: album_sort_key(path.name))
+    for album in albums:
+        for directory, dirnames, filenames in os.walk(album):
+            dirnames.sort()
+            for filename in sorted(filenames):
+                path = Path(directory) / filename
+                if path.suffix.lower() in SUPPORTED_EXTENSIONS:
+                    yield path
 
 
 def scan_media(root: Path) -> list[Path]:

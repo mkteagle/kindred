@@ -265,6 +265,9 @@ _FOLDER_DATE = re.compile(
     r"(?:[.\-_](?P<day>0[1-9]|[12]\d|3[01]))?(?:\D|$)"
 )
 
+# A folder naming only a year: "2003 CEU Pics", "2003 - 2004 Basketball".
+_FOLDER_YEAR = re.compile(r"^(?P<year>(?:19|20)\d{2})(?:\D|$)")
+
 
 def parse_folder_datetime(folder, now: datetime | None = None) -> datetime | None:
     """A capture date from a human-curated album folder, as a local wall clock.
@@ -276,18 +279,33 @@ def parse_folder_datetime(folder, now: datetime | None = None) -> datetime | Non
     is the moment it entered Google Photos, not the moment of the photograph —
     the prom above carries a sidecar reading May 2010.
 
-    A folder naming only a year is ignored: "2004" alone would date every photo
-    in it to 1 January, which sorts worse than admitting we do not know. A
-    year and month yields the first of that month, which groups correctly.
+    A year and month yields the first of that month. A folder naming only a
+    year yields the first of January, which is a deliberate choice rather than
+    a precise one: the day is invented, but the year is not, and a photo the
+    library places in 2003 is far more useful than one it places nowhere. The
+    alternative -- refusing the date -- sent every photo in four thousand
+    year-named albums to the undated pile at the end of the gallery.
+
+    The invented part is recorded: the source is "folder:year" rather than
+    "folder", so anything that cares can tell a stated day from an assumed one.
     """
     if not folder:
         return None
-    match = _FOLDER_DATE.match(str(folder).strip())
-    if not match:
+    text = str(folder).strip()
+    match = _FOLDER_DATE.match(text)
+    if match:
+        parts = match.groupdict()
+        try:
+            moment = datetime(int(parts["year"]), int(parts["month"]), int(parts["day"] or 1))
+        except ValueError:
+            return None
+        return plausible(as_wall_clock(moment), now)
+
+    year_match = _FOLDER_YEAR.match(text)
+    if not year_match:
         return None
-    parts = match.groupdict()
     try:
-        moment = datetime(int(parts["year"]), int(parts["month"]), int(parts["day"] or 1))
+        moment = datetime(int(year_match.group("year")), 1, 1)
     except ValueError:
         return None
     return plausible(as_wall_clock(moment), now)
@@ -548,8 +566,13 @@ def extract(path, *, original_filename: str | None = None, media_type: str | Non
         sidecar = sidecar_for(path)
     sidecar_capture = read_sidecar(sidecar, now) if sidecar else Capture()
     folder_moment = parse_folder_datetime(album_folder, now) if album_folder else None
-    folder_capture = Capture(taken_at=folder_moment,
-                             taken_at_source="folder" if folder_moment else None)
+    # A year-only folder gives a real year and an invented 1 January. Say so,
+    # so a later reader can tell a day someone wrote down from one we assumed.
+    folder_source = None
+    if folder_moment:
+        folder_source = "folder:year" if _FOLDER_YEAR.match(str(album_folder).strip()) \
+            and not _FOLDER_DATE.match(str(album_folder).strip()) else "folder"
+    folder_capture = Capture(taken_at=folder_moment, taken_at_source=folder_source)
     filename_moment = parse_filename_datetime(name, now) if allow_filename else None
     filename_capture = Capture(taken_at=filename_moment,
                                taken_at_source="filename" if filename_moment else None)

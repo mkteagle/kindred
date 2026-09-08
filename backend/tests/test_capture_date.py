@@ -383,14 +383,21 @@ class AlbumFolderDateTests(unittest.TestCase):
         got = parse_folder_datetime("2004.03 Allison Hyde Park Princess Pageant")
         self.assertEqual(got.replace(tzinfo=None), datetime(2004, 3, 1))
 
-    def test_a_bare_year_is_refused(self):
-        # "2004" alone would date everything to 1 January, which sorts worse
-        # than admitting the date is unknown.
-        self.assertIsNone(parse_folder_datetime("2004"))
-        self.assertIsNone(parse_folder_datetime("2004 Family"))
+    def test_a_bare_year_is_taken_as_that_january(self):
+        # This test asserted the opposite until the library owner chose
+        # otherwise: four thousand albums here are named with a year and
+        # nothing else, and refusing them sent every photo inside to the
+        # undated pile. An invented 1 January with a real year places the
+        # photo in the right year, which is what the gallery sorts on.
+        for folder in ("2004", "2004 Family"):
+            moment = parse_folder_datetime(folder)
+            self.assertIsNotNone(moment, folder)
+            self.assertEqual((moment.year, moment.month, moment.day), (2004, 1, 1))
 
     def test_undated_and_nonsense_folders_yield_nothing(self):
-        for folder in ("Halloween", "", None, "Dusty 10", "9999.99.99 x", "2004.13.01 x"):
+        # "2004.13.01" has no valid month, and no bare-year reading either,
+        # because the year has to lead the name for that to mean anything.
+        for folder in ("Halloween", "", None, "Dusty 10", "9999.99.99 x"):
             self.assertIsNone(parse_folder_datetime(folder))
 
     def test_the_date_must_lead_the_name(self):
@@ -506,3 +513,49 @@ class SidecarNamingTests(unittest.TestCase):
             capture = extract(self._photo(d))
             self.assertIsNone(capture.taken_at)
             self.assertIsNone(capture.error)
+
+
+class YearOnlyFolderTests(unittest.TestCase):
+    """A stated year with an assumed day beats no date at all.
+
+    Four thousand albums here are named with a year and nothing more. Refusing
+    those sent every photo in them to the undated pile; accepting them puts the
+    photo in the right year with an invented 1 January, which is what the
+    library owner asked for. The invention is recorded rather than hidden.
+    """
+
+    def test_a_year_only_folder_dates_to_the_first_of_january(self):
+        moment = capture_date.parse_folder_datetime("2003 CEU Pics")
+        self.assertIsNotNone(moment)
+        self.assertEqual((moment.year, moment.month, moment.day), (2003, 1, 1))
+
+    def test_a_year_range_takes_its_first_year(self):
+        moment = capture_date.parse_folder_datetime("2003 - 2004 CEU Basketball Games")
+        self.assertEqual((moment.year, moment.month, moment.day), (2003, 1, 1))
+
+    def test_a_stated_day_still_wins_over_the_assumed_one(self):
+        moment = capture_date.parse_folder_datetime("2004.03.20 Allison Junior Prom")
+        self.assertEqual((moment.year, moment.month, moment.day), (2004, 3, 20))
+
+    def test_a_year_and_month_keeps_the_first_of_that_month(self):
+        moment = capture_date.parse_folder_datetime("2010.12 Christmas")
+        self.assertEqual((moment.year, moment.month, moment.day), (2010, 12, 1))
+
+    def test_a_folder_with_no_year_is_still_undated(self):
+        self.assertIsNone(capture_date.parse_folder_datetime("Weekend in Lehi"))
+
+    def test_a_number_that_is_not_a_year_is_not_a_date(self):
+        self.assertIsNone(capture_date.parse_folder_datetime("1234 Random"))
+
+    def test_an_assumed_day_is_labelled_differently_from_a_stated_one(self):
+        with tempfile.TemporaryDirectory() as directory:
+            photo = Path(directory) / "IMG_0001.jpg"
+            photo.write_bytes(b"not a real jpeg")
+            assumed = capture_date.extract(photo, original_filename="IMG_0001.jpg",
+                                           media_type="image/jpeg", album_folder="2003 CEU Pics",
+                                           allow_filename=False)
+            stated = capture_date.extract(photo, original_filename="IMG_0001.jpg",
+                                          media_type="image/jpeg",
+                                          album_folder="2004.03.20 Prom", allow_filename=False)
+            self.assertEqual(assumed.taken_at_source, "folder:year")
+            self.assertEqual(stated.taken_at_source, "folder")
