@@ -11,6 +11,7 @@ import numpy as np
 import json
 import uuid
 import httpx
+import flickr_limits
 import asyncio
 import base64
 import os
@@ -4659,13 +4660,11 @@ async def _flickr_set_dates(photo_id: str, taken_at_unix: int, creds: dict) -> N
     Flickr extracts date taken from EXIF on upload, but Google Photos Takeout
     often strips or mangles the EXIF dates — so we restore the real date from
     the sidecar JSON after upload."""
-    import urllib.parse
     from datetime import datetime, timezone
 
     dt = datetime.fromtimestamp(taken_at_unix, tz=timezone.utc)
     date_taken_str = dt.strftime("%Y-%m-%d %H:%M:%S")
 
-    flickr_url = "https://api.flickr.com/services/rest"
     params = {
         "method": "flickr.photos.setDates",
         "photo_id": photo_id,
@@ -4674,25 +4673,12 @@ async def _flickr_set_dates(photo_id: str, taken_at_unix: int, creds: dict) -> N
         "format": "json",
         "nojsoncallback": "1",
     }
-    oauth_params = _flickr_oauth_sign(flickr_url, params, creds, method="POST")
-    auth_header = "OAuth " + ", ".join(
-        f'{k}="{urllib.parse.quote(str(v), "")}"' for k, v in oauth_params.items()
-    )
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(flickr_url, data=params, headers={"Authorization": auth_header})
-    try:
-        data = resp.json()
-    except Exception:
-        data = {"stat": "fail"}
-    if data.get("stat") != "ok":
-        raise HTTPException(502, f"setDates failed for {photo_id}: {data.get('message', 'unknown')}")
+    await flickr_api(params, creds, method="POST")
 
 
 async def _flickr_set_location(photo_id: str, lat: float, lon: float, creds: dict) -> None:
     """Set the geotag on an existing Flickr photo via flickr.photos.geo.setLocation."""
-    import urllib.parse
 
-    flickr_url = "https://api.flickr.com/services/rest"
     params = {
         "method": "flickr.photos.geo.setLocation",
         "photo_id": photo_id,
@@ -4701,18 +4687,7 @@ async def _flickr_set_location(photo_id: str, lat: float, lon: float, creds: dic
         "format": "json",
         "nojsoncallback": "1",
     }
-    oauth_params = _flickr_oauth_sign(flickr_url, params, creds, method="POST")
-    auth_header = "OAuth " + ", ".join(
-        f'{k}="{urllib.parse.quote(str(v), "")}"' for k, v in oauth_params.items()
-    )
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(flickr_url, data=params, headers={"Authorization": auth_header})
-    try:
-        data = resp.json()
-    except Exception:
-        data = {"stat": "fail"}
-    if data.get("stat") != "ok":
-        raise HTTPException(502, f"setLocation failed for {photo_id}: {data.get('message', 'unknown')}")
+    await flickr_api(params, creds, method="POST")
 
 
 async def _flickr_set_perms(
@@ -4723,9 +4698,7 @@ async def _flickr_set_perms(
     creds: dict,
 ) -> None:
     """Update visibility on an existing Flickr photo via flickr.photos.setPerms."""
-    import urllib.parse
 
-    flickr_url = "https://api.flickr.com/services/rest"
     params = {
         "method": "flickr.photos.setPerms",
         "photo_id": photo_id,
@@ -4738,18 +4711,7 @@ async def _flickr_set_perms(
         "format": "json",
         "nojsoncallback": "1",
     }
-    oauth_params = _flickr_oauth_sign(flickr_url, params, creds, method="POST")
-    auth_header = "OAuth " + ", ".join(
-        f'{k}="{urllib.parse.quote(str(v), "")}"' for k, v in oauth_params.items()
-    )
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(flickr_url, data=params, headers={"Authorization": auth_header})
-    try:
-        data = resp.json()
-    except Exception:
-        data = {"stat": "fail", "message": resp.text[:200] if hasattr(resp, "text") else "non-json response"}
-    if data.get("stat") != "ok":
-        raise HTTPException(502, f"setPerms failed: {data.get('message', 'unknown')}")
+    await flickr_api(params, creds, method="POST")
 
 
 async def _list_recent_flickr_photos(min_upload_date: int, creds: dict) -> list[dict]:
@@ -4853,9 +4815,7 @@ async def bulk_set_privacy(
 
 async def _add_photo_to_album(photo_id: str, album_id: str, creds: dict) -> None:
     """Add a single photo to a Flickr album (photoset)."""
-    import urllib.parse
 
-    flickr_url = "https://api.flickr.com/services/rest"
     params = {
         "method": "flickr.photosets.addPhoto",
         "photoset_id": album_id,
@@ -4863,25 +4823,8 @@ async def _add_photo_to_album(photo_id: str, album_id: str, creds: dict) -> None
         "format": "json",
         "nojsoncallback": "1",
     }
-    oauth_params = _flickr_oauth_sign(flickr_url, params, creds, method="POST")
-    auth_header = "OAuth " + ", ".join(
-        f'{k}="{urllib.parse.quote(str(v), "")}"' for k, v in oauth_params.items()
-    )
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            flickr_url,
-            data=params,
-            headers={"Authorization": auth_header},
-        )
-    try:
-        data = resp.json()
-    except Exception:
-        data = {"stat": "ok" if resp.status_code == 200 else "fail"}
-    if data.get("stat") != "ok":
-        # code 3 = "Photo already in set" — treat as success
-        if data.get("code") == 3:
-            return
-        raise HTTPException(502, f"Flickr addPhoto failed: {data.get('message', 'unknown')}")
+    # Code 3 is "photo already in set", which is the state we wanted anyway.
+    await flickr_api(params, creds, method="POST", allow_codes={3})
 
 
 # ── Albums ───────────────────────────────────────────────────────────────────
@@ -4992,9 +4935,7 @@ async def _create_flickr_photoset(
 ) -> str:
     """flickr.photosets.create — needs a primary photo, so albums can only be
     created on Flickr once they have their first photo."""
-    import urllib.parse
 
-    flickr_url = "https://api.flickr.com/services/rest"
     params = {
         "method": "flickr.photosets.create",
         "title": title,
@@ -5003,18 +4944,7 @@ async def _create_flickr_photoset(
         "format": "json",
         "nojsoncallback": "1",
     }
-    oauth_params = _flickr_oauth_sign(flickr_url, params, creds, method="POST")
-    auth_header = "OAuth " + ", ".join(
-        f'{k}="{urllib.parse.quote(str(v), "")}"' for k, v in oauth_params.items()
-    )
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(flickr_url, data=params, headers={"Authorization": auth_header})
-    try:
-        data = resp.json()
-    except Exception:
-        data = {"stat": "fail"}
-    if data.get("stat") != "ok":
-        raise HTTPException(502, f"Flickr photosets.create failed: {data.get('message', 'unknown')}")
+    data = await flickr_api(params, creds, method="POST")
     return str(data["photoset"]["id"])
 
 
@@ -5988,6 +5918,86 @@ def _flickr_oauth_sign(url: str, params: dict, creds: dict | None = None, method
     ).decode()
     oauth_params["oauth_signature"] = sig
     return oauth_params
+
+
+FLICKR_REST = "https://api.flickr.com/services/rest"
+# One pacer for the process, so every call shares the same hourly budget.
+# Twelve call sites each spending freely is how a key hits the ceiling.
+_flickr_pacer = flickr_limits.Pacer()
+
+
+async def flickr_api(params: dict, creds: dict | None = None, *,
+                     method: str = "GET", timeout: float = 30.0,
+                     allow_codes: set[int] | None = None) -> dict:
+    """Call the Flickr REST API, paced and retried against the hourly quota.
+
+    Every REST call belongs here. Flickr allows 3,600 an hour per key and
+    counts reads against the same budget as writes, so the quota is the scarce
+    resource in any bulk operation -- and it can only be managed from a single
+    place. Before this existed each call site built its own request and spent
+    from the budget without knowing what the others were doing.
+
+    Throttling is waited out rather than raised: the allowance refills, so a
+    call that keeps trying eventually succeeds, while one that gives up has
+    spent its slot for nothing and left work to be redone. Genuine failures
+    still raise, after a bounded number of attempts.
+
+    `allow_codes` names Flickr error codes the caller does not consider
+    failures -- adding a photo to a set it is already in reports code 3, which
+    means the desired state already holds.
+    """
+    import urllib.parse
+
+    payload = {"format": "json", "nojsoncallback": "1", **params}
+    tries = 0
+    while True:
+        delay = _flickr_pacer.next_wait(_time.monotonic())
+        if delay:
+            await asyncio.sleep(delay)
+        _flickr_pacer.record(_time.monotonic())
+
+        oauth_params = _flickr_oauth_sign(FLICKR_REST, payload, creds, method=method)
+        auth_header = "OAuth " + ", ".join(
+            f'{k}="{urllib.parse.quote(str(v), "")}"' for k, v in oauth_params.items()
+        )
+        status: int | None = None
+        data: dict | None = None
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                if method.upper() == "POST":
+                    response = await client.post(
+                        FLICKR_REST, data=payload, headers={"Authorization": auth_header})
+                else:
+                    query = urllib.parse.urlencode(payload)
+                    response = await client.get(
+                        f"{FLICKR_REST}?{query}", headers={"Authorization": auth_header})
+            status = response.status_code
+            try:
+                data = response.json()
+            except ValueError:
+                data = {"stat": "fail", "message": "unparseable response"}
+        except httpx.HTTPError as exc:
+            # A timeout or a dropped connection is transient in the same way a
+            # 503 is, so let the policy decide rather than failing the photo.
+            status, data = 503, {"stat": "fail", "message": str(exc)[:200]}
+
+        if allow_codes and (data or {}).get("stat") == "fail":
+            try:
+                if int((data or {}).get("code")) in allow_codes:
+                    return data or {}
+            except (TypeError, ValueError):
+                pass
+
+        decision = flickr_limits.attempt(status, data, tries)
+        if decision.action == "proceed":
+            return data or {}
+        if decision.action == "fail":
+            message = (data or {}).get("message", "unknown")
+            raise HTTPException(502, f"{params.get('method', 'flickr')} failed: {message}")
+        print(f"[flickr] {params.get('method')}: {decision.reason}; "
+              f"retrying in {decision.wait:.0f}s", flush=True)
+        await asyncio.sleep(decision.wait)
+        tries += 1
 
 
 async def _backfill_metadata_task(job_id: str) -> None:
