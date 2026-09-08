@@ -11,6 +11,7 @@ import tempfile
 from contextlib import contextmanager
 
 import main
+import throttle
 
 
 def pending(limit: int | None) -> list[dict]:
@@ -59,7 +60,17 @@ async def run(args: argparse.Namespace) -> int:
     print(f"[index] pending={len(rows):,}", flush=True)
     completed = failed = 0
     started = time.monotonic()
+    delay = 0.0
+    paused = 0.0
     for position, row in enumerate(rows, 1):
+        # Pace against what the box is actually feeling. A fixed quota would
+        # throttle this run just as hard on an idle NAS as on a thrashing one,
+        # and there are a million and a half photos to get through.
+        pressure = throttle.read_pressure()
+        delay = throttle.next_delay(delay, pressure)
+        if delay:
+            paused += delay
+            await asyncio.sleep(delay)
         source = provider.resolve_local_path(row["provider_key"])
         if source is None:
             failed += 1
@@ -88,7 +99,8 @@ async def run(args: argparse.Namespace) -> int:
             elapsed = max(time.monotonic() - started, 0.001)
             print(
                 f"[index] scanned={position:,}/{len(rows):,} completed={completed:,} "
-                f"failed={failed:,} rate={position/elapsed:.3f}/s",
+                f"failed={failed:,} rate={position/elapsed:.3f}/s "
+                f"paused={paused:.0f}s {throttle.describe(delay, pressure)}",
                 flush=True,
             )
 
