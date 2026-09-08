@@ -11,6 +11,7 @@ import numpy as np
 import json
 import uuid
 import httpx
+import threading
 import flickr_limits
 import asyncio
 import base64
@@ -6120,6 +6121,103 @@ async def backfill_metadata(background_tasks: BackgroundTasks, admin=Depends(req
     jobs[job_id] = {"status": "running", "progress": 0, "total": 0, "message": "Starting metadata backfill..."}
     background_tasks.add_task(_backfill_metadata_task, job_id)
     return {"job_id": job_id}
+
+
+# Disk measurements for /pipelines. Walking the Takeout tree takes minutes and
+# competes with the importer for the disk it is measuring, so it is never done
+# inside a request: a background thread refreshes this and requests read
+# whatever it last left, with the time it was taken.
+_disk_scan: dict = {}
+_disk_scan_started = 0.0
+_pipeline_samples: dict[str, tuple[float, int]] = {}
+
+
+def _measure_disk() -> None:
+    """Count the import trees. Slow; runs off the request path."""
+    global _disk_scan
+    from datetime import datetime, timezone
+    import pipelines  # noqa: F401  (kept together for readability)
+
+    measurement: dict = {"measured_at": datetime.now(timezone.utc).isoformat()}
+    root = Path(PHOTO_STORAGE_ROOT).parent / "imports" if PHOTO_STORAGE_ROOT else None
+    try:
+        if root and (root / "AllPhotos").exists():
+            measurement["takeout_files"] = sum(
+                1 for path in (root / "AllPhotos").rglob("*") if path.is_file())
+        icloud = root / "iCloudMichael" if root else None
+        if icloud and icloud.exists():
+            measurement["icloud_files"] = sum(
+                1 for path in icloud.rglob("*")
+                if path.is_file() and not path.name.endswith(".part"))
+        if THUMBNAIL_DIR.exists():
+            measurement["posters"] = sum(
+                1 for path in THUMBNAIL_DIR.iterdir() if path.name.endswith("-poster.jpg"))
+    except OSError as exc:
+        measurement["error"] = str(exc)[:200]
+    _disk_scan = measurement
+
+
+def _rate_per_minute(key: str, done: int) -> float | None:
+    """Rate since this endpoint was last asked, or None on the first sample."""
+    now = _time.monotonic()
+    previous = _pipeline_samples.get(key)
+    _pipeline_samples[key] = (now, done)
+    if not previous:
+        return None
+    elapsed, before = now - previous[0], previous[1]
+    if elapsed < 5:                      # too short a gap to mean anything
+        return None
+    return max(0.0, (done - before) / elapsed * 60.0)
+
+
+@app.get("/pipelines")
+def get_pipelines(request: FastAPIRequest, user=Depends(get_current_user)):
+    """Progress for every long-running job, for the dashboard.
+
+    Everything here is either a cheap database count or a value the background
+    scan already computed. Nothing in this handler touches the import trees.
+    """
+    global _disk_scan_started
+    import asyncio as _asyncio
+    import pipelines
+
+    counts = db_query("""
+        SELECT count(*) FILTER (WHERE media_kind = 'photo') AS photos,
+               count(*) FILTER (WHERE media_kind = 'video') AS videos
+        FROM photos
+    """)[0]
+    indexed = db_query("SELECT count(*) AS n FROM processed_photos")[0]["n"]
+    copies = db_query("""
+        SELECT provider, count(*) AS n FROM photo_copies
+        WHERE status = 'available' GROUP BY provider
+    """)
+    by_provider = {row["provider"]: int(row["n"]) for row in copies}
+
+    # Kick the slow scan off in the background if it is stale.
+    if _time.monotonic() - _disk_scan_started > 900:
+        _disk_scan_started = _time.monotonic()
+        threading.Thread(target=_measure_disk, daemon=True).start()
+
+    rows = {
+        "photos": int(counts["photos"] or 0),
+        "videos": int(counts["videos"] or 0),
+        # Posters are rendered on demand into the thumbnail cache rather than
+        # recorded in the catalog, so this is a file count, not a column.
+        "videos_ready": _disk_scan.get("posters", 0),
+        "indexed": int(indexed or 0),
+        "on_nas": by_provider.get("nas", 0),
+        "on_flickr": by_provider.get("flickr", 0),
+        "imported": by_provider.get("nas", 0),
+    }
+
+    result = pipelines.build(rows, _disk_scan)
+    for entry in result:
+        rate = _rate_per_minute(entry["key"], entry["done"])
+        entry["rate_per_minute"] = round(rate, 2) if rate is not None else None
+        entry["running"] = bool(rate and rate > 0)
+        entry["eta"] = pipelines.format_eta(
+            pipelines.eta_seconds(entry["done"], entry["total"], rate))
+    return {"pipelines": result, "measured_at": _disk_scan.get("measured_at")}
 
 
 @app.get("/library/counts")
