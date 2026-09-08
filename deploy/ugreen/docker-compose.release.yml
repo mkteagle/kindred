@@ -198,9 +198,13 @@ services:
     # replaces; left on it reports unhealthy while downloading perfectly well.
     healthcheck:
       disable: true
-    # on-failure, not unless-stopped: a finished library should stop, not spin
-    # back through every asset forever.
-    restart: on-failure:5
+    # unless-stopped, paired with --watch-with-interval below. on-failure was
+    # wrong: icloudpd exits 0 when it loses its connection to Apple ("Cannot
+    # connect to Apple iCloud service"), so Docker read a dropped download as a
+    # completed one and left it stopped at a quarter of the library. An exit
+    # code that cannot distinguish success from failure cannot drive a restart
+    # policy, so do not ask it to -- keep the process resident instead.
+    restart: unless-stopped
     # Network- and IO-bound. It must not take cores from the indexer, which is
     # the thing actually short of them.
     cpus: 1.0
@@ -216,6 +220,7 @@ services:
       --folder-structure {:%Y/%m/%d}
       --set-exif-datetime
       --live-photo-size original
+      --watch-with-interval 3600
       --log-level info
     volumes:
       - ${ICLOUD_COOKIES_MICHAEL:?Set ICLOUD_COOKIES_MICHAEL in .env}:/config
@@ -233,6 +238,7 @@ services:
       --folder-structure {:%Y/%m/%d}
       --set-exif-datetime
       --live-photo-size original
+      --watch-with-interval 3600
       --log-level info
     volumes:
       - ${ICLOUD_COOKIES_WIFE:?Set ICLOUD_COOKIES_WIFE in .env}:/config
@@ -247,6 +253,7 @@ services:
       --folder-structure {:%Y/%m/%d}
       --set-exif-datetime
       --live-photo-size original
+      --watch-with-interval 3600
       --log-level info
     volumes:
       - ${ICLOUD_COOKIES_MADISON:?Set ICLOUD_COOKIES_MADISON in .env}:/config
