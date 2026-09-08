@@ -129,6 +129,13 @@ export function KxClusterBrowse({
           <Link className="kx-button primary" href={`/review?category=${category}`}>
             Start review
           </Link>
+          {/* People only: the suggestions come from Google's photo tags, which
+              name people and nothing else. */}
+          {category === "people" && (
+            <Link className="kx-button" href="/review/names" prefetch={false}>
+              Suggested names
+            </Link>
+          )}
           <button className="kx-button" onClick={onManage}>
             Merge duplicates
           </button>

@@ -12912,3 +12912,71 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
   .kx-pipeline-track.indeterminate .kx-pipeline-fill { animation: none; }
   .kx-pipeline-fill { transition: none; }
 }
+
+/* ── Name review ─────────────────────────────────────────────────────────
+   A face, the name Google's tags point at, and the evidence behind it. The
+   evidence is shown rather than summarised into a score, because the decision
+   being asked for is "is this them", and a percentage does not help answer it
+   the way "47 of 52 photos where only she was tagged" does. */
+
+.kx-namereview-count { margin: 26px 0 10px; font-size: 12px; color: var(--ink-3); }
+
+.kx-namereview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kx-nameprop {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--fill-1);
+}
+
+.kx-nameprop-face {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  object-fit: cover;
+  background: var(--fill-3);
+}
+
+.kx-nameprop-face.is-blank { display: block; }
+
+.kx-nameprop-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.kx-nameprop-name {
+  font-family: var(--display);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.kx-nameprop-why { font-size: 11px; color: var(--ink-3); }
+.kx-nameprop-meta { font-size: 11px; color: var(--ink-4); }
+
+.kx-nameprop-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+}
+
+@media (max-width: 720px) {
+  .kx-nameprop { flex-wrap: wrap; }
+  .kx-nameprop-actions { width: 100%; justify-content: flex-end; }
+}

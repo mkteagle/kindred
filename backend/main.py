@@ -2274,6 +2274,73 @@ def label_cluster(req: LabelRequest, admin=Depends(require_admin)):
     """, (req.cluster_id, req.category), fetch=False)
     return {"ok": True}
 
+@app.get("/clusters/name-proposals")
+def get_name_proposals(category: str = "people", limit: int = Query(80, ge=1, le=300),
+                       user=Depends(get_current_user)):
+    """Which unnamed face clusters Google's tags can identify, and how surely.
+
+    Nothing is applied here. The evidence is shown, the proposal is a
+    suggestion, and accepting one is the ordinary label call -- so a name only
+    ever enters the library because a person put it there.
+    """
+    import name_matcher
+
+    rows = db_query("""
+        SELECT dc.cluster_id, p.id::text AS photo_id, t.name
+        FROM detection_clusters dc
+        JOIN detections d ON d.id = dc.detection_id
+        JOIN photos p ON p.id::text = d.photo_id OR p.legacy_photo_id = d.photo_id
+        LEFT JOIN photo_people_tags t ON t.photo_id = p.id
+        WHERE dc.category = %s
+    """, (category,))
+
+    # cluster -> photo -> the names Google put on that photo
+    clusters: dict[str, dict[str, list[str]]] = {}
+    for row in rows:
+        photos = clusters.setdefault(str(row["cluster_id"]), {})
+        names = photos.setdefault(row["photo_id"], [])
+        if row["name"] and row["name"] not in names:
+            names.append(row["name"])
+
+    labelled = db_query(
+        "SELECT id::text AS id, label FROM clusters WHERE category = %s AND label <> ''",
+        (category,))
+    named_ids = {row["id"] for row in labelled}
+    taken_names = {row["label"] for row in labelled if row["label"]}
+
+    # Only unnamed clusters need a proposal; a named one is already answered.
+    candidates = {cid: photos for cid, photos in clusters.items() if cid not in named_ids}
+    matches = [m for m in name_matcher.resolve(candidates, taken_names) if m.confident]
+    matches.sort(key=lambda m: (-m.support, -m.confidence))
+    matches = matches[:limit]
+    if not matches:
+        return {"proposals": [], "unnamed_clusters": len(candidates)}
+
+    # One face per proposal, so the screen can show who it is talking about.
+    chips = db_query("""
+        SELECT DISTINCT ON (dc.cluster_id) dc.cluster_id::text AS cluster_id, d.chip
+        FROM detection_clusters dc
+        JOIN detections d ON d.id = dc.detection_id
+        WHERE dc.category = %s AND dc.cluster_id::text = ANY(%s) AND d.chip IS NOT NULL
+        ORDER BY dc.cluster_id, d.det_score DESC NULLS LAST
+    """, (category, [m.cluster_id for m in matches]))
+    face = {row["cluster_id"]: row["chip"] for row in chips}
+
+    return {
+        "unnamed_clusters": len(candidates),
+        "proposals": [{
+            "cluster_id": match.cluster_id,
+            "name": match.name,
+            "confidence": round(match.confidence, 3),
+            "support": match.support,
+            "runner_up": match.runner_up,
+            "reason": match.reason,
+            "photos": len(candidates.get(match.cluster_id, {})),
+            "avatar": face.get(match.cluster_id),
+        } for match in matches],
+    }
+
+
 @app.post("/clusters/merge")
 def merge_clusters(req: MergeRequest, admin=Depends(require_admin)):
     # Move all detections from source cluster to target cluster and pin them
