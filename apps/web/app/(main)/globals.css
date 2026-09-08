@@ -12980,3 +12980,67 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
   .kx-nameprop { flex-wrap: wrap; }
   .kx-nameprop-actions { width: 100%; justify-content: flex-end; }
 }
+
+/* ── Running-job banner ──────────────────────────────────────────────────
+   Shown only while something is actually running. A bar that is always there
+   stops being read. */
+
+.kx-syncbanner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 20px;
+  padding: 10px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--fill-1);
+  color: inherit;
+  text-decoration: none;
+}
+
+.kx-syncbanner:hover { border-color: var(--accent); }
+
+.kx-syncbanner-pulse {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  animation: kx-pulse 1.6s ease-in-out infinite;
+}
+
+.kx-syncbanner-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.kx-syncbanner-copy strong { font-size: 13px; font-weight: 600; }
+.kx-syncbanner-copy .kx-mono { font-size: 11px; color: var(--ink-3); }
+
+.kx-syncbanner-bar {
+  flex: none;
+  overflow: hidden;
+  width: 120px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--fill-3);
+}
+
+.kx-syncbanner-bar span {
+  display: block;
+  height: 100%;
+  width: 32%;
+  border-radius: 999px;
+  background: var(--accent);
+  animation: kx-sweep 1.6s ease-in-out infinite;
+}
+
+/* A known percentage is a width, not a sweep. */
+.kx-syncbanner-bar span[style] { animation: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .kx-syncbanner-pulse, .kx-syncbanner-bar span { animation: none; }
+}

@@ -81,3 +81,47 @@ export function relativeTime(iso: string | null | undefined): string | null {
   const days = Math.round(hours / 24);
   return `${days} day${days === 1 ? "" : "s"} ago`;
 }
+
+/** One long-running job, as /pipelines reports it. */
+export interface Pipeline {
+  key: string;
+  label: string;
+  detail: string;
+  done: number;
+  total: number | null;
+  percent: number | null;
+  remaining: number | null;
+  running: boolean;
+  rate_per_minute: number | null;
+  eta: string;
+  measured_at: string | null;
+}
+
+/**
+ * The real state of the long-running jobs.
+ *
+ * The sidebar and the banner used to read /jobs/active, which is an in-memory
+ * dict inside the API process -- while every job that actually runs for days
+ * lives in another container and cannot write to it. It answered "idle"
+ * always, so nothing ever appeared. This reads the database and disk instead.
+ */
+export function usePipelines(pollMs = 10000) {
+  return useQuery<{ pipelines: Pipeline[] }>({
+    queryKey: ["pipelines"],
+    queryFn: async () => {
+      const response = await fetch(`${BACKEND}/pipelines`);
+      if (!response.ok) throw new Error("Progress could not be read.");
+      return response.json();
+    },
+    refetchInterval: pollMs,
+  });
+}
+
+/** The job worth showing when only one line is available. */
+export function busiestPipeline(pipelines: Pipeline[] | undefined): Pipeline | null {
+  const running = (pipelines ?? []).filter((p) => p.running);
+  if (running.length === 0) return null;
+  // The one furthest from done has the most left to say.
+  return running.reduce((worst, p) =>
+    (p.percent ?? 0) < (worst.percent ?? 0) ? p : worst);
+}

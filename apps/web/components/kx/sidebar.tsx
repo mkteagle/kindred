@@ -7,7 +7,7 @@ import { fmt } from "@/lib/constants";
 import { LIBRARY_ICON_PATHS, NavIcon, SidebarIcon } from "./icons";
 import { useFavorites } from "./favorites";
 import { useKxUi } from "./ui-state";
-import { useLatestSync, useLibraryCounts, useShareCount, useStats, relativeTime } from "./use-library";
+import { useLibraryCounts, usePipelines, busiestPipeline, useShareCount, useStats } from "./use-library";
 
 /**
  * LIBRARY group — label, route, glyph, and where its count comes from.
@@ -171,26 +171,25 @@ function NavRow({
 }
 
 function SyncCard() {
-  const { data: sync } = useLatestSync();
-  const when = relativeTime(sync?.finished_at ?? sync?.started_at);
-  const running = sync?.status === "running";
-  const caption = !sync
-    ? "No sync has run yet"
-    : running
-      ? `Scanning ${fmt.format(sync.total_photos || 0)} photos${when ? ` · started ${when}` : ""}`
-      : `Flickr library up to date${when ? ` · ${when}` : ""}`;
+  const { data } = usePipelines();
+  const busiest = busiestPipeline(data?.pipelines);
+  const caption = busiest
+    ? `${busiest.label}${busiest.eta ? ` · ${busiest.eta} left` : ""}`
+    : "Everything is up to date";
+
+  // The bar was hardcoded to 40% while running and 100% otherwise, which is a
+  // picture of nothing. An unknown total gets no bar rather than a made-up one.
+  const percent = busiest?.percent ?? null;
 
   return (
     <div className="kx-sync">
       <span className="kx-sync-label">Sync</span>
       <span className="kx-sync-caption">{caption}</span>
-      {/* The states reference hangs off the sync card, where someone already
-          looking at whether the library is healthy will find it. */}
-      <Link href="/states" className="kx-sync-link">
-        Empty · loading · error
+      <Link href="/pipelines" className="kx-sync-link" prefetch={false}>
+        {busiest ? "See all jobs" : "Job history"}
       </Link>
       <div className="kx-sync-bar">
-        <span style={{ width: running ? "40%" : "100%" }} />
+        <span style={{ width: percent === null ? (busiest ? "100%" : "0%") : `${percent}%` }} />
       </div>
     </div>
   );
