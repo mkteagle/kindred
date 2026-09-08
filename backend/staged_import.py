@@ -128,6 +128,27 @@ def scan_media(root: Path) -> list[Path]:
     return list(iter_media(root))
 
 
+def people_names(sidecar_data: dict) -> list[str]:
+    """The names Google put on a photo, cleaned and de-duplicated.
+
+    The field is a list of objects -- [{"name": "Madison Teagle"}] -- and a
+    malformed entry should cost that name, not the whole photo's metadata.
+    Order is not meaningful, so the result is sorted to keep imports
+    reproducible.
+    """
+    people = sidecar_data.get("people")
+    if not isinstance(people, list):
+        return []
+    names = set()
+    for entry in people:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("name")
+        if isinstance(name, str) and name.strip():
+            names.add(name.strip())
+    return sorted(names)
+
+
 def read_metadata(path: Path) -> dict:
     """Title, description and the sidecar's own view of when and where.
 
@@ -140,6 +161,9 @@ def read_metadata(path: Path) -> dict:
         "taken_at_unix": None,
         "latitude": None,
         "longitude": None,
+        # Google's face tags: names only, no boxes. Kept as evidence for the
+        # cluster matcher rather than applied to anything directly.
+        "people": [],
     }
     sidecar = sidecar_for(path)
     if sidecar is None:
@@ -148,6 +172,7 @@ def read_metadata(path: Path) -> dict:
         data = json.loads(sidecar.read_text(encoding="utf-8"))
         result["title"] = data.get("title") or result["title"]
         result["description"] = data.get("description") or ""
+        result["people"] = people_names(data)
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
         print(f"[import] unreadable sidecar {sidecar}: {exc}", flush=True)
         return result
@@ -232,6 +257,11 @@ async def import_one(
     # its answer outranks the sidecar's for the Flickr mirror too.
     metadata = dict(metadata, taken_at_unix=nas_copy["taken_at_unix"],
                     latitude=nas_copy["latitude"], longitude=nas_copy["longitude"])
+
+    # Google's names for whoever is in the frame. Stored as evidence; the
+    # matcher decides later whether any of it should become a cluster label.
+    if metadata.get("people"):
+        main.record_people_tags(nas_copy["kindred_photo_id"], metadata["people"])
 
     flickr_id = main._existing_flickr_copy(nas_copy["kindred_photo_id"])
     replication_job_id = None

@@ -2843,6 +2843,21 @@ def _original_upload_limit(filename):
     return UPLOAD_MAX_SIZE
 
 
+def record_people_tags(photo_id: str, names, source: str = "google_takeout") -> int:
+    """Store the names a provider put on a photo. Idempotent."""
+    cleaned = sorted({name.strip() for name in names
+                      if isinstance(name, str) and name.strip()})
+    if not cleaned:
+        return 0
+    db_query(
+        """INSERT INTO photo_people_tags (photo_id, name, source)
+           SELECT %s, unnest(%s::text[]), %s
+           ON CONFLICT (photo_id, name, source) DO NOTHING""",
+        (photo_id, cleaned, source), fetch=False,
+    )
+    return len(cleaned)
+
+
 def _existing_flickr_copy(kindred_photo_id: str) -> str | None:
     rows = db_query(
         """
