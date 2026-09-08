@@ -198,6 +198,13 @@ services:
     # replaces; left on it reports unhealthy while downloading perfectly well.
     healthcheck:
       disable: true
+    # No --set-exif-datetime. It rewrites EXIF after the download, which grows
+    # the file: icloudpd then compares the size on disk against the size Apple
+    # reports, decides they differ, and fetches the photo again under a
+    # "-<expected size>" name. On an hourly watch that duplicates the library
+    # every cycle. The dates survive without it -- iCloud originals carry
+    # DateTimeOriginal, and capture_date.py reads the {:%Y/%m/%d} folders as a
+    # fallback for the few that do not.
     # unless-stopped, paired with --watch-with-interval below. on-failure was
     # wrong: icloudpd exits 0 when it loses its connection to Apple ("Cannot
     # connect to Apple iCloud service"), so Docker read a dropped download as a
@@ -218,7 +225,6 @@ services:
       --cookie-directory /config
       --directory /data
       --folder-structure {:%Y/%m/%d}
-      --set-exif-datetime
       --live-photo-size original
       --watch-with-interval 3600
       --log-level info
@@ -236,7 +242,6 @@ services:
       --cookie-directory /config
       --directory /data
       --folder-structure {:%Y/%m/%d}
-      --set-exif-datetime
       --live-photo-size original
       --watch-with-interval 3600
       --log-level info
@@ -251,7 +256,6 @@ services:
       --cookie-directory /config
       --directory /data
       --folder-structure {:%Y/%m/%d}
-      --set-exif-datetime
       --live-photo-size original
       --watch-with-interval 3600
       --log-level info
