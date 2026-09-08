@@ -190,6 +190,12 @@ services:
     image: boredazfcuk/icloudpd:1.0.1380_06-09-2026
     profiles: [icloud]
     entrypoint: /opt/icloudpd/bin/icloudpd
+    # The image ships a healthcheck for its own launcher daemon, which the
+    # entrypoint above replaces. Left on, it reports unhealthy while the
+    # download runs perfectly well -- and a container that always cries wolf
+    # hides the failure worth seeing.
+    healthcheck:
+      disable: true
     # on-failure, not unless-stopped: a completed library should stop, not spin
     # back through every asset forever.
     restart: on-failure:5
@@ -205,6 +211,9 @@ services:
       --set-exif-datetime
       --live-photo-size original
       --log-level info
+    # Nothing on the internal network: it reaches Apple and writes to disk, and
+    # naming no network here made compose create a stray default one.
+    network_mode: bridge
     volumes:
       - ${ICLOUD_COOKIE_DIR:?Set ICLOUD_COOKIE_DIR in .env}:/config
       # A sibling of the Takeout tree, never inside it: this library has to stay
