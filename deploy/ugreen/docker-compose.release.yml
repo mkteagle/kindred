@@ -175,6 +175,42 @@ services:
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}
     networks: [kindred-internal]
 
+  # Pulls an iCloud Photo Library down onto the NAS. Behind a profile, like
+  # tunnel and ollama, because it uses a third-party image with nothing to
+  # build -- deploy.py builds everything in its SERVICES list, so a service
+  # with no build context does not belong there.
+  #
+  # Start it with:  COMPOSE_PROFILES=public,icloud
+  #
+  # Authentication is deliberately not here. icloudpd is run once by hand with
+  # --auth-only to establish the session, because that step needs an Apple ID
+  # password and a 2FA code, and neither belongs in a compose file, an .env, or
+  # a log. This service only reuses the cookie that produced.
+  icloud-michael:
+    image: boredazfcuk/icloudpd:1.0.1380_06-09-2026
+    profiles: [icloud]
+    entrypoint: /opt/icloudpd/bin/icloudpd
+    # on-failure, not unless-stopped: a completed library should stop, not spin
+    # back through every asset forever.
+    restart: on-failure:5
+    # Downloading is network- and IO-bound. It must not take cores from the
+    # indexer, which is the thing actually short of them.
+    cpus: 1.0
+    mem_limit: 512m
+    command: >-
+      --username ${ICLOUD_USERNAME:?Set ICLOUD_USERNAME in .env}
+      --cookie-directory /config
+      --directory /data
+      --folder-structure {:%Y/%m/%d}
+      --set-exif-datetime
+      --live-photo-size original
+      --log-level info
+    volumes:
+      - ${ICLOUD_COOKIE_DIR:?Set ICLOUD_COOKIE_DIR in .env}:/config
+      # A sibling of the Takeout tree, never inside it: this library has to stay
+      # separately auditable before anything is cleared out of iCloud.
+      - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/photos/imports/iCloudMichael:/data
+
 networks:
   kindred-internal:
     driver: bridge
