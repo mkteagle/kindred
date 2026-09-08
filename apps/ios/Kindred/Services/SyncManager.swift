@@ -4,6 +4,12 @@ import Photos
 
 /// Schedules automatic backup while delegating every transfer to the same
 /// durable uploader used by the manual Backup screen.
+struct FavoriteSyncResponse: Decodable, Sendable {
+    let added: Int
+    let already: Int
+    let unknown: Int
+}
+
 @MainActor
 @Observable
 final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
@@ -161,6 +167,29 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
         lastRunSucceeded = summary.failedIdentifiers.isEmpty && !Task.isCancelled
         if lastRunSucceeded {
             recordSuccessfulSync()
+        }
+        await syncFavorites()
+    }
+
+    /// Push the phone's hearts to the household library.
+    ///
+    /// Runs after a sync rather than as its own schedule: the mapping from a
+    /// camera-roll asset to a Kindred photo only exists once that photo has
+    /// been uploaded, so there is nothing to send before then. Additive on the
+    /// server, so this never removes a favourite marked in Kindred itself.
+    func syncFavorites() async {
+        guard SessionManager.shared.isAuthenticated else { return }
+        let ids = PhotoLibraryManager.shared.favoritedKindredPhotoIDs()
+        guard !ids.isEmpty else { return }
+        do {
+            _ = try await APIClient.shared.postJSON(
+                "/photos/favorites/sync",
+                body: ["photo_ids": ids]
+            ) as FavoriteSyncResponse
+        } catch {
+            // A failed favourite sync is not a failed backup: the photos are
+            // safe, only the hearts are behind, and the next run retries.
+            print("[SyncManager] Favourite sync failed: \(error)")
         }
     }
 

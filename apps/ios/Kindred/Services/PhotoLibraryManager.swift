@@ -140,6 +140,39 @@ final class PhotoLibraryManager {
         notUploadedPhotos.removeAll { $0.localIdentifier == localIdentifier }
     }
 
+    /// Kindred ids for the assets this phone has hearted in Photos.
+    ///
+    /// PhotoKit reports `isFavorite` directly, so this is what the person
+    /// actually marked rather than a guess from an album listing. Only assets
+    /// that have already been uploaded can be mapped, since the receipt is
+    /// where the Kindred id lives -- anything still queued is picked up the
+    /// next time this runs.
+    func favoritedKindredPhotoIDs() -> [String] {
+        lock.lock()
+        let receipts = uploadedMap.values.filter { $0.accountID == currentAccountID }
+        lock.unlock()
+
+        let byLocalIdentifier = Dictionary(
+            receipts.compactMap { record -> (String, String)? in
+                guard let kindredID = record.kindredPhotoID else { return nil }
+                return (record.localIdentifier, kindredID)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+        guard !byLocalIdentifier.isEmpty else { return [] }
+
+        var favorited: [String] = []
+        let options = PHFetchOptions()
+        options.predicate = NSPredicate(format: "favorite == YES")
+        let assets = PHAsset.fetchAssets(with: options)
+        assets.enumerateObjects { asset, _, _ in
+            if let kindredID = byLocalIdentifier[asset.localIdentifier] {
+                favorited.append(kindredID)
+            }
+        }
+        return favorited
+    }
+
     func isUploaded(localIdentifier: String) -> Bool {
         let key = recordKey(localIdentifier, accountID: currentAccountID)
         lock.lock()

@@ -6289,6 +6289,58 @@ def add_favorite(photo_id: str, user=Depends(get_current_user)):
     return {"photo_id": photo_id, "favorited": True}
 
 
+class FavoriteSyncRequest(BaseModel):
+    photo_ids: list[str]
+
+
+@app.post("/photos/favorites/sync")
+def sync_favorites(req: FavoriteSyncRequest, user=Depends(get_current_user)):
+    """Adopt the hearts someone already tapped in the iPhone Photos app.
+
+    PhotoKit reports `isFavorite` per asset, and the phone knows which Kindred
+    photo each of its assets became, so the app can hand over the list rather
+    than anyone re-marking a library by hand.
+
+    Additive on purpose. A photo missing from the list is not unfavourited: the
+    phone only knows about assets that are still on it, so treating this as the
+    complete truth would quietly delete favourites for every photo already
+    removed from the camera roll -- which is most of a library this size.
+    Removing a favourite stays the explicit, per-photo DELETE above.
+    """
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(403, "A household account is required for favourites")
+
+    wanted: list[str] = []
+    for raw in req.photo_ids[:5000]:
+        try:
+            wanted.append(str(uuid.UUID(raw)))
+        except (ValueError, AttributeError, TypeError):
+            continue          # a malformed id is skipped, not fatal for the batch
+    if not wanted:
+        return {"added": 0, "already": 0, "unknown": 0}
+
+    known = {row["id"] for row in db_query(
+        "SELECT id::text AS id FROM photos WHERE id::text = ANY(%s)", (wanted,))}
+    existing = {row["photo_id"] for row in db_query(
+        """SELECT photo_id::text AS photo_id FROM photo_favorites
+           WHERE user_id = %s AND photo_id::text = ANY(%s)""", (user_id, wanted))}
+
+    to_add = [pid for pid in known if pid not in existing]
+    if to_add:
+        db_query(
+            """INSERT INTO photo_favorites (photo_id, user_id)
+               SELECT unnest(%s::uuid[]), %s
+               ON CONFLICT (photo_id, user_id) DO NOTHING""",
+            (to_add, user_id), fetch=False,
+        )
+    return {
+        "added": len(to_add),
+        "already": len(existing),
+        "unknown": len(set(wanted) - known),
+    }
+
+
 @app.delete("/photos/{photo_id}/favorite")
 def remove_favorite(photo_id: str, user=Depends(get_current_user)):
     """Unfavourite. Also idempotent — removing what is not there is success."""
