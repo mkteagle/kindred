@@ -187,7 +187,15 @@ async def import_one(
             main._record_flickr_copy(
                 nas_copy["kindred_photo_id"], flickr_id, credentials.get("user_id", "")
             )
-            if metadata["taken_at_unix"]:
+            # Flickr parses EXIF DateTimeOriginal from the file it was just
+            # given, so telling it the date again is a REST call spent on
+            # something it already knows -- and REST is the scarce resource
+            # here: 3,600 queries an hour per key, shared across every photo.
+            # The call still goes out for dates we recovered from a sidecar, a
+            # folder name or a filename, because those are exactly the photos
+            # whose EXIF Flickr cannot read a date from.
+            source = (nas_copy.get("taken_at_source") or "")
+            if metadata["taken_at_unix"] and not source.startswith("exif:"):
                 await main._flickr_set_dates(flickr_id, metadata["taken_at_unix"], credentials)
             if metadata["latitude"] is not None and metadata["longitude"] is not None:
                 await main._flickr_set_location(
