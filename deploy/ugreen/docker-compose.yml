@@ -62,6 +62,17 @@ services:
   library-worker:
     image: kindred-api:recovery-54b251c
     restart: on-failure
+    # The indexer opens 62 threads on a 12-core box whatever OMP_NUM_THREADS
+    # says -- torch, onnxruntime and BLAS each keep their own pool, and the env
+    # vars only reach some of them. A cgroup quota bounds the lot: it caps the
+    # CPU the container can take however many threads ask for it, which is what
+    # stops the load average sitting at twice the core count.
+    #
+    # mem_limit matters more than the quota. The host has 7.5 GB and was 5.6 GB
+    # into swap, and swap thrash is why everything else stalled on IO. A worker
+    # that would push the box into swap should be killed and restarted instead.
+    cpus: 4.0
+    mem_limit: 2g
     command: ["python", "-u", "/app/data/nas_library_worker.py"]
     depends_on:
       api:
