@@ -47,6 +47,13 @@ class Match:
     support: int
     runner_up: str | None = None
     reason: str = ""
+    #: How many other clusters this same name also matches. Kindred splits a
+    #: person across groups routinely, so this is usually more than zero.
+    sibling_clusters: int = 0
+    #: Whether this is the best-supported of those, and so the one to lead with.
+    is_strongest: bool = True
+    #: Whether Kindred already has a cluster carrying this name.
+    already_in_library: bool = False
 
     @property
     def confident(self) -> bool:
@@ -103,26 +110,44 @@ def match_cluster(cluster_id: str, photo_names: dict[str, list[str]]) -> Match:
 
 def resolve(clusters: dict[str, dict[str, list[str]]],
             already_named: set[str] | None = None) -> list[Match]:
-    """Match every cluster, refusing to give one name to two clusters.
+    """Match every cluster, and let a name land on as many as it fits.
 
-    Kindred often splits a person across clusters -- a beard, a decade -- and
-    two of them will both look like Madison. Naming both "Madison Teagle"
-    creates two people with the same name rather than one person, so the
-    strongest claim keeps the name and the others are left for a human to merge.
+    An earlier version gave each name to exactly one cluster, reasoning that
+    naming two "Madison Teagle" would create two people instead of one. Run
+    against the real library that was plainly wrong: 998 clusters cover about
+    27 people, so Kindred splits everyone across many groups -- Allison Jarrett
+    matched five clusters with thirty to fifty single-name photos each -- and
+    the rule refused 93 of 96 matches to protect against a duplicate that is
+    actually the correct answer. Several clusters matching one name is evidence
+    they are the same person, not a conflict.
+
+    Each match carries how many other clusters share its name and whether it is
+    the strongest of them, so a reviewer can accept a person once rather than
+    five times, and merge them if they choose. `already_named` no longer blocks
+    a proposal either -- another group of someone Kindred already knows is worth
+    surfacing, not hiding.
     """
     matches = [match_cluster(cluster_id, photos) for cluster_id, photos in clusters.items()]
-    matches.sort(key=lambda m: (-m.confidence, -m.support, m.cluster_id))
 
-    taken = set(already_named or ())
+    by_name: dict[str, list[Match]] = {}
+    for match in matches:
+        if match.name:
+            by_name.setdefault(match.name, []).append(match)
+
+    known = set(already_named or ())
     resolved: list[Match] = []
     for match in matches:
-        if match.name and match.name in taken:
-            resolved.append(Match(match.cluster_id, None, match.confidence, match.support,
-                                  match.name,
-                                  reason=f"{match.name} is already claimed by a stronger cluster"))
+        if not match.name:
+            resolved.append(match)
             continue
-        if match.name:
-            taken.add(match.name)
-        resolved.append(match)
+        peers = sorted(by_name[match.name], key=lambda m: (-m.support, m.cluster_id))
+        rank = peers.index(match) + 1
+        resolved.append(Match(
+            match.cluster_id, match.name, match.confidence, match.support,
+            match.runner_up, match.reason,
+            sibling_clusters=len(peers) - 1,
+            is_strongest=(rank == 1),
+            already_in_library=match.name in known,
+        ))
     resolved.sort(key=lambda m: m.cluster_id)
     return resolved

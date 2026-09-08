@@ -95,25 +95,43 @@ class SharedPhotoTests(unittest.TestCase):
 
 
 class ResolveTests(unittest.TestCase):
-    def test_one_name_is_not_given_to_two_clusters(self):
+    def test_one_name_may_land_on_several_clusters(self):
         # Kindred splits a person across clusters routinely -- a beard, a
-        # decade. Naming both creates two people rather than one.
+        # decade. Against the real library, 998 clusters cover about 27 people,
+        # so refusing the duplicates threw away almost every correct match.
         clusters = {"strong": solo("Madison Teagle", 40),
                     "weaker": solo("Madison Teagle", 6)}
         by_id = {m.cluster_id: m for m in resolve(clusters)}
         self.assertEqual(by_id["strong"].name, "Madison Teagle")
-        self.assertIsNone(by_id["weaker"].name)
-        self.assertIn("already claimed", by_id["weaker"].reason)
+        self.assertEqual(by_id["weaker"].name, "Madison Teagle")
 
-    def test_the_stronger_cluster_keeps_the_name(self):
+    def test_siblings_are_counted_so_a_person_can_be_accepted_once(self):
+        clusters = {f"c{i}": solo("Madison Teagle", 10 + i) for i in range(5)}
+        for match in resolve(clusters):
+            self.assertEqual(match.sibling_clusters, 4)
+
+    def test_the_best_supported_cluster_is_marked_as_such(self):
         clusters = {"a": solo("Madison Teagle", 5), "b": solo("Madison Teagle", 300)}
         by_id = {m.cluster_id: m for m in resolve(clusters)}
-        self.assertEqual(by_id["b"].name, "Madison Teagle")
+        self.assertTrue(by_id["b"].is_strongest)
+        self.assertFalse(by_id["a"].is_strongest)
 
-    def test_a_name_already_used_in_kindred_is_not_reassigned(self):
-        clusters = {"c1": solo("Madison Teagle", 50)}
-        match = resolve(clusters, already_named={"Madison Teagle"})[0]
-        self.assertIsNone(match.name)
+    def test_a_lone_match_has_no_siblings(self):
+        match = resolve({"c1": solo("Madison Teagle", 20)})[0]
+        self.assertEqual(match.sibling_clusters, 0)
+        self.assertTrue(match.is_strongest)
+
+    def test_a_name_kindred_already_uses_is_still_proposed_but_flagged(self):
+        # Another group of someone already known is worth surfacing -- it is a
+        # merge waiting to happen -- not hiding.
+        match = resolve({"c1": solo("Madison Teagle", 50)},
+                        already_named={"Madison Teagle"})[0]
+        self.assertEqual(match.name, "Madison Teagle")
+        self.assertTrue(match.already_in_library)
+
+    def test_a_name_new_to_kindred_is_not_flagged(self):
+        match = resolve({"c1": solo("Madison Teagle", 50)}, already_named={"Someone Else"})[0]
+        self.assertFalse(match.already_in_library)
 
     def test_different_people_all_keep_their_names(self):
         clusters = {"c1": solo("Madison Teagle", 20), "c2": solo("Britain Teagle", 20)}

@@ -1,19 +1,27 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BACKEND } from "@/lib/constants";
 import { KxEmpty, KxErrorBanner, KxSkeletonRows } from "@/components/kx/states";
 
-interface Proposal {
+interface ClusterProposal {
   cluster_id: string;
-  name: string;
-  confidence: number;
   support: number;
-  runner_up: string | null;
+  confidence: number;
   reason: string;
+  runner_up: string | null;
   photos: number;
   avatar: string | null;
+  is_strongest: boolean;
+}
+
+interface PersonProposal {
+  name: string;
+  clusters: ClusterProposal[];
+  already_in_library: boolean;
+  total_support: number;
+  total_photos: number;
 }
 
 const fmt = new Intl.NumberFormat("en-GB");
@@ -22,9 +30,10 @@ export default function NameReviewPage() {
   const queryClient = useQueryClient();
   const [settled, setSettled] = useState<Record<string, "accepted" | "rejected">>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
 
   const { data, error, isPending, refetch } = useQuery<{
-    proposals: Proposal[];
+    people: PersonProposal[];
     unnamed_clusters: number;
   }>({
     queryKey: ["name-proposals"],
@@ -35,105 +44,125 @@ export default function NameReviewPage() {
     },
   });
 
-  const accept = useMutation({
-    mutationFn: async (proposal: Proposal) => {
-      const response = await fetch(`${BACKEND}/clusters/label`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          category: "people",
-          cluster_id: proposal.cluster_id,
-          name: proposal.name,
-        }),
-      });
-      if (!response.ok) throw new Error("That name could not be saved.");
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["kx-cluster-browse", "people"] });
-      void queryClient.invalidateQueries({ queryKey: ["kx-named-people", "people"] });
-    },
-  });
-
+  /**
+   * Name every group this person matched, in one go.
+   *
+   * Kindred splits a person across many clusters, so confirming them once has
+   * to settle all of them — asking five times for one person is five chances
+   * to give up halfway and leave the library half-named.
+   */
   const onAccept = useCallback(
-    async (proposal: Proposal) => {
-      setBusy(proposal.cluster_id);
+    async (person: PersonProposal) => {
+      setBusy(person.name);
+      setFailed(null);
       try {
-        await accept.mutateAsync(proposal);
-        setSettled((current) => ({ ...current, [proposal.cluster_id]: "accepted" }));
+        for (const cluster of person.clusters) {
+          const response = await fetch(`${BACKEND}/clusters/label`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              category: "people",
+              cluster_id: cluster.cluster_id,
+              name: person.name,
+            }),
+          });
+          if (!response.ok) throw new Error(`${person.name} could not be saved.`);
+        }
+        setSettled((current) => ({ ...current, [person.name]: "accepted" }));
+        void queryClient.invalidateQueries({ queryKey: ["kx-cluster-browse", "people"] });
+        void queryClient.invalidateQueries({ queryKey: ["kx-named-people", "people"] });
+      } catch (problem) {
+        setFailed((problem as Error).message);
       } finally {
         setBusy(null);
       }
     },
-    [accept],
+    [queryClient],
   );
 
-  // Rejecting is local and deliberately so: it removes the suggestion from
-  // this session's list without writing anything. Nothing about the cluster
-  // changes, and the suggestion returns next time in case it was right.
-  const onReject = useCallback((proposal: Proposal) => {
-    setSettled((current) => ({ ...current, [proposal.cluster_id]: "rejected" }));
+  // Rejecting writes nothing: it drops the row for this session, and the
+  // suggestion returns next time in case it was right after all.
+  const onReject = useCallback((person: PersonProposal) => {
+    setSettled((current) => ({ ...current, [person.name]: "rejected" }));
   }, []);
 
-  const proposals = data?.proposals ?? [];
-  const remaining = useMemo(
-    () => proposals.filter((p) => !settled[p.cluster_id]),
-    [proposals, settled],
-  );
+  const people = data?.people ?? [];
+  const remaining = useMemo(() => people.filter((p) => !settled[p.name]), [people, settled]);
   const acceptedCount = Object.values(settled).filter((s) => s === "accepted").length;
 
   return (
-    <main className="kx-page" style={{ maxWidth: 860 }}>
+    <main className="kx-page" style={{ maxWidth: 880 }}>
       <span className="kx-eyebrow">Review</span>
       <h1 className="kx-title" style={{ fontSize: 40 }}>
         Names Google already knew.
       </h1>
       <p className="kx-lede">
         Google tagged who was in each photo but never which face was which. Where
-        a face keeps turning up in photos tagged with exactly one name, that name
+        a face keeps appearing in photos tagged with exactly one name, that name
         is almost certainly theirs. Nothing is applied until you say so.
       </p>
 
       {error && <KxErrorBanner detail={(error as Error).message} onRetry={() => void refetch()} />}
+      {failed && <KxErrorBanner detail={failed} onRetry={() => void refetch()} />}
 
       {isPending ? (
-        <KxSkeletonRows count={6} height={92} />
+        <KxSkeletonRows count={6} height={104} />
       ) : remaining.length === 0 ? (
         <KxEmpty
-          title={acceptedCount > 0 ? "That is all of them." : "Nothing to suggest yet."}
+          title={acceptedCount > 0 ? "That is everyone." : "Nothing to suggest yet."}
           body={
             acceptedCount > 0
-              ? `${acceptedCount} ${acceptedCount === 1 ? "person" : "people"} named. The rest of the library still has ${fmt.format(data?.unnamed_clusters ?? 0)} unnamed groups.`
-              : "Suggestions appear as photos with Google's tags are imported. Groups with too little evidence, or two names too close to separate, are deliberately left out."
+              ? `${acceptedCount} ${acceptedCount === 1 ? "person" : "people"} named. ${fmt.format(data?.unnamed_clusters ?? 0)} groups in the library still have no name.`
+              : "Suggestions appear as photos carrying Google's tags are imported. Groups with too little evidence, or two names too close to separate, are deliberately left out."
           }
         />
       ) : (
         <>
           <p className="kx-mono kx-namereview-count">
-            {fmt.format(remaining.length)} to review
+            {fmt.format(remaining.length)} {remaining.length === 1 ? "person" : "people"} to review
             {acceptedCount > 0 && ` · ${fmt.format(acceptedCount)} named`}
           </p>
           <ul className="kx-namereview">
-            {remaining.map((proposal) => (
-              <li key={proposal.cluster_id} className="kx-nameprop">
-                {proposal.avatar ? (
-                  <img className="kx-nameprop-face" src={proposal.avatar} alt="" />
-                ) : (
-                  <span className="kx-nameprop-face is-blank" aria-hidden="true" />
-                )}
+            {remaining.map((person) => (
+              <li key={person.name} className="kx-nameprop">
+                <span className="kx-nameprop-faces">
+                  {person.clusters.slice(0, 3).map((cluster) =>
+                    cluster.avatar ? (
+                      <img
+                        key={cluster.cluster_id}
+                        className="kx-nameprop-face"
+                        src={cluster.avatar}
+                        alt=""
+                      />
+                    ) : (
+                      <span key={cluster.cluster_id} className="kx-nameprop-face is-blank" />
+                    ),
+                  )}
+                </span>
 
                 <div className="kx-nameprop-body">
-                  <strong className="kx-nameprop-name">{proposal.name}</strong>
-                  <span className="kx-mono kx-nameprop-why">{proposal.reason}</span>
+                  <strong className="kx-nameprop-name">
+                    {person.name}
+                    {person.already_in_library && (
+                      <span className="kx-nameprop-tag kx-mono">already in your library</span>
+                    )}
+                  </strong>
+                  <span className="kx-mono kx-nameprop-why">
+                    {person.clusters.length === 1
+                      ? person.clusters[0].reason
+                      : `${person.clusters.length} separate groups look like this person · ${fmt.format(person.total_support)} single-name photos between them`}
+                  </span>
                   <span className="kx-mono kx-nameprop-meta">
-                    {fmt.format(proposal.photos)} photos in this group
-                    {proposal.runner_up && ` · next closest: ${proposal.runner_up}`}
+                    {fmt.format(person.total_photos)} photos
+                    {person.clusters[0]?.runner_up &&
+                      ` · next closest name: ${person.clusters[0].runner_up}`}
                   </span>
                 </div>
 
                 <div className="kx-nameprop-actions">
                   <a
                     className="kx-button compact"
-                    href={`/people/${proposal.cluster_id}`}
+                    href={`/people/${person.clusters[0].cluster_id}`}
                     target="_blank"
                     rel="noreferrer"
                   >
@@ -141,17 +170,21 @@ export default function NameReviewPage() {
                   </a>
                   <button
                     className="kx-button"
-                    onClick={() => onReject(proposal)}
-                    disabled={busy === proposal.cluster_id}
+                    onClick={() => onReject(person)}
+                    disabled={busy === person.name}
                   >
                     Not them
                   </button>
                   <button
                     className="kx-button primary"
-                    onClick={() => void onAccept(proposal)}
-                    disabled={busy === proposal.cluster_id}
+                    onClick={() => void onAccept(person)}
+                    disabled={busy === person.name}
                   >
-                    {busy === proposal.cluster_id ? "Saving…" : `Yes, ${proposal.name.split(" ")[0]}`}
+                    {busy === person.name
+                      ? "Saving…"
+                      : person.clusters.length > 1
+                        ? `Yes — name all ${person.clusters.length}`
+                        : `Yes, ${person.name.split(" ")[0]}`}
                   </button>
                 </div>
               </li>

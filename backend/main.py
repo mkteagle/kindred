@@ -2311,10 +2311,17 @@ def get_name_proposals(category: str = "people", limit: int = Query(80, ge=1, le
     # Only unnamed clusters need a proposal; a named one is already answered.
     candidates = {cid: photos for cid, photos in clusters.items() if cid not in named_ids}
     matches = [m for m in name_matcher.resolve(candidates, taken_names) if m.confident]
-    matches.sort(key=lambda m: (-m.support, -m.confidence))
-    matches = matches[:limit]
-    if not matches:
-        return {"proposals": [], "unnamed_clusters": len(candidates)}
+
+    # Grouped by person, not by cluster. This library splits everyone across
+    # many clusters -- Allison Jarrett matches five -- and asking someone to
+    # confirm the same person five times is five chances to lose patience.
+    grouped: dict[str, list] = {}
+    for match in matches:
+        grouped.setdefault(match.name, []).append(match)
+    people = sorted(grouped.items(), key=lambda kv: -sum(m.support for m in kv[1]))[:limit]
+    if not people:
+        return {"people": [], "unnamed_clusters": len(candidates)}
+    matches = [m for _, group in people for m in group]
 
     # One face per proposal, so the screen can show who it is talking about.
     chips = db_query("""
@@ -2328,16 +2335,22 @@ def get_name_proposals(category: str = "people", limit: int = Query(80, ge=1, le
 
     return {
         "unnamed_clusters": len(candidates),
-        "proposals": [{
-            "cluster_id": match.cluster_id,
-            "name": match.name,
-            "confidence": round(match.confidence, 3),
-            "support": match.support,
-            "runner_up": match.runner_up,
-            "reason": match.reason,
-            "photos": len(candidates.get(match.cluster_id, {})),
-            "avatar": face.get(match.cluster_id),
-        } for match in matches],
+        "people": [{
+            "name": name,
+            "clusters": [{
+                "cluster_id": match.cluster_id,
+                "support": match.support,
+                "confidence": round(match.confidence, 3),
+                "reason": match.reason,
+                "runner_up": match.runner_up,
+                "photos": len(candidates.get(match.cluster_id, {})),
+                "avatar": face.get(match.cluster_id),
+                "is_strongest": match.is_strongest,
+            } for match in sorted(group, key=lambda m: -m.support)],
+            "already_in_library": any(m.already_in_library for m in group),
+            "total_support": sum(m.support for m in group),
+            "total_photos": sum(len(candidates.get(m.cluster_id, {})) for m in group),
+        } for name, group in people],
     }
 
 

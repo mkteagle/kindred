@@ -12940,10 +12940,26 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
   background: var(--fill-1);
 }
 
+/* Up to three faces, overlapped: one person, several groups of them. */
+.kx-nameprop-faces { display: flex; flex: none; }
+.kx-nameprop-faces .kx-nameprop-face + .kx-nameprop-face { margin-left: -18px; }
+
+.kx-nameprop-tag {
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--fill-3);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ink-3);
+  vertical-align: middle;
+}
+
 .kx-nameprop-face {
   flex: none;
   width: 64px;
   height: 64px;
+  border: 2px solid var(--fill-1);
   border-radius: 999px;
   object-fit: cover;
   background: var(--fill-3);
