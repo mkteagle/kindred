@@ -564,24 +564,49 @@ def bbox_chip_b64(img_bgr, bbox: list[float], pad: float = 0.18) -> str:
     _, buf = cv2.imencode(".jpg", chip, [cv2.IMWRITE_JPEG_QUALITY, 80])
     return "data:image/jpeg;base64," + base64.b64encode(buf).decode()
 
-def clip_embed_image(img_bgr, bbox=None):
-    """Get CLIP embedding for an image or a cropped region."""
+def clip_embed_regions(img_bgr, regions):
+    """Embed several regions of one photo in a single forward pass.
+
+    Indexing asks for one embedding per detected object plus one for the whole
+    frame, and each was its own trip through the model. Stacking them changes
+    nothing about the result -- CLIP's vision transformer normalises per sample,
+    so a batch of five is five independent embeddings -- but it enters the model
+    once instead of five times, and entering it is most of the cost on a CPU.
+
+    `regions` is a list of bounding boxes, where None means the whole frame.
+    Returns one embedding per region, in order, with None where the crop was
+    empty so a caller can still line results up against what it asked for.
+    """
     import torch
     from PIL import Image
     model, preprocess, _ = get_clip()
-    if bbox:
-        x1, y1, x2, y2 = [max(0, int(v)) for v in bbox]
-        crop = img_bgr[y1:y2, x1:x2]
+
+    tensors, slots = [], []
+    for index, bbox in enumerate(regions):
+        if bbox is None:
+            crop = img_bgr
+        else:
+            x1, y1, x2, y2 = [max(0, int(v)) for v in bbox]
+            crop = img_bgr[y1:y2, x1:x2]
         if crop.size == 0:
-            return None
-    else:
-        crop = img_bgr
-    pil = Image.fromarray(crop[:, :, ::-1])  # BGR -> RGB
-    tensor = preprocess(pil).unsqueeze(0)
+            continue
+        tensors.append(preprocess(Image.fromarray(crop[:, :, ::-1])))  # BGR -> RGB
+        slots.append(index)
+
+    results: list = [None] * len(regions)
+    if not tensors:
+        return results
     with torch.no_grad():
-        emb = model.encode_image(tensor)
+        emb = model.encode_image(torch.stack(tensors))
         emb = emb / emb.norm(dim=-1, keepdim=True)
-    return emb[0].cpu().numpy()
+    for slot, vector in zip(slots, emb.cpu().numpy()):
+        results[slot] = vector
+    return results
+
+
+def clip_embed_image(img_bgr, bbox=None):
+    """Get CLIP embedding for an image or a cropped region."""
+    return clip_embed_regions(img_bgr, [bbox])[0]
 
 def clip_embed_text(text: str):
     """Get CLIP embedding for a text query."""
@@ -3822,24 +3847,31 @@ async def _process_uploaded_photo(
                 counts["people"] += 1
 
             yolo_results = yolo(img[:, :, ::-1], verbose=False)
+            # Decide what is worth embedding before embedding anything. This
+            # used to run CLIP over every box YOLO returned and then discard the
+            # ones that were neither pet nor vehicle -- on a street scene that is
+            # a dozen forward passes to keep two.
+            wanted = []
             for box in yolo_results[0].boxes:
-                cls_id = int(box.cls[0])
                 score = float(box.conf[0])
                 if score < 0.4:
                     continue
-                xyxy = box.xyxy[0].tolist()
-                clip_emb = clip_embed_image(img, bbox=xyxy)
-                emb_list = clip_emb.tolist() if clip_emb is not None else []
+                cls_id = int(box.cls[0])
                 if cls_id in PET_CLASSES:
-                    insert_detection(conn, photo, "pets", PET_CLASSES[cls_id],
-                        xyxy, score, emb_list, img)
-                    counts["pets"] += 1
+                    category, subtype = "pets", PET_CLASSES[cls_id]
                 elif cls_id in VEHICLE_CLASSES:
-                    insert_detection(conn, photo, "vehicles", VEHICLE_CLASSES[cls_id],
-                        xyxy, score, emb_list, img)
-                    counts["vehicles"] += 1
+                    category, subtype = "vehicles", VEHICLE_CLASSES[cls_id]
+                else:
+                    continue
+                wanted.append((box.xyxy[0].tolist(), score, category, subtype))
 
-            photo_clip = clip_embed_image(img)
+            # Every crop and the whole frame in one pass through the model.
+            embeddings = clip_embed_regions(img, [bbox for bbox, _, _, _ in wanted] + [None])
+            photo_clip = embeddings[-1]
+            for (xyxy, score, category, subtype), clip_emb in zip(wanted, embeddings):
+                insert_detection(conn, photo, category, subtype, xyxy, score,
+                    clip_emb.tolist() if clip_emb is not None else [], img)
+                counts[category] += 1
             if photo_clip is not None:
                 with conn.cursor() as cur:
                     cur.execute("""

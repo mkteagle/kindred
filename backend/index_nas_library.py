@@ -16,7 +16,10 @@ import throttle
 
 def pending(limit: int | None) -> list[dict]:
     suffix = " LIMIT %s" if limit else ""
-    params = (limit,) if limit else None
+    # The sentinel keeps the ordering expression non-null so undated photos sort
+    # to the end instead of ahead of everything, the way they used to in the
+    # gallery when created_at stood in for a capture date.
+    params = ("0001-01-01", limit) if limit else ("0001-01-01",)
     return main.db_query(
         """
         SELECT p.id::text AS kindred_photo_id,
@@ -31,7 +34,13 @@ def pending(limit: int | None) -> list[dict]:
         LEFT JOIN processed_photos done_flickr ON done_flickr.photo_id=flickr.provider_key
         WHERE p.media_type LIKE 'image/%%'
           AND done_kindred.photo_id IS NULL AND done_flickr.photo_id IS NULL
-        ORDER BY p.created_at, p.id
+        -- Newest first. There are more photos queued than this box can index
+        -- in months, so the order decides which months of the library are
+        -- searchable while the rest catches up. Oldest-first meant the years
+        -- nobody is looking at got indexed first and recent photos -- the ones
+        -- being uploaded, shared and searched for right now -- waited longest.
+        -- Undated photos sort last rather than claiming today's date.
+        ORDER BY COALESCE(p.taken_at, %s) DESC, p.id DESC
         """ + suffix,
         params,
     )
