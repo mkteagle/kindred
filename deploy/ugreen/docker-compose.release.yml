@@ -175,50 +175,82 @@ services:
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}
     networks: [kindred-internal]
 
-  # Pulls an iCloud Photo Library down onto the NAS. Behind a profile, like
-  # tunnel and ollama, because it uses a third-party image with nothing to
-  # build -- deploy.py builds everything in its SERVICES list, so a service
-  # with no build context does not belong there.
+  # ── iCloud libraries ──────────────────────────────────────────────────
+  # One service per person, sharing the settings below. Behind a profile,
+  # like tunnel and ollama, because the image is third-party with nothing to
+  # build -- deploy.py builds everything in its SERVICES list.
   #
-  # Start it with:  COMPOSE_PROFILES=public,icloud
+  #   COMPOSE_PROFILES=public,icloud   (or start one by name)
   #
-  # Authentication is deliberately not here. icloudpd is run once by hand with
-  # --auth-only to establish the session, because that step needs an Apple ID
-  # password and a 2FA code, and neither belongs in a compose file, an .env, or
-  # a log. This service only reuses the cookie that produced.
-  icloud-michael:
+  # This replaces the standalone compose file under /volume1/docker/
+  # kindred-icloud, so there is one definition rather than two that can
+  # disagree. Its preparation guards are carried over as real flags below.
+  #
+  # Authentication is deliberately absent. Establishing a session needs an
+  # Apple ID password and a 2FA code, so it is done once per person by hand
+  # with --auth-only; these services only reuse the resulting cookie. No
+  # secret belongs in a compose file, an .env, or a log.
+  icloud-michael: &icloud
     image: boredazfcuk/icloudpd:1.0.1380_06-09-2026
     profiles: [icloud]
     entrypoint: /opt/icloudpd/bin/icloudpd
-    # The image ships a healthcheck for its own launcher daemon, which the
-    # entrypoint above replaces. Left on, it reports unhealthy while the
-    # download runs perfectly well -- and a container that always cries wolf
-    # hides the failure worth seeing.
+    # The image's healthcheck probes the launcher daemon the entrypoint above
+    # replaces; left on it reports unhealthy while downloading perfectly well.
     healthcheck:
       disable: true
-    # on-failure, not unless-stopped: a completed library should stop, not spin
+    # on-failure, not unless-stopped: a finished library should stop, not spin
     # back through every asset forever.
     restart: on-failure:5
-    # Downloading is network- and IO-bound. It must not take cores from the
-    # indexer, which is the thing actually short of them.
+    # Network- and IO-bound. It must not take cores from the indexer, which is
+    # the thing actually short of them.
     cpus: 1.0
     mem_limit: 512m
+    environment:
+      TZ: America/Denver
+    # Nothing on the internal network: it reaches Apple and writes to disk.
+    network_mode: bridge
     command: >-
-      --username ${ICLOUD_USERNAME:?Set ICLOUD_USERNAME in .env}
+      --username ${ICLOUD_USERNAME_MICHAEL:?Set ICLOUD_USERNAME_MICHAEL in .env}
       --cookie-directory /config
       --directory /data
       --folder-structure {:%Y/%m/%d}
       --set-exif-datetime
       --live-photo-size original
       --log-level info
-    # Nothing on the internal network: it reaches Apple and writes to disk, and
-    # naming no network here made compose create a stray default one.
-    network_mode: bridge
     volumes:
-      - ${ICLOUD_COOKIE_DIR:?Set ICLOUD_COOKIE_DIR in .env}:/config
-      # A sibling of the Takeout tree, never inside it: this library has to stay
-      # separately auditable before anything is cleared out of iCloud.
+      - ${ICLOUD_COOKIES_MICHAEL:?Set ICLOUD_COOKIES_MICHAEL in .env}:/config
+      # Each library lands in its own root, never merged and never inside the
+      # Takeout tree: nothing should be cleared out of anyone's iCloud until
+      # cloud_migration.py can account for their files specifically.
       - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/photos/imports/iCloudMichael:/data
+
+  icloud-wife:
+    <<: *icloud
+    command: >-
+      --username ${ICLOUD_USERNAME_WIFE:?Set ICLOUD_USERNAME_WIFE in .env}
+      --cookie-directory /config
+      --directory /data
+      --folder-structure {:%Y/%m/%d}
+      --set-exif-datetime
+      --live-photo-size original
+      --log-level info
+    volumes:
+      - ${ICLOUD_COOKIES_WIFE:?Set ICLOUD_COOKIES_WIFE in .env}:/config
+      - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/photos/imports/iCloudWife:/data
+
+  icloud-madison:
+    <<: *icloud
+    command: >-
+      --username ${ICLOUD_USERNAME_MADISON:?Set ICLOUD_USERNAME_MADISON in .env}
+      --cookie-directory /config
+      --directory /data
+      --folder-structure {:%Y/%m/%d}
+      --set-exif-datetime
+      --live-photo-size original
+      --log-level info
+    volumes:
+      - ${ICLOUD_COOKIES_MADISON:?Set ICLOUD_COOKIES_MADISON in .env}:/config
+      - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/photos/imports/iCloudMadison:/data
 
 networks:
   kindred-internal:
