@@ -14,7 +14,28 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RUNTIME = Path('/volume1/docker/Files/kindred/deploy/ugreen')
-SERVICES = ('api', 'web', 'library-worker', 'video-worker')
+TARGET_SERVICES = {
+    'backend': ('api', 'library-worker', 'video-worker'),
+    'web': ('web',),
+}
+
+
+def scoped_record(record, target):
+    """Keep legacy combined release rollback inside the selected target."""
+    services = [service for service in record['services']
+                if service in TARGET_SERVICES[target]]
+    result = {**record, 'services': services}
+    if 'image_ids' in record:
+        result['image_ids'] = {service: image for service, image in record['image_ids'].items()
+                               if service in services}
+    return result
+
+
+def release_record(state_dir, target, name):
+    path = state_dir / f'{target}-{name}.json'
+    if not path.exists():
+        path = state_dir / f'{name}.json'  # pre-split deployment history
+    return scoped_record(json.loads(path.read_text()), target) if path.exists() else None
 
 
 def run(*args, capture=False, cwd=None):
@@ -102,14 +123,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('deploy', 'rollback', 'status'), nargs='?', default='deploy')
     parser.add_argument('--ref', default='origin/main', help='Branch/ref to resolve to one exact commit')
+    parser.add_argument('--target', choices=tuple(TARGET_SERVICES), default='backend',
+                        help='NAS services to operate on (default: backend; web is the optional NAS copy)')
     parser.add_argument('--runtime', type=Path, default=DEFAULT_RUNTIME)
     args = parser.parse_args()
     runtime = args.runtime.resolve()
     state_dir = runtime / 'data' / 'deployments'
     state_dir.mkdir(parents=True, exist_ok=True)
-    current = state_dir / 'current.json'
+    current = state_dir / f'{args.target}-current.json'
     if args.action == 'status':
-        print(current.read_text() if current.exists() else 'No Git deployment recorded yet.')
+        record = release_record(state_dir, args.target, 'current')
+        print(json.dumps(record, indent=2) if record else 'No Git deployment recorded yet.')
         run('docker', 'ps', '-a', '--filter', 'label=com.docker.compose.project=kindred',
             '--format', '{{.Names}}\t{{.Image}}\t{{.Status}}')
         return 0
@@ -121,21 +145,20 @@ def main():
         except BlockingIOError:
             raise RuntimeError('Another Kindred deployment is running')
         if args.action == 'rollback':
-            previous = state_dir / 'previous.json'
-            if not previous.exists():
+            previous = state_dir / f'{args.target}-previous.json'
+            target = release_record(state_dir, args.target, 'previous')
+            if not target:
                 raise RuntimeError('No previous deployment is recorded')
-            target = json.loads(previous.read_text())
             config = Path(target['config'])
             services = target['services']
-            active = json.loads(current.read_text()) if current.exists() else target
+            active = release_record(state_dir, args.target, 'current') or target
             restore(target, runtime, active)
             if target.get('revision'):
                 verify(config, runtime, target['revision'], services)
-            old = json.loads(current.read_text()) if current.exists() else None
+            old = release_record(state_dir, args.target, 'current')
             write_json(current, target)
             if old:
                 write_json(previous, old)
-            shutil.copy2(config, runtime / 'docker-compose.yaml')
             print('Rolled back to ' + (target.get('revision') or 'the previous NAS deployment'))
             return 0
 
@@ -160,26 +183,25 @@ def main():
             raise RuntimeError('Release checkout is not clean at the requested commit')
         config_dir = state_dir / 'configs'
         config_dir.mkdir(exist_ok=True)
-        config = config_dir / (revision + '.yaml')
+        config = config_dir / (revision + '-' + args.target + '.yaml')
         config.write_text(render((release / 'deploy/ugreen/docker-compose.release.yml').read_text(),
                                  release, runtime / 'data', revision))
         compose(config, runtime, 'config', '--quiet')
-        services = list(SERVICES)
+        services = list(TARGET_SERVICES[args.target])
         build_services = sorted({'api' if service in ('library-worker', 'video-worker') else service for service in services})
-        print(f'Building Git commit {revision}', flush=True)
+        print(f'Building NAS {args.target} at Git commit {revision}', flush=True)
         compose(config, runtime, 'build', *build_services)
-        if current.exists():
-            previous = json.loads(current.read_text())
-        else:
+        previous = release_record(state_dir, args.target, 'current')
+        if previous is None:
             legacy = runtime / 'docker-compose.yaml'
-            legacy_snapshot = config_dir / 'before-git-deployment.yaml'
+            legacy_snapshot = config_dir / f'before-git-deployment-{args.target}.yaml'
             if not legacy.exists():
                 raise RuntimeError('Existing NAS Compose file is required for first-deployment rollback')
             shutil.copy2(legacy, legacy_snapshot)
             legacy_services = compose(legacy_snapshot, runtime, 'config', '--services', capture=True).splitlines()
             previous = {'revision': None, 'config': str(legacy_snapshot),
                         'services': [service for service in services if service in legacy_services]}
-        write_json(state_dir / 'previous.json', previous)
+        write_json(state_dir / f'{args.target}-previous.json', previous)
         # Builds finish before any running service is touched. Never run `down`,
         # remove volumes, restart the database, or operate on another project.
         try:
@@ -193,7 +215,8 @@ def main():
         record = {'revision': revision, 'config': str(config), 'services': services,
                   'image_ids': image_ids, 'deployed_at': dt.datetime.now(dt.timezone.utc).isoformat()}
         write_json(current, record)
-        shutil.copy2(config, runtime / 'docker-compose.yaml')
+        # Each target has its own revision. Do not replace the shared UGOS
+        # Compose file with a snapshot that also repins the other target.
         print(f'Verified deployment: {revision}', flush=True)
     return 0
 

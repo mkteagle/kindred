@@ -56,3 +56,64 @@ class DeployTests(unittest.TestCase):
                 deploy.restore(target, Path('/runtime'), active)
         self.assertEqual(compose.call_count, 2)
         self.assertTrue(all('up' not in call.args for call in compose.call_args_list))
+
+    def test_legacy_rollback_never_touches_other_target(self):
+        legacy = {'config': '/old', 'services': ['api', 'web', 'library-worker']}
+        for target, expected in [('backend', ['api', 'library-worker']), ('web', ['web'])]:
+            record = deploy.scoped_record(legacy, target)
+            with patch.object(deploy, 'compose') as compose:
+                deploy.restore(record, Path('/runtime'), record)
+            self.assertEqual(record['services'], expected)
+            for call in compose.call_args_list:
+                for excluded in set(legacy['services']) - set(expected):
+                    self.assertNotIn(excluded, call.args)
+
+    def test_deploy_targets_build_and_restart_only_their_services(self):
+        import json
+        import tempfile
+        revision = 'a' * 40
+        for target, services, images in [
+            ('backend', ['api', 'library-worker', 'video-worker'], ['api']),
+            ('web', ['web'], ['web']),
+        ]:
+            with tempfile.TemporaryDirectory() as directory:
+                runtime = Path(directory)
+                (runtime / '.env').touch()
+                state = runtime / 'data/deployments'
+                release = state / 'releases' / revision
+                (release / 'deploy/ugreen').mkdir(parents=True)
+                (release / 'deploy/ugreen/docker-compose.release.yml').write_text('services: {}')
+                legacy = {'revision': 'b' * 40, 'config': '/old',
+                          'services': ['api', 'web', 'library-worker', 'video-worker']}
+                (state / 'current.json').write_text(json.dumps(legacy))
+                (runtime / 'docker-compose.yaml').write_text('original UGOS config')
+                def fake_run(*args, **kwargs):
+                    return revision if 'rev-parse' in args else ''
+                argv = ['deploy.py', 'deploy', '--ref', revision, '--runtime', str(runtime)]
+                if target == 'web':
+                    argv += ['--target', 'web']
+                with patch.object(deploy.sys, 'argv', argv), \
+                     patch.object(deploy, 'run', side_effect=fake_run), \
+                     patch.object(deploy, 'compose') as compose, \
+                     patch.object(deploy, 'verify', return_value={}):
+                    self.assertEqual(deploy.main(), 0)
+                self.assertEqual(compose.call_args_list[1].args[2:], ('build', *images))
+                up = compose.call_args_list[2].args
+                self.assertIn('--no-deps', up)
+                self.assertEqual(list(up[-len(services):]), services)
+                previous = json.loads((state / f'{target}-previous.json').read_text())
+                self.assertEqual(previous['services'], services)
+                current = json.loads((state / f'{target}-current.json').read_text())
+                self.assertEqual(current['services'], services)
+                self.assertEqual(json.loads((state / 'current.json').read_text()), legacy)
+                self.assertEqual((runtime / 'docker-compose.yaml').read_text(), 'original UGOS config')
+
+    def test_target_history_takes_precedence_over_legacy(self):
+        import json
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            (state / 'current.json').write_text(json.dumps({'config': '/legacy', 'services': ['web', 'api']}))
+            (state / 'backend-current.json').write_text(json.dumps({'config': '/backend', 'services': ['api']}))
+            self.assertEqual(deploy.release_record(state, 'backend', 'current')['config'], '/backend')
+            self.assertEqual(deploy.release_record(state, 'web', 'current')['services'], ['web'])

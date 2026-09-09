@@ -139,6 +139,8 @@ services:
       - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/model-cache:/app/cache
     networks: [kindred-internal]
 
+  # Optional NAS web copy; public web deployment is handled by Vercel.
+  # deploy.py only builds/recreates this with --target web.
   web:
     image: kindred-web:${KINDRED_REVISION}
     build:
@@ -182,7 +184,7 @@ services:
   # ── iCloud libraries ──────────────────────────────────────────────────
   # One service per person, sharing the settings below. Behind a profile,
   # like tunnel and ollama, because the image is third-party with nothing to
-  # build -- deploy.py builds everything in its SERVICES list.
+  # build -- deploy.py builds only images required by its selected target.
   #
   #   COMPOSE_PROFILES=public,icloud   (or start one by name)
   #

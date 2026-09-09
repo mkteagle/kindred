@@ -93,8 +93,10 @@ sudo /volume1/docker/Files/kindred-git/deploy/ugreen/deploy.py deploy
 ```
 
 The command fetches Git, fast-forwards the clean NAS checkout, resolves one exact
-commit, creates a clean release worktree, builds commit-tagged API/web images,
-and recreates only Kindred's API, web, and library-worker containers. Database,
+commit, creates a clean release worktree, builds a commit-tagged API image,
+and recreates only Kindred's API, library-worker, and video-worker containers.
+The public web app deploys separately through the Vercel Git integration. The
+optional NAS web container is left running at its existing revision. Database,
 tunnel, Firefox, and other Docker projects are outside the deployment operation.
 Production source bind mounts are removed: the running code comes from the
 image, not a separately copied Python file.
@@ -112,16 +114,40 @@ sudo /volume1/docker/Files/kindred-git/deploy/ugreen/deploy.py status
 # Deploy an explicit Git commit or tag.
 sudo /volume1/docker/Files/kindred-git/deploy/ugreen/deploy.py deploy --ref COMMIT_OR_TAG
 
-# Restore the preceding verified release without pulling or building.
+# Restore the preceding backend release without pulling or building.
 sudo /volume1/docker/Files/kindred-git/deploy/ugreen/deploy.py rollback
 ```
 
 Release worktrees, rendered Compose snapshots, and current/previous deployment
-records live under `data/deployments/`. The verified Compose file is copied to
-the UGOS project's existing `docker-compose.yaml` path, so the native app agrees
-with the deployed configuration. No credentials are printed by verification.
+records live under `data/deployments/`. Backend and NAS web have separate
+`backend-current.json` / `backend-previous.json` and `web-current.json` /
+`web-previous.json` records. Older combined records are read as a migration
+fallback, with services restricted to the requested target even on rollback.
+One shared lock prevents overlapping deployments.
 
-A push to GitHub does not itself deploy: run the deployment command after pushing.
+Use this script for application updates and rollback. The original UGOS
+`docker-compose.yaml` is retained as bootstrap configuration; it is no longer
+overwritten with a release that would also repin the other target. Recreating
+application containers through that old file could revert their versions.
+The target's current record identifies its authoritative Compose snapshot.
+No credentials are printed by verification.
+
+Only if you intentionally maintain the separate NAS web copy:
+
+```sh
+sudo /volume1/docker/Files/kindred-git/deploy/ugreen/deploy.py deploy --target web
+sudo /volume1/docker/Files/kindred-git/deploy/ugreen/deploy.py status --target web
+sudo /volume1/docker/Files/kindred-git/deploy/ugreen/deploy.py rollback --target web
+```
+
+These commands affect only the NAS web container, never Vercel or the backend.
+They do not remove the NAS web container or change tunnel routing.
+To adopt this launcher from an older checkout, run the default `deploy` command
+(without an old `--ref`): it fetches main and re-executes the updated script
+before building. A deployment already running keeps its existing behavior.
+
+A push to GitHub does not itself deploy the NAS backend: run the deployment
+command after pushing. Vercel handles public web deployments independently.
 The NAS repository uses SSH with a repository-scoped, read-only GitHub deploy
 key belonging to the NAS `mkteagle` administrator. The private key stays at
 `/home/mkteagle/.ssh/kindred_github_ed25519`; the root-owned checkout configures
