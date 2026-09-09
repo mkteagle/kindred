@@ -1,5 +1,7 @@
 "use client";
 
+import { OptimizedPhoto } from "@/components/optimized-photo";
+
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
@@ -144,7 +146,7 @@ export default function LocationsPage() {
                 aria-label={photo.photo_title || "Open photo"}
                 onClick={() => openLightbox(photo.photo_id, lightboxPhotos)}
               >
-                <img src={photoThumb(photo)} alt="" loading="lazy" draggable={false} />
+                <OptimizedPhoto photoId={photo.photo_id} />
               </button>
             ))}
           </div>

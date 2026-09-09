@@ -1,5 +1,7 @@
 "use client";
 
+import { OptimizedPhoto } from "@/components/optimized-photo";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { BACKEND, fmt } from "@/lib/constants";
@@ -327,7 +329,7 @@ export default function LibraryPage() {
                         aria-label={photo.photo_title || "Untitled"}
                         onClick={() => onTileClick(photo)}
                       >
-                        <img src={thumbUrl(photo)} alt="" loading="lazy" draggable={false} />
+                        <OptimizedPhoto photoId={photo.photo_id} video={photo.media_kind === "video"} />
                         {photo.media_kind === "video" && (
                           <span className="kx-tile-video">
                             <PlayIcon size={9} />

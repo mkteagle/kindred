@@ -1,5 +1,8 @@
 "use client";
 
+import { OptimizedPhoto } from "@/components/optimized-photo";
+import { photoImageUrl } from "@/lib/image-delivery";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -49,7 +52,7 @@ export function rememberSearch(query: string) {
 function thumbFor(result: SearchResult & { media_kind?: string }): string {
   return result.media_kind === "video"
     ? `${BACKEND}/photos/${result.photo_id}/local?variant=thumb`
-    : result.thumb_url || result.photo_url || `${BACKEND}/photos/${result.photo_id}/image?size=n`;
+    : photoImageUrl(result.photo_id, 320);
 }
 
 /**
@@ -227,7 +230,7 @@ export function KxSearchOverlay({ onClose }: { onClose: () => void }) {
                     }}
                     aria-label={result.photo_title || "Open photo"}
                   >
-                    <img src={thumbFor(result)} alt="" loading="lazy" />
+                    <OptimizedPhoto photoId={result.photo_id} video={result.media_kind === "video"} />
                   </button>
                 ))}
               </div>

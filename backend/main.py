@@ -6664,7 +6664,8 @@ def _video_derivative(photo_id: str, source: Path, variant: str) -> tuple[Path, 
 
 @app.get("/photos/{photo_id}/local")
 def get_local_photo(photo_id: str, variant: str = "original", user=Depends(get_current_user),
-                    request: FastAPIRequest = None):
+                    request: FastAPIRequest = None,
+                    w: int | None = None, q: int = 80, format: str = "auto"):
     """Serve a NAS original or an on-demand cached thumbnail.
 
     Videos derive two extra artefacts on first request: a `thumb`/`preview`
@@ -6710,29 +6711,22 @@ def get_local_photo(photo_id: str, variant: str = "original", user=Depends(get_c
         raise HTTPException(400, "clip is only available for videos")
 
     if variant in ("thumb", "preview") and media_type.startswith("image/"):
-        thumbnail_dir = Path("/app/data/thumbnails")
-        thumbnail_dir.mkdir(parents=True, exist_ok=True)
-        thumbnail = thumbnail_dir / f"{photo_id}{'-preview' if variant == 'preview' else ''}.jpg"
-        if not thumbnail.exists():
-            from PIL import Image, ImageOps
-            if source.suffix.lower() in (".heic", ".heif"):
-                from pillow_heif import register_heif_opener
-                register_heif_opener()
-            temporary = thumbnail.with_name(f"{thumbnail.stem}.{uuid.uuid4().hex}.tmp.jpg")
-            try:
-                with Image.open(source) as original:
-                    image = ImageOps.exif_transpose(original)
-                    edge = 2048 if variant == "preview" else 512
-                    image.thumbnail((edge, edge))
-                    image.convert("RGB").save(temporary, "JPEG", quality=90 if variant == "preview" else 82)
-                os.replace(temporary, thumbnail)
-            except Exception as exc:
-                raise HTTPException(422, "This photo could not be decoded") from exc
-            finally:
-                temporary.unlink(missing_ok=True)
-        if thumbnail.exists():
-            response_path = thumbnail
-            media_type = "image/jpeg"
+        import image_transforms
+        try:
+            width, quality, output_format = image_transforms.parameters(
+                w if w is not None else (1600 if variant == "preview" else 320),
+                q, format, request.headers.get("accept", "") if request else "",
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        try:
+            key, data = image_transforms.local_transform(source, width, quality, output_format)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(422, "This photo could not be decoded") from exc
+        return image_transforms.image_response(key, data, output_format, request)
+
+    if variant != "original":
+        raise HTTPException(422, "This media cannot be rendered as a photo")
 
     # Videos served whole still need Accept-Ranges and 206 support so the
     # player can seek; images fall through the same helper harmlessly.
@@ -6827,22 +6821,33 @@ def _catalog_photo(photo_id: str):
 
 
 @app.get("/photos/{photo_id}/image")
-async def proxy_photo_image(photo_id: str, size: str = "b", user=Depends(get_current_user)):
-    """Proxy a Flickr photo through the backend so family members can view
-    full-resolution private photos without their own Flickr account.
+async def proxy_photo_image(photo_id: str, size: str = "b", user=Depends(get_current_user),
+                            request: FastAPIRequest = None, w: int | None = None,
+                            q: int = 80, format: str = "auto"):
+    """Authenticated NAS-first transform; legacy size aliases remain supported.
 
-    Size suffixes: s=75sq, q=150sq, t=100, m=240, n=320, z=640, c=800, b=1024, h=1600, k=2048, o=original
-    Default 'b' (1024px) is good for viewing. Use 'o' for original quality.
+    Only size=o without w returns original bytes. All previews are bounded,
+    including legacy Flickr-only photos.
     """
     import urllib.parse
+    import image_transforms
+    original_requested = size == "o" and w is None
+    if not original_requested:
+        try:
+            w, q, format = image_transforms.parameters(
+                w, q, format, request.headers.get("accept", "") if request else "", size)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
 
     catalog = _catalog_photo(photo_id)
+    if not catalog and not db_query("SELECT 1 FROM detections WHERE photo_id = %s LIMIT 1", (photo_id,)):
+        raise HTTPException(404, "Photo is not in this library")
     if catalog and catalog.get('nas_key'):
         try:
             return await asyncio.to_thread(
                 get_local_photo, str(catalog['id']),
-                'original' if size == 'o' else ('thumb' if size in ('s', 'q', 't', 'm', 'n') else 'preview'),
-                user,
+                'original' if original_requested else 'preview',
+                user, request, w, q, format,
             )
         except HTTPException as exc:
             if exc.status_code not in (404, 422) or not catalog.get('flickr_id'):
@@ -6856,24 +6861,8 @@ async def proxy_photo_image(photo_id: str, size: str = "b", user=Depends(get_cur
     if not FLICKR_API_KEY or not flickr_creds:
         raise HTTPException(500, "Flickr not configured")
 
-    # Get photo info from Flickr API to build the correct URL
-    flickr_url = "https://api.flickr.com/services/rest"
-    params = {
-        "method": "flickr.photos.getSizes",
-        "photo_id": photo_id,
-        "format": "json",
-        "nojsoncallback": "1",
-    }
-    oauth_params = _flickr_oauth_sign(flickr_url, params)
-    auth_header = "OAuth " + ", ".join(
-        f'{k}="{urllib.parse.quote(str(v), "")}"'
-        for k, v in oauth_params.items()
-    )
-    qs = urllib.parse.urlencode(params)
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(f"{flickr_url}?{qs}", headers={"Authorization": auth_header})
-        data = resp.json()
+    # Use the existing paced REST helper. Do not bypass the shared Flickr quota.
+    data = await flickr_api({"method": "flickr.photos.getSizes", "photo_id": photo_id}, flickr_creds)
 
     if data.get("stat") != "ok":
         raise HTTPException(404, f"Photo not found: {data.get('message', '')}")
@@ -6882,43 +6871,47 @@ async def proxy_photo_image(photo_id: str, size: str = "b", user=Depends(get_cur
     if not sizes:
         raise HTTPException(404, "No sizes available for this photo")
 
-    # Map size param to Flickr size labels
-    size_map = {
-        "s": "Square", "q": "Large Square", "t": "Thumbnail",
-        "m": "Small", "n": "Small 320", "z": "Medium 640",
-        "c": "Medium 800", "b": "Large", "h": "Large 1600",
-        "k": "Large 2048", "o": "Original",
-    }
-    target_label = size_map.get(size, "Large")
+    # Use Flickr's own derivatives when available, then enforce our output
+    # bound. Never fall back to downloading an Original for a preview.
+    candidates = [s for s in sizes if s.get("media", "photo") == "photo"
+                  and s.get("source") and s.get("label") != "Original"]
+    if original_requested:
+        chosen = next((s for s in sizes if s.get("label") == "Original"), None)
+    else:
+        candidates.sort(key=lambda s: int(s.get("width", 0)))
+        chosen = next((s for s in candidates if int(s.get("width", 0)) >= w),
+                      candidates[-1] if candidates else None)
+    if not chosen:
+        raise HTTPException(404, "No suitable image available")
+    image_url = chosen["source"]
+    parsed = urllib.parse.urlparse(image_url)
+    if parsed.scheme != "https" or not (parsed.hostname or "").endswith(".staticflickr.com"):
+        raise HTTPException(502, "Invalid Flickr image source")
 
-    # Find the requested size, fall back to largest available
-    image_url = None
-    for s in sizes:
-        if s.get("label") == target_label:
-            image_url = s.get("source")
-            break
-    if not image_url:
-        # Fall back to largest available
-        image_url = sizes[-1].get("source")
-
-    if not image_url:
-        raise HTTPException(404, "Could not determine image URL")
-
-    # Fetch the actual image and stream it back
-    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
-        img_resp = await client.get(image_url)
-        if img_resp.status_code != 200:
-            raise HTTPException(502, "Failed to fetch image from Flickr")
-
-    content_type = img_resp.headers.get("content-type", "image/jpeg")
-    return StreamingResponse(
-        iter([img_resp.content]),
-        media_type=content_type,
-        headers={
-            "Cache-Control": "private, max-age=3600",
-            "Content-Disposition": f"inline; filename={photo_id}.jpg",
-        },
-    )
+    key = image_transforms.cache_key(image_url, w, q, format)
+    if not original_requested:
+        cached = await asyncio.to_thread(image_transforms.CACHE.get, key)
+        if cached is not None:
+            return image_transforms.image_response(key, cached, format, request)
+    async with image_transforms.REMOTE_FETCHES:
+        async with httpx.AsyncClient(timeout=60) as client:
+            async with client.stream("GET", image_url) as response:
+                if response.status_code != 200:
+                    raise HTTPException(502, "Failed to fetch image from Flickr")
+                content = bytearray()
+                async for chunk in response.aiter_bytes():
+                    content.extend(chunk)
+                    if not original_requested and len(content) > image_transforms.MAX_SOURCE_BYTES:
+                        raise HTTPException(413, "Photo exceeds transfer limit")
+    if original_requested:
+        return Response(bytes(content), media_type=response.headers.get("content-type", "image/jpeg"),
+                        headers={"Cache-Control": "private, no-store"})
+    try:
+        key, data = await asyncio.to_thread(image_transforms.CACHE.render, image_url,
+                                           bytes(content), w, q, format)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(422, "This photo could not be decoded") from exc
+    return image_transforms.image_response(key, data, format, request)
 
 
 # ── Photo detections & manual tagging ─────────────────────────────────────────

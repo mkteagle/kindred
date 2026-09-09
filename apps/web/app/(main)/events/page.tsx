@@ -1,5 +1,7 @@
 "use client";
 
+import { OptimizedPhoto } from "@/components/optimized-photo";
+
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BACKEND, fmt } from "@/lib/constants";
@@ -122,7 +124,7 @@ function EventCard({ event }: { event: LibraryEvent }) {
         style={{ border: 0, padding: 0, cursor: "pointer" }}
       >
         {stack.map((photo) => (
-          <img key={photo.photo_id} src={photoThumb(photo)} alt="" loading="lazy" />
+          <OptimizedPhoto key={photo.photo_id} photoId={photo.photo_id} />
         ))}
       </button>
 

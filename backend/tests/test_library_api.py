@@ -2,6 +2,7 @@ from __future__ import annotations as _future_annotations
 
 import ast
 import asyncio
+from io import BytesIO
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -248,8 +249,8 @@ class ImageIdentityTests(unittest.TestCase):
                          flags=_future_annotations.compiler_flag), namespace)
             response = namespace['get_local_photo']('stable-uuid', 'preview', {'role': 'member'})
             self.assertEqual(response.media_type, 'image/jpeg')
-            with Image.open(response.path) as preview:
-                self.assertEqual(preview.size, (2048, 1024))
+            with Image.open(BytesIO(response.body)) as preview:
+                self.assertEqual(preview.size, (1600, 800))
             self.assertEqual(original.read_bytes(), before)
 
     def test_nas_uuid_uses_local_preview_without_flickr_credentials(self):
@@ -261,10 +262,10 @@ class ImageIdentityTests(unittest.TestCase):
         namespace = dict(Depends=lambda f: None, get_current_user=lambda: None,
             HTTPException=HTTPException, asyncio=asyncio, get_local_photo=local,
             _catalog_photo=lambda _: {'id': 'stable-uuid', 'nas_key': 'original.heic'})
-        exec(compile(ast.Module(body=[function], type_ignores=[]), '<image-route>', 'exec'), namespace)
+        exec(compile(ast.Module(body=[function], type_ignores=[]), '<image-route>', 'exec', flags=_future_annotations.compiler_flag), namespace)
         response = asyncio.run(namespace['proxy_photo_image']('stable-uuid', 'h', {'role': 'member'}))
         self.assertEqual(response, 'local JPEG response')
-        local.assert_called_once_with('stable-uuid', 'preview', {'role': 'member'})
+        local.assert_called_once_with('stable-uuid', 'preview', {'role': 'member'}, None, 1600, 80, 'jpeg')
 
 
 if __name__ == '__main__':

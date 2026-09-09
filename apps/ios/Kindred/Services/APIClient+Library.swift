@@ -35,6 +35,21 @@ extension APIClient {
         return components.url
     }
 
+    /// Authenticated dynamic still image. Widths match the backend allowlist.
+    nonisolated static func optimizedImageURL(photoID: String, pixels: CGFloat) -> URL? {
+        let widths = [160, 320, 480, 640, 960, 1280, 1600, 2048, 2560]
+        let width = widths.first { CGFloat($0) >= pixels } ?? 2560
+        guard var components = URLComponents(string: "\(publicBaseURL)/photos/\(photoID)/image") else { return nil }
+        components.queryItems = [
+            URLQueryItem(name: "w", value: String(width)),
+            URLQueryItem(name: "q", value: "80"),
+            // UIImage supports WebP; do not depend on URLSession's Accept default.
+            URLQueryItem(name: "format", value: "webp"),
+            URLQueryItem(name: "session_token", value: publicSessionToken)
+        ]
+        return components.url
+    }
+
     enum MediaVariant: String, Sendable {
         case thumb, preview, clip, original
     }

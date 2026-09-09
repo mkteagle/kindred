@@ -1,5 +1,7 @@
 "use client";
 
+import { OptimizedPhoto } from "@/components/optimized-photo";
+
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
@@ -152,7 +154,7 @@ function TogetherScreen() {
               aria-label={photo.photo_title || "Open photo"}
               onClick={() => openLightbox(photo.photo_id, lightboxPhotos)}
             >
-              <img src={photoThumb(photo)} alt="" loading="lazy" draggable={false} />
+              <OptimizedPhoto photoId={photo.photo_id} />
             </button>
           ))}
         </div>

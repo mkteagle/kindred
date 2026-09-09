@@ -1,5 +1,7 @@
 "use client";
 
+import { OptimizedPhoto } from "@/components/optimized-photo";
+
 import { useEffect, useMemo, useRef } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { BACKEND, fmt } from "@/lib/constants";
@@ -118,7 +120,7 @@ export default function FavoritesPage() {
                 aria-label={photo.photo_title || "Untitled"}
                 onClick={() => openLightbox(photo.photo_id, lightboxPhotos)}
               >
-                <img src={thumbUrl(photo)} alt="" loading="lazy" draggable={false} />
+                <OptimizedPhoto photoId={photo.photo_id} video={photo.media_kind === "video"} />
                 {/* The hero tile carries the heart; repeating it on every tile
                     would say the same thing 96 times. */}
                 {index === 0 && (

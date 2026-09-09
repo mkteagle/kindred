@@ -60,7 +60,7 @@ async function handleRequest(
     // Media playback is built on byte ranges: the browser asks for part of a
     // video to start, and again on every seek. These must reach the backend or
     // <video> cannot seek and Safari will not play at all.
-    for (const header of ["range", "if-range"]) {
+    for (const header of ["range", "if-range", "accept", "if-none-match"]) {
       const value = req.headers.get(header);
       if (value) headers[header] = value;
     }
@@ -73,6 +73,7 @@ async function handleRequest(
 
     const opts: RequestInit = {
       method: req.method,
+      cache: "no-store",
       headers,
     };
 
@@ -100,7 +101,7 @@ async function handleRequest(
       contentType.startsWith("audio/") ||
       contentType.startsWith("application/octet-stream");
 
-    if (isBinary || backendResp.status === 206 || backendResp.status === 416) {
+    if (isBinary || backendResp.status === 304 || backendResp.status === 206 || backendResp.status === 416) {
       // Stream rather than buffer: a full-length video through arrayBuffer()
       // would be held in this process's memory in its entirety.
       const passthrough: Record<string, string> = {
@@ -109,11 +110,11 @@ async function handleRequest(
       };
       // Range answers are meaningless without these, and a 206 whose
       // Content-Range is dropped makes the player fail in confusing ways.
-      for (const header of ["accept-ranges", "content-range", "content-length", "content-disposition"]) {
+      for (const header of ["accept-ranges", "content-range", "content-length", "content-disposition", "etag", "vary", "x-content-type-options"]) {
         const value = backendResp.headers.get(header);
         if (value) passthrough[header] = value;
       }
-      return new NextResponse(backendResp.body, {
+      return new NextResponse(backendResp.status === 304 ? null : backendResp.body, {
         status: backendResp.status,
         headers: passthrough,
       });

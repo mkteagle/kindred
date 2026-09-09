@@ -28,27 +28,8 @@ struct PhotoGridView: View {
                         DemoThumbnailView(urlString: thumbOrPhoto, cornerRadius: 0)
                             .frame(width: geo.size.width, height: geo.size.height)
                     } else {
-                        AsyncImage(url: URL(string: thumbOrPhoto)) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: geo.size.width, height: geo.size.height)
-                                    .clipped()
-                            case .failure:
-                                KindredTheme.canvas
-                                    .overlay {
-                                        Image(systemName: "photo")
-                                            .foregroundStyle(KindredTheme.mist)
-                                    }
-                            case .empty:
-                                KindredTheme.canvas
-                                    .overlay { ProgressView().tint(KindredTheme.ember) }
-                            @unknown default:
-                                KindredTheme.canvas
-                            }
-                        }
+                        KindredThumbnail(photo: item.asLibraryPhoto)
+                            .frame(width: geo.size.width, height: geo.size.height)
                     }
                 }
                 .aspectRatio(1, contentMode: .fill)
@@ -65,6 +46,7 @@ struct PhotoGridView: View {
 
 struct PhotoGridItem: Identifiable {
     let id: String
+    var sourcePhotoID: String? = nil
     let photoURL: String
     let thumbURL: String?
     let flickrURL: String?
@@ -76,7 +58,7 @@ extension PhotoGridItem {
     /// than in the grid item the older screens pass around.
     var asLibraryPhoto: LibraryPhoto {
         LibraryPhoto(
-            photo_id: id,
+            photo_id: sourcePhotoID ?? id,
             photo_title: title,
             date_taken: nil,
             media_kind: .photo,
@@ -92,6 +74,7 @@ extension PhotoGridItem {
 extension PhotoGridItem {
     init(from detection: Detection) {
         self.id = detection.id
+        self.sourcePhotoID = detection.photo_id
         self.photoURL = detection.photo_url
         self.thumbURL = detection.thumb_url
         self.flickrURL = detection.flickr_url

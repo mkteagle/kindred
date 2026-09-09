@@ -14,6 +14,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useUser } from "@/lib/use-user";
 import { BACKEND, fmt } from "@/lib/constants";
 import { useFavorites } from "@/components/kx/favorites";
+import { OptimizedPhoto } from "@/components/optimized-photo";
+import { imageWidth, loadedThumbnail, photoImageUrl, prefetchImage, thumbnailAspect } from "@/lib/image-delivery";
 import { HeartIcon } from "@/components/kx/icons";
 
 /* ── Types ──────────────────────────────────────────────────────────── */
@@ -216,6 +218,8 @@ function PhotoLightboxOverlay({
   const [copySuccess, setCopySuccess] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  const imageAreaRef = useRef<HTMLDivElement>(null);
+  const [previewBox, setPreviewBox] = useState({ width: 0, height: 0, scale: 1 });
   const thumbStripRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
   const shareRef = useRef<HTMLDivElement>(null);
@@ -448,12 +452,49 @@ function PhotoLightboxOverlay({
     return groups;
   }, [detections]);
 
-  const imageUrl = `${BACKEND}/photos/${photoId}/image?size=h`;
-  const thumbUrl = currentPhoto?.thumb_url || "";
+  const previewPixels = (id: string, aspect?: number) => {
+    const ratio = aspect || thumbnailAspect(id);
+    return imageWidth((ratio ? Math.min(previewBox.width, previewBox.height * ratio) : previewBox.width) * previewBox.scale);
+  };
+  const previewWidth = previewBox.width ? previewPixels(photoId,
+    metadata?.width && metadata?.height ? metadata.width / metadata.height : undefined) : 0;
+  const imageUrl = previewWidth ? photoImageUrl(photoId, previewWidth) : "";
+  const thumbUrl = loadedThumbnail(photoId) || photoImageUrl(photoId, 320);
   const isVideo = currentPhoto?.media_kind === "video";
   // Videos stream the NAS original; the poster is the cached frame ffmpeg cut.
   const videoUrl = `${BACKEND}/photos/${photoId}/local?variant=original`;
   const posterUrl = `${BACKEND}/photos/${photoId}/local?variant=thumb`;
+
+  useEffect(() => {
+    const area = imageAreaRef.current;
+    if (!area) return;
+    const measure = () => {
+      const box = area.getBoundingClientRect();
+      const style = window.getComputedStyle(area);
+      const width = box.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const height = box.height - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+      setPreviewBox({ width, height, scale: Math.min(window.devicePixelRatio || 1, 3) });
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(area);
+    window.addEventListener("resize", measure);
+    measure();
+    return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
+  }, []);
+
+  useEffect(() => { setImageLoaded(false); setImageError(false); }, [imageUrl]);
+
+  useEffect(() => {
+    if (!imageLoaded || !previewWidth) return;
+    const controller = new AbortController();
+    for (const offset of [1, -1, 2, -2]) {
+      const photo = photos[index + offset];
+      if (photo && photo.media_kind !== "video") {
+        void prefetchImage(photoImageUrl(photo.photo_id, previewPixels(photo.photo_id)), controller.signal);
+      }
+    }
+    return () => controller.abort();
+  }, [imageLoaded, previewWidth, previewBox, index, photos]);
 
   return (
     <div
@@ -600,6 +641,7 @@ function PhotoLightboxOverlay({
 
       {/* ── Main image ──────────────────────────────────────── */}
       <div
+        ref={imageAreaRef}
         className={`lb-image-area ${infoOpen ? "lb-image-area-with-info" : ""}`}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
@@ -636,10 +678,12 @@ function PhotoLightboxOverlay({
         )}
 
         {/* Full image */}
-        {!isVideo && (
+        {!isVideo && imageUrl && (
         <img
           ref={imageRef}
-          src={`${imageUrl}&retry=${imageAttempt}`}
+          key={`${imageUrl}:${imageAttempt}`}
+          src={imageAttempt ? `${imageUrl}&retry=${imageAttempt}` : imageUrl}
+          decoding="async"
           alt={currentPhoto?.photo_title || ""}
           className={`lb-main-image ${imageLoaded ? "is-loaded" : ""}`}
           onLoad={() => setImageLoaded(true)}
@@ -657,7 +701,7 @@ function PhotoLightboxOverlay({
         {!imageLoaded && !imageError && (
           <div className="lb-loading-caption">
             <span className="lb-loading-dot" />
-            Loading full resolution...
+            Loading preview...
           </div>
         )}
         {imageError && <div className="lb-loading-caption" role="alert">
@@ -856,7 +900,7 @@ function PhotoLightboxOverlay({
               onClick={() => onGoTo(i)}
               aria-label={`Photo ${i + 1}`}
             >
-              <img src={p.thumb_url} alt="" />
+              <OptimizedPhoto photoId={p.photo_id} video={p.media_kind === "video"} />
             </button>
           ))}
         </div>

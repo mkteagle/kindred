@@ -1,3 +1,4 @@
+import { photoImageUrl } from "@/lib/image-delivery";
 import { BACKEND } from "@/lib/constants";
 
 /** One row of `/library/photos`. */
@@ -18,7 +19,7 @@ export interface LibraryPhoto {
 export function thumbUrl(photo: Pick<LibraryPhoto, "photo_id" | "media_kind">): string {
   return photo.media_kind === "video"
     ? `${BACKEND}/photos/${photo.photo_id}/local?variant=thumb`
-    : `${BACKEND}/photos/${photo.photo_id}/image?size=n`;
+    : photoImageUrl(photo.photo_id, 320);
 }
 
 /** 9:05, or 1:02:33 once it runs past an hour. */

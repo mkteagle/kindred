@@ -7,6 +7,7 @@ struct PhotoViewerView: View {
     let photos: [LibraryPhoto]
     let initial: LibraryPhoto
 
+    @Environment(\.displayScale) private var displayScale
     @State private var index = 0
     @State private var isFavorite = false
     @State private var dragOffset: CGFloat = 0
@@ -57,7 +58,7 @@ struct PhotoViewerView: View {
             Button {
                 dismiss()
             } label: {
-                HStack(spacing: 3) {
+                LazyHStack(spacing: 3) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 19, weight: .semibold))
                     Text(monthLabel)
@@ -100,9 +101,16 @@ struct PhotoViewerView: View {
     // MARK: - Stage
 
     private var stage: some View {
+        GeometryReader { geo in
         TabView(selection: $index) {
             ForEach(Array(photos.enumerated()), id: \.element.photo_id) { position, photo in
-                KindredThumbnail(photo: photo, variant: .preview, contentMode: .fit)
+                Group {
+                    if abs(position - index) <= 2 {
+                        KindredThumbnail(photo: photo, variant: .preview, contentMode: .fit)
+                    } else {
+                        KindredTheme.stage
+                    }
+                }
                     .scaleEffect(position == index ? zoom : 1)
                     // Pinch zooms.
                     .gesture(
@@ -117,6 +125,23 @@ struct PhotoViewerView: View {
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
         .frame(maxHeight: .infinity)
+        .task(id: "\(index):\(geo.size.width):\(displayScale)") {
+            @MainActor func pixels(for photo: LibraryPhoto) -> CGFloat {
+                guard let thumb = PhotoImageDelivery.shared.thumbnail(for: photo.photo_id) else { return geo.size.width * displayScale }
+                return min(geo.size.width, geo.size.height * thumb.size.width / max(1, thumb.size.height)) * displayScale
+            }
+            if !current.isVideo, let url = APIClient.optimizedImageURL(photoID: current.photo_id, pixels: pixels(for: current)) {
+                _ = await PhotoImageDelivery.shared.image(url)
+            }
+            for offset in [1, -1, 2, -2] {
+                guard !Task.isCancelled else { return }
+                let position = index + offset
+                guard photos.indices.contains(position), !photos[position].isVideo,
+                      let url = APIClient.optimizedImageURL(photoID: photos[position].photo_id, pixels: pixels(for: photos[position])) else { continue }
+                _ = await PhotoImageDelivery.shared.image(url, speculative: true)
+            }
+        }
+        }
         .padding(.vertical, 10)
     }
 
@@ -153,7 +178,7 @@ struct PhotoViewerView: View {
     private var filmstrip: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 3) {
+                LazyHStack(spacing: 3) {
                     ForEach(Array(photos.enumerated()), id: \.element.photo_id) { position, photo in
                         let isCurrent = position == index
                         KindredThumbnail(photo: photo)

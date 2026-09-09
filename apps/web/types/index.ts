@@ -92,6 +92,7 @@ export interface FutureFilter {
 
 export interface SearchResult {
   photo_id: string;
+  media_kind?: "photo" | "video";
   distance: number;
   photo_url: string;
   thumb_url: string;

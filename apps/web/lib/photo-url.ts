@@ -1,24 +1,14 @@
-import { BACKEND } from "@/lib/constants";
+import { photoImageUrl } from "@/lib/image-delivery";
 
-/**
- * The URL to show for a photo the API described.
- *
- * `detections.thumb_url` and `photo_url` are Flickr-era columns that the NAS
- * pipeline never fills — every detection in a NAS-backed library has them
- * empty. Rendering them directly produces a broken image, which is why the
- * gallery (which builds its own URL from the id) looked fine while the person
- * pages did not.
- *
- * So prefer whatever the API actually supplied, and fall back to deriving one
- * from the photo id, which is always present.
- */
+/** Resolve catalog photos through the bounded, authenticated transform path.
+ * Legacy thumb/photo URL columns may be empty or point at an original. */
 export function photoThumb(
   photo: { photo_id?: string | null; thumb_url?: string | null; photo_url?: string | null },
   size: string = "n",
 ): string {
-  const supplied = photo.thumb_url || photo.photo_url;
-  if (supplied) return supplied;
-  return photo.photo_id ? `${BACKEND}/photos/${photo.photo_id}/image?size=${size}` : "";
+  // Never trust a legacy photo_url to be a thumbnail: it may be Original.
+  if (photo.photo_id) return photoImageUrl(photo.photo_id, size === "s" ? 160 : 320);
+  return photo.thumb_url || "";
 }
 
 /**
