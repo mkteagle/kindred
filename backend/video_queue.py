@@ -8,6 +8,7 @@ import time
 import uuid
 
 import video_mirror
+import throttle
 
 
 def queue_root():
@@ -155,6 +156,7 @@ def reconcile_part(photo_id, number=None, flickr_id=None, confirmed_absent=False
 
 async def run_phase(main, root, mode):
     for path in sorted(root.glob('*/job.json')):
+        await throttle.wait_for_capacity()
         try:
             await process(main, path, mode)
         except Exception as exc:

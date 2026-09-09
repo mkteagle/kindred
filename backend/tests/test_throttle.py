@@ -99,3 +99,28 @@ class ControlLawTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CapacityTests(unittest.IsolatedAsyncioTestCase):
+    async def test_waits_through_sustained_pressure_until_low_thresholds(self):
+        from unittest.mock import AsyncMock, patch
+        with patch.object(throttle, 'read_pressure', side_effect=[STRUGGLING, STRUGGLING, MIDDLING, CALM]), \
+             patch.object(throttle.asyncio, 'sleep', new_callable=AsyncMock) as sleep:
+            await throttle.wait_for_capacity()
+        self.assertEqual(sleep.await_count, 3)
+
+    async def test_healthy_or_unavailable_pressure_does_not_block(self):
+        from unittest.mock import AsyncMock, patch
+        for pressure in [CALM, MIDDLING, None]:
+            with patch.object(throttle, 'read_pressure', return_value=pressure), \
+                 patch.object(throttle.asyncio, 'sleep', new_callable=AsyncMock) as sleep:
+                await throttle.wait_for_capacity()
+            sleep.assert_not_awaited()
+
+    async def test_wait_can_be_cancelled_without_starting_more_work(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+        with patch.object(throttle, 'read_pressure', return_value=STRUGGLING), \
+             patch.object(throttle.asyncio, 'sleep', new_callable=AsyncMock, side_effect=asyncio.CancelledError):
+            with self.assertRaises(asyncio.CancelledError):
+                await throttle.wait_for_capacity()

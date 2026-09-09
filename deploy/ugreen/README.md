@@ -159,3 +159,13 @@ From the configured Mac, `ssh kindred-nas` logs in as `mkteagle` using the separ
 connecting; UGOS administrator privileges still require the account password.
 SSH must be enabled in UGOS while connecting; check its automatic shutdown timer
 if port 22 starts refusing connections again.
+
+### Background processing and browsing responsiveness
+
+The importer (including receipt reconciliation), indexer, and video queue check
+host pressure before starting each item. If I/O `some avg10` reaches 40% or
+memory `full avg10` reaches 5%, they wait and recheck every two seconds until
+I/O is at most 15% and memory at most 1%. In-flight items finish normally.
+This favors interactive browsing over import throughput; sustained pressure
+from other NAS services can keep processing waiting. Worker logs report waiting
+and resuming. Hosts without PSI retain the existing processing behavior.

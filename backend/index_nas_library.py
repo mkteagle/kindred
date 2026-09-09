@@ -75,6 +75,7 @@ async def run(args: argparse.Namespace) -> int:
         # Pace against what the box is actually feeling. A fixed quota would
         # throttle this run just as hard on an idle NAS as on a thrashing one,
         # and there are a million and a half photos to get through.
+        await throttle.wait_for_capacity()
         pressure = throttle.read_pressure()
         delay = throttle.next_delay(delay, pressure)
         if delay:

@@ -30,6 +30,7 @@ law can be tested without a NAS under load.
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -41,8 +42,8 @@ IO_LOW = 15.0
 MEMORY_LOW = 1.0
 
 # Seconds of pause per photo. The ceiling is a floor on throughput, not a
-# stop: even a badly struggling box keeps making progress, roughly one photo
-# every four seconds, rather than stalling the queue forever.
+# stop by itself. wait_for_capacity additionally prevents new background
+# items from starting during sustained pressure.
 MAX_DELAY = 4.0
 MIN_STEP = 0.05
 DECAY = 0.85
@@ -138,3 +139,20 @@ def describe(delay: float, pressure: Pressure | None) -> str:
         f"io={pressure.io_some:.0f}% mem={pressure.memory_full:.0f}% "
         f"cpu={pressure.cpu_some:.0f}% delay={delay:.2f}s"
     )
+
+
+async def wait_for_capacity() -> None:
+    """Do not start another background item while the host is under pressure.
+
+    Wait between items, before opening their transactions/files. An in-flight
+    item finishes normally; cancellation remains available during each sleep.
+    Once paused, require the low thresholds before resuming to avoid flapping.
+    """
+    pressure = read_pressure()
+    if pressure is None or not pressure.hurting:
+        return
+    print(f"[pressure] background work waiting: {describe(0, pressure)}", flush=True)
+    while pressure is not None and not pressure.comfortable:
+        await asyncio.sleep(2)
+        pressure = read_pressure()
+    print("[pressure] background work resuming", flush=True)

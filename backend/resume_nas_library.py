@@ -13,6 +13,7 @@ import time
 import capture_date
 import main
 import staged_import
+import throttle
 
 
 def managed_original(photo_id: str) -> Path | None:
@@ -173,6 +174,7 @@ async def _run(args: argparse.Namespace) -> int:
     recovered = 0
     verified_receipts = set()
     for number, (relative, receipt) in enumerate(receipts.items(), 1):
+        await throttle.wait_for_capacity()
         if reconcile(relative, receipt, source_root):
             recovered += 1
             verified_receipts.add(relative)
@@ -191,6 +193,7 @@ async def _run(args: argparse.Namespace) -> int:
     failures = 0
     started = time.monotonic()
     for index, source in enumerate(staged_import.iter_media(source_root), start=1):
+        await throttle.wait_for_capacity()
         relative = source.relative_to(source_root).as_posix()
         previous = receipts.get(relative, {})
         if (args.defer_analysis and relative in verified_receipts
