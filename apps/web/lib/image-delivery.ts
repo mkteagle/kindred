@@ -5,7 +5,11 @@ export function imageWidth(pixels: number, maximum = 2560): number {
   return IMAGE_WIDTHS.find(w => w >= Math.min(maximum, pixels)) ?? maximum;
 }
 export function photoImageUrl(id: string, width: number): string {
-  return `${BACKEND}/photos/${encodeURIComponent(id)}/image?w=${imageWidth(width)}&q=80&format=auto`;
+  const requested = imageWidth(width);
+  // Older NAS releases ignore w/q/format. Keep a safe legacy size so a web
+  // deployment can never turn grid requests into default 2048px previews.
+  const legacy = requested <= 960 ? "n" : "h";
+  return `${BACKEND}/photos/${encodeURIComponent(id)}/image?size=${legacy}&w=${requested}&q=80&format=auto`;
 }
 export function canPrefetch(): boolean {
   const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;

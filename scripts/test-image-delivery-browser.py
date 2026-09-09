@@ -18,6 +18,8 @@ async def main():
             url=route.request.url; path=urlparse(url).path
             if path.endswith('/image'):
                 query=parse_qs(urlparse(url).query); width=int(query.get('w',['4000'])[0]); requests.append(url)
+                if os.environ.get('LEGACY_BACKEND') == '1':
+                    width = 512 if query.get('size') == ['n'] else 2048
                 ratio = 2 if os.environ.get('PORTRAIT') == '1' and '/photos/20/image' in path else .75
                 output=BytesIO(); Image.new('RGB',(width,round(width*ratio)), '#946d52').save(output,'WEBP')
                 await asyncio.sleep(.05)
@@ -39,6 +41,9 @@ async def main():
         initial=list(requests)
         assert 0<len(initial)<70, len(initial)
         assert all(160 <= int(parse_qs(urlparse(u).query)['w'][0]) <= 960 for u in initial)
+        assert all(parse_qs(urlparse(u).query).get('size') == ['n'] for u in initial), 'Unsafe on older NAS'
+        if os.environ.get('LEGACY_BACKEND') == '1':
+            assert await page.locator('.kx-tile img').evaluate_all('(images) => images.filter(i => i.complete && i.naturalWidth).every(i => i.naturalWidth <= 512)')
         before=len(requests)
         await page.mouse.move(600,500); await page.mouse.wheel(0,1100); await page.wait_for_timeout(1200)
         assert len(requests)>before

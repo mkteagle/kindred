@@ -70,11 +70,21 @@ class TransformCache:
         self.path = path or os.environ.get('IMAGE_CACHE_PATH', '/tmp/kindred-image-cache.sqlite3')
         self.budget = budget
         self.ttl = ttl
+        self._ready = False
+        self._init_lock = threading.Lock()
 
     @contextmanager
     def connect(self):
         db = sqlite3.connect(self.path, timeout=30)
-        db.execute('CREATE TABLE IF NOT EXISTS images (key TEXT PRIMARY KEY, data BLOB, created REAL, accessed REAL)')
+        if not self._ready:
+            with self._init_lock:
+                if not self._ready:
+                    db.execute('PRAGMA journal_mode=WAL')
+                    db.execute('CREATE TABLE IF NOT EXISTS images (key TEXT PRIMARY KEY, data BLOB, created REAL, accessed REAL)')
+                    db.execute('CREATE INDEX IF NOT EXISTS images_created ON images(created)')
+                    db.execute('CREATE INDEX IF NOT EXISTS images_accessed ON images(accessed)')
+                    db.commit()
+                    self._ready = True
         try:
             with db:
                 yield db
@@ -83,9 +93,13 @@ class TransformCache:
 
     def get(self, key):
         with self.connect() as db:
-            row = db.execute('SELECT data FROM images WHERE key=? AND created>?', (key, time.time() - self.ttl)).fetchone()
+            now = time.time()
+            row = db.execute('SELECT data, accessed FROM images WHERE key=? AND created>?', (key, now - self.ttl)).fetchone()
             if row:
-                db.execute('UPDATE images SET accessed=? WHERE key=?', (time.time(), key))
+                # A cache hit should normally be read-only: don't serialize a
+                # gallery burst behind one SQLite write transaction per image.
+                if row[1] < now - 60:
+                    db.execute('UPDATE images SET accessed=? WHERE key=?', (now, key))
                 return row[0]
         return None
 
@@ -97,9 +111,8 @@ class TransformCache:
             db.execute('DELETE FROM images WHERE created<?', (now - self.ttl,))
             db.execute('INSERT OR REPLACE INTO images VALUES (?, ?, ?, ?)', (key, data, now, now))
             total = db.execute('SELECT coalesce(sum(length(data)), 0) FROM images').fetchone()[0]
-            for old_key, length in db.execute('SELECT key, length(data) FROM images ORDER BY accessed').fetchall():
-                if total <= self.budget:
-                    break
+            while total > self.budget:
+                old_key, length = db.execute('SELECT key, length(data) FROM images ORDER BY accessed LIMIT 1').fetchone()
                 db.execute('DELETE FROM images WHERE key=?', (old_key,))
                 total -= length
         # SQLite reuses freed pages; physical storage is bounded by the budget

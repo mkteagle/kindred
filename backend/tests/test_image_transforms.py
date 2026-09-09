@@ -64,6 +64,15 @@ class TransformTests(unittest.TestCase):
         self.assertEqual(cache.get('b'), b'12345678')
         with patch('image_transforms.time.time', return_value=10**12): self.assertIsNone(cache.get('b'))
 
+    def test_hot_cache_hit_does_not_wait_for_a_writer(self):
+        self.cache.put('hot', b'cached thumbnail')
+        with self.cache.connect() as writer:
+            writer.execute('BEGIN IMMEDIATE')
+            writer.execute('UPDATE images SET accessed=accessed WHERE key=?', ('hot',))
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                result = pool.submit(self.cache.get, 'hot')
+                self.assertEqual(result.result(timeout=1), b'cached thumbnail')
+
     def test_duplicate_misses_decode_once(self):
         with patch.object(images, 'encode', wraps=images.encode) as encode:
             with ThreadPoolExecutor(max_workers=5) as pool:

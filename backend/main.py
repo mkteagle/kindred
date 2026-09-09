@@ -92,13 +92,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # the shared SCAN_SECRET query param for cron-style triggers.
             session_token = request.headers.get("X-Session-Token")
             if session_token:
-                user = validate_session(session_token)
+                user = await asyncio.to_thread(validate_session, session_token)
                 if user:
                     request.state.user = {**user, "auth_method": "session"}
             else:
                 key = request.headers.get("X-API-Key") or request.query_params.get("api_key")
                 if key and key.startswith("knd_"):
-                    api_user = validate_api_key(key)
+                    api_user = await asyncio.to_thread(validate_api_key, key)
                     if api_user:
                         request.state.user = {**api_user, "auth_method": "api_key"}
             return await call_next(request)
@@ -106,7 +106,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Try session token first (web users) — check header and query param for image endpoints
         session_token = request.headers.get("X-Session-Token") or request.query_params.get("session_token")
         if session_token:
-            user = validate_session(session_token)
+            user = await asyncio.to_thread(validate_session, session_token)
             if user:
                 request.state.user = {**user, "auth_method": "session"}
                 return await call_next(request)
@@ -117,7 +117,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if key:
             # Check DB-stored hashed API keys first
             if key.startswith("knd_"):
-                api_user = validate_api_key(key)
+                api_user = await asyncio.to_thread(validate_api_key, key)
                 if api_user:
                     request.state.user = {**api_user, "auth_method": "api_key"}
                     return await call_next(request)
@@ -6810,13 +6810,33 @@ def get_photo_metadata(photo_id: str):
 
 
 def _catalog_photo(photo_id: str):
-    rows = db_query("""SELECT p.*, n.provider_key AS nas_key, f.provider_key AS flickr_id,
+    """Resolve each identity through its existing index before joining copies.
+
+    Casting p.id to text and OR-ing across the Flickr join made each thumbnail
+    scan thousands of catalog rows, even though UUID lookup is a primary key.
+    """
+    import uuid
+    select = """SELECT p.*, n.provider_key AS nas_key, f.provider_key AS flickr_id,
         f.remote_url AS flickr_url
         FROM photos p
         LEFT JOIN photo_copies n ON n.photo_id=p.id AND n.provider='nas' AND n.status='available'
         LEFT JOIN photo_copies f ON f.photo_id=p.id AND f.provider='flickr' AND f.status='available'
-        WHERE p.id::text=%s OR p.legacy_photo_id=%s OR f.provider_key=%s LIMIT 1
-    """, (photo_id, photo_id, photo_id))
+    """
+    try:
+        stable_id = str(uuid.UUID(photo_id))
+    except ValueError:
+        stable_id = None
+    if stable_id:
+        rows = db_query(select + " WHERE p.id=%s::uuid LIMIT 1", (stable_id,))
+        if rows:
+            return dict(rows[0])
+    rows = db_query(select + " WHERE p.legacy_photo_id=%s LIMIT 1", (photo_id,))
+    if rows:
+        return dict(rows[0])
+    rows = db_query(select + """ WHERE p.id=(
+        SELECT photo_id FROM photo_copies
+        WHERE provider='flickr' AND provider_key=%s AND status='available'
+    ) LIMIT 1""", (photo_id,))
     return dict(rows[0]) if rows else None
 
 
@@ -6839,8 +6859,8 @@ async def proxy_photo_image(photo_id: str, size: str = "b", user=Depends(get_cur
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
 
-    catalog = _catalog_photo(photo_id)
-    if not catalog and not db_query("SELECT 1 FROM detections WHERE photo_id = %s LIMIT 1", (photo_id,)):
+    catalog = await asyncio.to_thread(_catalog_photo, photo_id)
+    if not catalog and not await asyncio.to_thread(db_query, "SELECT 1 FROM detections WHERE photo_id = %s LIMIT 1", (photo_id,)):
         raise HTTPException(404, "Photo is not in this library")
     if catalog and catalog.get('nas_key'):
         try:

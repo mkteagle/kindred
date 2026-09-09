@@ -41,6 +41,8 @@ extension APIClient {
         let width = widths.first { CGFloat($0) >= pixels } ?? 2560
         guard var components = URLComponents(string: "\(publicBaseURL)/photos/\(photoID)/image") else { return nil }
         components.queryItems = [
+            // Safe even before the household updates its NAS backend.
+            URLQueryItem(name: "size", value: width <= 960 ? "n" : "h"),
             URLQueryItem(name: "w", value: String(width)),
             URLQueryItem(name: "q", value: "80"),
             // UIImage supports WebP; do not depend on URLSession's Accept default.

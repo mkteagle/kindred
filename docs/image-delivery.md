@@ -161,3 +161,41 @@ and [Next.js image authentication limitations](https://nextjs.org/docs/app/api-r
   at the same viewport, with four adjacent optimized previews.
 - Save-Data at the same viewport loaded only eight visible thumbnails, with
   speculation disabled. No browser JavaScript errors in the gallery/viewer run.
+
+## Follow-up: mixed-version rollout and live latency
+
+The public web is hosted on Vercel; the NAS has a separate manual release.
+On September 8/9, pushing `393919f` did not advance the NAS beyond `8e6c81b`.
+The old image endpoint silently ignored new `w/q/format` arguments. Without a
+legacy size argument, a thumbnail request became a default 2048px preview.
+On one real photo this was 273,725 bytes (1536×2048), versus 24,797 bytes
+(384×512) for `size=n`. This was a rollout regression, not evidence that
+base64 storage was needed.
+
+Web and iOS image URLs now also carry a safe legacy `size=n` for requests up
+to 960px and `size=h` for larger requests. New backends honor `w`; old ones
+keep serving bounded legacy thumbnails/previews. The changed URL also avoids
+reusing cached oversized responses from the previous web release.
+`LEGACY_BACKEND=1` runs the browser fixture with old-server semantics and checks
+that actual loaded grid image widths stay at or below 512px.
+
+The catalog resolver now queries the UUID primary key, legacy-ID index, or
+Flickr provider-key index separately, before joining copies. The previous
+OR across a text-cast UUID and a joined table filtered 9,301 rows in a sampled
+lookup (~60ms); the equivalent typed UUID query executed in ~0.063ms in the
+same EXPLAIN ANALYZE probe. A separate 12-photo probe of the corrected function
+had one cold ~161ms lookup and subsequent lookups of ~0.5–2ms. These are database
+measurements, not claims about end-to-end browser latency.
+
+Synchronous identity and session/API-key validation work now runs outside the
+ASGI event loop. The transform cache uses WAL, indexed eviction, and avoids
+writing an access timestamp on every hit or sorting all cached items when
+under budget. The NAS release template retains the disposable cache on its
+existing `/app/cache` volume through `IMAGE_CACHE_PATH`; it remains bounded
+and evictable, and still does not create canonical derivative assets.
+
+Verification: 560 backend tests, six deployment tests, web production build,
+iOS simulator build, and the mixed-version browser fixture. No base64 database
+column or PostgreSQL migration is introduced. The full backend improvements
+require the NAS release command; Git push alone only updates source (and the
+independent web deployment).
