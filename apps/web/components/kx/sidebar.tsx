@@ -17,6 +17,7 @@ import { useLibraryCounts, usePipelines, busiestPipeline, useShareCount, useStat
  * glyph is the only thing left to identify the row by.
  */
 const LIBRARY_ROWS = [
+  { href: "/activity", label: "Activity log", icon: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" },
   { href: "/gallery", label: "All photos", icon: LIBRARY_ICON_PATHS.allPhotos, count: "photos" as const },
   { href: "/people", label: "People", icon: LIBRARY_ICON_PATHS.people, count: "people" as const },
   { href: "/animals", label: "Animals", icon: LIBRARY_ICON_PATHS.animals, count: "pets" as const },

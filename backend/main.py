@@ -6265,6 +6265,13 @@ def _rate_per_minute(key: str, done: int) -> float | None:
     return max(0.0, (done - before) / elapsed * 60.0)
 
 
+@app.get("/import-activity")
+def get_import_activity(kind: str = "all", search: str = "", cursor: str | None = None,
+                        limit: int = Query(50, ge=1, le=100), admin=Depends(require_admin)):
+    from import_activity import history
+    return history(db_query, kind=kind, search=search, cursor=cursor, limit=limit)
+
+
 @app.get("/pipelines")
 def get_pipelines(request: FastAPIRequest, user=Depends(get_current_user)):
     """Progress for every long-running job, for the dashboard.

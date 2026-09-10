@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { BACKEND } from "@/lib/constants";
 import { KxErrorBanner, KxSkeletonRows } from "@/components/kx/states";
 
@@ -112,6 +113,7 @@ export default function PipelinesPage() {
         happens not to move.
       </p>
 
+      <p style={{ margin: "16px 0 24px" }}><Link href="/activity">View filenames and processing timestamps →</Link></p>
       {error && <KxErrorBanner detail={(error as Error).message} onRetry={() => void refetch()} />}
 
       {isPending ? (
