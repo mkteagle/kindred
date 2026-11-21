@@ -6855,7 +6855,8 @@ def get_local_photo(photo_id: str, variant: str = "original", user=Depends(get_c
     """
     if variant not in ("original", "thumb", "preview", "clip"):
         raise HTTPException(400, "variant must be original, thumb, preview, or clip")
-    if not PHOTO_STORAGE_ROOT:
+    cloud_thumbnail = (variant == "thumb" or (variant == "preview" and w is not None and w <= 960)) and format in ("auto", "jpeg")
+    if not PHOTO_STORAGE_ROOT and not cloud_thumbnail:
         raise HTTPException(503, "NAS photo storage is not configured")
 
     rows = db_query(
@@ -6883,6 +6884,15 @@ def get_local_photo(photo_id: str, variant: str = "original", user=Depends(get_c
                 return image_transforms.image_response(key, data, output_format, request)
             except (OSError, ValueError):
                 pass
+        if cloud_thumbnail:
+            from r2_thumbnails import preview_url
+            from fastapi.responses import RedirectResponse
+
+            url = preview_url([photo_id])
+            if url:
+                return RedirectResponse(url, status_code=307, headers={"Cache-Control": "private, no-store"})
+    if not PHOTO_STORAGE_ROOT:
+        raise HTTPException(503, "NAS photo storage is not configured")
     provider = LocalStorageProvider(PHOTO_STORAGE_ROOT)
     source = provider.resolve_local_path(row["provider_key"]) if row else None
     if source is None:
@@ -7067,7 +7077,14 @@ async def proxy_photo_image(photo_id: str, size: str = "b", user=Depends(get_cur
         if catalog:
             identities += [str(catalog.get('id') or ''), catalog.get('legacy_photo_id'), catalog.get('flickr_id')]
         cached = await asyncio.to_thread(preview_delivery.cached_thumbnail, identities)
-        if cached is None and w <= 960 and catalog and catalog.get('nas_key'):
+        if cached is None and w <= 960 and direct_jpeg:
+            from r2_thumbnails import preview_url
+            from fastapi.responses import RedirectResponse
+
+            url = await asyncio.to_thread(preview_url, identities)
+            if url:
+                return RedirectResponse(url, status_code=307, headers={"Cache-Control": "private, no-store"})
+        if cached is None and w <= 960 and PHOTO_STORAGE_ROOT and catalog and catalog.get('nas_key'):
             provider = LocalStorageProvider(PHOTO_STORAGE_ROOT)
             source = await asyncio.to_thread(provider.resolve_local_path, catalog['nas_key'])
             if source is not None:

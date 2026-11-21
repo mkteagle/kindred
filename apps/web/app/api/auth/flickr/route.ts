@@ -1,4 +1,4 @@
-import { BACKEND_URL } from "@/lib/backend-url";
+import { ACCOUNT_BACKEND_URL } from "@/lib/backend-url";
 import { NextRequest, NextResponse } from "next/server";
 import { oauth, encryptToken, getSessionFromRequest } from "@/lib/oauth";
 
@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     const session = getSessionFromRequest(req);
     if (integration) {
       if (!session) return NextResponse.redirect(new URL("/login", req.url));
-      const me = await fetch(`${BACKEND_URL}/auth/me`, {
+      const me = await fetch(`${ACCOUNT_BACKEND_URL}/auth/me`, {
         headers: { "X-Session-Token": session.session_token }, cache: "no-store" });
       if (!me.ok || (await me.json()).role !== "admin") return NextResponse.json({ error: "Owner access required" }, { status: 403 });
     }

@@ -1,4 +1,4 @@
-import { BACKEND_URL } from "@/lib/backend-url";
+import { ACCOUNT_BACKEND_URL } from "@/lib/backend-url";
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest, getTokenFromRequest } from "@/lib/oauth";
 
@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   if (session) {
     // Fetch fresh user data from backend to get avatar_url and other dynamic fields
     try {
-      const backendResp = await fetch(`${BACKEND_URL}/auth/me`, {
+      const backendResp = await fetch(`${ACCOUNT_BACKEND_URL}/auth/me`, {
         headers: { "X-Session-Token": session.session_token },
       });
       if (backendResp.status === 401 || backendResp.status === 403) return NextResponse.json({ loggedIn: false });

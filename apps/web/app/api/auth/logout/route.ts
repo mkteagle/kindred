@@ -1,4 +1,4 @@
-import { BACKEND_URL } from "@/lib/backend-url";
+import { ACCOUNT_BACKEND_URL } from "@/lib/backend-url";
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/oauth";
 
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (API_KEY) headers["X-API-Key"] = API_KEY;
     headers["X-Session-Token"] = session.session_token;
-    await fetch(`${BACKEND_URL}/auth/logout`, { method: "POST", headers }).catch(() => {});
+    await fetch(`${ACCOUNT_BACKEND_URL}/auth/logout`, { method: "POST", headers }).catch(() => {});
   }
 
   const response = NextResponse.json({ ok: true });

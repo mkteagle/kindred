@@ -1,4 +1,4 @@
-import { BACKEND_URL } from "@/lib/backend-url";
+import { ACCOUNT_BACKEND_URL } from "@/lib/backend-url";
 import { NextRequest, NextResponse } from "next/server";
 import { encryptToken } from "@/lib/oauth";
 
@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (API_KEY) headers["X-API-Key"] = API_KEY;
 
-    const resp = await fetch(`${BACKEND_URL}/auth/login`, {
+    const resp = await fetch(`${ACCOUNT_BACKEND_URL}/auth/login`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),

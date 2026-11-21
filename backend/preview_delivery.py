@@ -6,6 +6,16 @@ import uuid
 THUMBNAIL_ROOT = Path(os.environ.get('KINDRED_THUMBNAIL_ROOT', '/app/data/thumbnails'))
 
 
+def thumbnail_identity(value):
+    if not value:
+        return None
+    identity = str(value)
+    try:
+        return str(uuid.UUID(identity))
+    except ValueError:
+        return identity if identity.isascii() and identity.isdecimal() and len(identity) <= 25 else None
+
+
 def cached_thumbnail(identities, root=None):
     root = Path(root) if root is not None else THUMBNAIL_ROOT
     resolved_root = root.resolve()

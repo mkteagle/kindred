@@ -1,4 +1,4 @@
-import { BACKEND_URL } from "@/lib/backend-url";
+import { ACCOUNT_BACKEND_URL, BACKEND_URL } from "@/lib/backend-url";
 import { NextRequest, NextResponse } from "next/server";
 import { oauth, decryptToken, encryptToken, getSessionFromRequest } from "@/lib/oauth";
 
@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
     let backendUser: { user: { id: string; username: string; display_name: string; role: string }; session: { token: string } };
 
     // Try setup first (first-time admin creation)
-    const setupResp = await fetch(`${BACKEND_URL}/auth/setup`, {
+    const setupResp = await fetch(`${ACCOUNT_BACKEND_URL}/auth/setup`, {
       method: "POST",
       headers: backendHeaders,
       body: JSON.stringify({
@@ -115,7 +115,7 @@ export async function GET(req: NextRequest) {
       backendUser = await setupResp.json();
     } else {
       // Admin already exists — login instead
-      const loginResp = await fetch(`${BACKEND_URL}/auth/flickr-login`, {
+      const loginResp = await fetch(`${ACCOUNT_BACKEND_URL}/auth/flickr-login`, {
         method: "POST",
         headers: backendHeaders,
         body: JSON.stringify({ flickr_user_id: userId, flickr_oauth_token: accessToken, flickr_oauth_secret: accessTokenSecret }),

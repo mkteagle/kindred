@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+tests/
+data/
+models/
+requirements-nas.txt
+Dockerfile

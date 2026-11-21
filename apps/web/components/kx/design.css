@@ -168,6 +168,31 @@ body:has(.kx) { background:#f7f7f3; }
 @media(max-width:760px) { .kr-public-nav { padding:0 22px; height:84px; }.kr-public-nav > a img { width:134px; height:36px; }.kr-public-nav nav { gap:16px; }.kr-public-nav nav > a:not(.kr-nav-signin) { display:none; }.kr-hero { grid-template-columns:1fr; margin:10px auto 20px; padding:25px 24px; gap:0; }.kr-hero h1 { font-size:56px; }.kr-hero-copy > p { font-size:15px; }.kr-memory-wall { height:440px; max-width:500px; width:100%; margin:35px auto 0; }.kr-memory-label { left:20%; font-size:10px; padding:10px; }.kr-feature-grid { grid-template-columns:1fr; gap:32px; }.kr-features { padding:48px 24px; }.kr-features > h2 { font-size:32px; }.kr-home-cta h2 { font-size:30px; }.kr-public-footer { padding:24px; flex-wrap:wrap; gap:12px; }.kr-public-footer > span { display:none; }.kr-public-footer nav { gap:15px; font-size:11px; }.kr-login-layout { display:block; }.kr-login-story { display:none; }.kr-login-main { padding:24px; min-height:100svh; }.kr-login-form { padding:32px 0; }.kr-login-form h2 { font-size:32px; }.kx-connection-section { grid-template-columns:1fr; gap:14px; padding:24px 0; }.kx-connection { padding:16px; gap:12px; flex-wrap:wrap; }.kx-connection > div { flex:1; min-width:150px; }.kx-connection > .kx-button { margin-left:56px; } }
 @media(prefers-reduced-motion:reduce) { .kx *, .kr-public * { scroll-behavior:auto!important; animation:none!important; transition:none!important; } }
 
+/* Fit the default sign-in view while letting short screens and expanded
+   error/recovery content scroll naturally. */
+.kr-login-story { gap:clamp(12px, 3svh, 36px); padding-block:clamp(20px, 4svh, 44px) clamp(16px, 3svh, 28px); }
+.kr-login-story-copy { margin-top:clamp(6px, 3svh, 36px); }
+.kr-login-photo { height:clamp(142px, 33svh, 300px); }
+.kr-login-main { padding-block:clamp(14px, 3svh, 36px) clamp(12px, 2svh, 25px); }
+.kr-login-form { padding-block:clamp(12px, 2svh, 24px); }
+@media(max-height:820px), (max-width:760px) {
+  .kr-login-form h2 { margin-block:10px 5px; }
+  .kr-login-form > p { margin-block:0; }
+  .kr-login-form .kr-social-buttons { margin-top:14px; gap:7px; }
+  .kr-login-form .kr-social-buttons :is(a, button) { min-height:42px; }
+  .kr-login-form .kr-auth-divider { margin-block:8px; }
+  .kr-login-form form { margin-top:8px; gap:10px; }
+  .kr-login-form label { gap:5px; }
+  .kr-login-form .kr-invite-note, .kr-login-form .kr-legacy-login { margin-top:10px; }
+  .kr-login-photo { height:clamp(142px, 28svh, 248px); }
+}
+@media(max-width:760px) {
+  .kr-login-main { padding:12px 20px 10px; }
+  .kr-login-form { padding-block:10px; }
+  .kr-login-form h2 { font-size:clamp(24px, 7vw, 32px); }
+  .kr-login-mark { width:36px; height:36px; }
+}
+
 .kx a.kx-button { text-decoration:none; }
 
 /* The library owns its viewport; only the content pane scrolls the photos. */

@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { createRemoteJWKSet, importPKCS8, jwtVerify, SignJWT } from "jose";
 import { NextRequest, NextResponse } from "next/server";
 import { decryptToken, encryptToken, getSessionFromRequest } from "./oauth";
-import { BACKEND_URL } from "./backend-url";
+import { ACCOUNT_BACKEND_URL } from "./backend-url";
 
 export type SocialProvider = "google" | "apple";
 const googleKeys = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs"));
@@ -148,7 +148,7 @@ export async function finishSocialAuth(req: NextRequest, provider: SocialProvide
     if (flow.link_session_token) headers["X-Session-Token"] = flow.link_session_token;
     let result: Response;
     try {
-      result = await fetch(`${BACKEND_URL}/auth/social/exchange`, { method: "POST", headers,
+      result = await fetch(`${ACCOUNT_BACKEND_URL}/auth/social/exchange`, { method: "POST", headers,
         body: JSON.stringify({ assertion }), cache: "no-store", signal: AbortSignal.timeout(15_000) });
     } catch (error) {
       console.warn(`[auth] ${provider} account exchange could not reach the API (${error instanceof Error ? error.name : "unknown error"})`);

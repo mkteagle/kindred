@@ -1,4 +1,4 @@
-import { BACKEND_URL } from "@/lib/backend-url";
+import { ACCOUNT_BACKEND_URL } from "@/lib/backend-url";
 import { NextRequest, NextResponse } from "next/server";
 
 const API_KEY = process.env.API_KEY || "";
@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     if (API_KEY) headers["X-API-Key"] = API_KEY;
 
     // Forward to backend reset endpoint (if it exists)
-    const resp = await fetch(`${BACKEND_URL}/auth/reset`, {
+    const resp = await fetch(`${ACCOUNT_BACKEND_URL}/auth/reset`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),

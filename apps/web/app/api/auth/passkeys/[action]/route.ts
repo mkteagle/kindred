@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { BACKEND_URL } from "@/lib/backend-url";
+import { ACCOUNT_BACKEND_URL } from "@/lib/backend-url";
 import { encryptToken, getSessionFromRequest } from "@/lib/oauth";
 import { authOrigin } from "@/lib/social-auth";
 
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ action
     }
   }
   try {
-    const response = await fetch(`${BACKEND_URL}/auth/passkeys/${action}`, {
+    const response = await fetch(`${ACCOUNT_BACKEND_URL}/auth/passkeys/${action}`, {
       method: "POST", headers, body: JSON.stringify(body), cache: "no-store",
       signal: AbortSignal.timeout(10_000),
     });

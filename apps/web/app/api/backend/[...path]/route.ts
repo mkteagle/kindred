@@ -1,4 +1,4 @@
-import { BACKEND_URL } from "@/lib/backend-url";
+import { BACKEND_URL, CATALOG_BACKEND_URL, catalogRequest, isR2ThumbnailRedirect, isThumbnailRequest } from "@/lib/backend-url";
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/oauth";
 
@@ -34,7 +34,12 @@ async function handleRequest(
     const { path } = await params;
     const pathStr = path.join("/");
     const queryString = req.nextUrl.search;
-    const url = `${BACKEND_URL}/${pathStr}${queryString}`;
+    const thumbnail = req.method === "GET" && isThumbnailRequest(pathStr, req.nextUrl.searchParams);
+    const catalog = CATALOG_BACKEND_URL && CATALOG_BACKEND_URL !== BACKEND_URL &&
+      catalogRequest(req.method, pathStr, req.nextUrl.searchParams)
+      ? CATALOG_BACKEND_URL
+      : null;
+    const suffix = `/${pathStr}${queryString}`;
 
     // A segment of ".." could normalise past the public allowlist once fetch()
     // resolves the URL, so refuse it outright rather than reasoning about it.
@@ -76,6 +81,7 @@ async function handleRequest(
       cache: "no-store",
       headers,
       signal: req.signal,
+      redirect: thumbnail ? "manual" : "follow",
     };
 
     if (["POST", "PUT", "PATCH"].includes(req.method)) {
@@ -92,7 +98,29 @@ async function handleRequest(
       headers["Content-Type"] = "application/json";
     }
 
-    const backendResp = await fetch(url, opts);
+    let backendResp: Response | undefined;
+    if (thumbnail && catalog) {
+      try {
+        backendResp = await fetch(`${catalog}${suffix}`, opts);
+      } catch (error) {
+        if (req.signal.aborted) throw error;
+      }
+      if (backendResp && [404, 422, 502, 503, 504].includes(backendResp.status)) {
+        await backendResp.body?.cancel();
+        backendResp = undefined;
+      }
+    }
+    backendResp ??= await fetch(`${thumbnail ? BACKEND_URL : catalog || BACKEND_URL}${suffix}`, opts);
+    if (thumbnail && backendResp.status === 307) {
+      const location = backendResp.headers.get("location");
+      if (!isR2ThumbnailRedirect(location)) {
+        return NextResponse.json({ detail: "Invalid thumbnail location" }, { status: 502 });
+      }
+      return new NextResponse(null, {
+        status: 307,
+        headers: { Location: location!, "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" },
+      });
+    }
 
     // Check if response is binary (image, etc.) — don't try to parse as JSON
     const contentType = backendResp.headers.get("content-type") || "";

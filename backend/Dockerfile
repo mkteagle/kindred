@@ -8,8 +8,8 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-nas.txt ./
+RUN pip install --no-cache-dir -r requirements-nas.txt
 
 # Keep optional media tools after Python dependencies so changes here reuse ML layers.
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
