@@ -1,0 +1,53 @@
+name: KindredBackup
+options:
+  bundleIdPrefix: com.kindlingsignal
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: L2T2KBN2GC
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: 1
+targets:
+  KindredBackup:
+    type: application
+    platform: iOS
+    sources: [KindredBackup]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kindlingsignal.kindredbackup
+        PRODUCT_NAME: Kindred Backup
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: true
+    info:
+      path: KindredBackup/Info.plist
+      properties:
+        CFBundleDisplayName: Kindred Backup
+        UILaunchScreen: {}
+        ITSAppUsesNonExemptEncryption: false
+        NSPhotoLibraryUsageDescription: Choose albums to back up to your NAS, and review verified items before deleting originals from Photos.
+        NSLocalNetworkUsageDescription: Connect to your own Kindred server on your home network.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        UIBackgroundModes: [processing, fetch]
+        BGTaskSchedulerPermittedIdentifiers: [com.kindlingsignal.kindredbackup.sync]
+  KindredBackupTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [KindredBackupTests]
+    dependencies:
+      - target: KindredBackup
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kindlingsignal.kindredbackup.tests
+        GENERATE_INFOPLIST_FILE: true
+schemes:
+  KindredBackup:
+    build:
+      targets:
+        KindredBackup: all
+        KindredBackupTests: [test]
+    test:
+      targets: [KindredBackupTests]

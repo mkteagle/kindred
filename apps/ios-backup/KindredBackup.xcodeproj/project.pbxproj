@@ -1,0 +1,430 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1B697E9ED710BBE31D0304C5 /* BackupController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4C720A291EB4B77EC0D97CB /* BackupController.swift */; };
+		7D31DF1BC3D4A492A921FD30 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E24DD6997F26DB5C7129F86B /* Assets.xcassets */; };
+		815BE023D50592602C6008DD /* PhotoAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98B5F85C595FB02223DD57E8 /* PhotoAccess.swift */; };
+		8E5E9A7689447620B9F2A578 /* KindredBackupApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45C1D42CE904F20A483125A5 /* KindredBackupApp.swift */; };
+		9F36B6B85DA56DACC802646C /* BackupSafetyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65DC5D61D1574445944A7EEB /* BackupSafetyTests.swift */; };
+		A86056ECF835830A3629659B /* BackupModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C53067B56D19240E0CCC14C6 /* BackupModels.swift */; };
+		C654907B580202AFC82A19ED /* BackgroundTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F12F51B1B16E1AC8043FA52 /* BackgroundTransfer.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		3CA6D94ED89A117E2C3868D8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 90DAE10623AFDE6211FEF891 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 61E580E6660F0DC321F2B993;
+			remoteInfo = KindredBackup;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0F12F51B1B16E1AC8043FA52 /* BackgroundTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTransfer.swift; sourceTree = "<group>"; };
+		45C1D42CE904F20A483125A5 /* KindredBackupApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KindredBackupApp.swift; sourceTree = "<group>"; };
+		65DC5D61D1574445944A7EEB /* BackupSafetyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupSafetyTests.swift; sourceTree = "<group>"; };
+		80A026C7F746C24523758BAD /* KindredBackup.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = KindredBackup.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		817A6EEC1B52BCC7B6AC2676 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		98B5F85C595FB02223DD57E8 /* PhotoAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoAccess.swift; sourceTree = "<group>"; };
+		BB0DDD4F4BC80512E296040D /* KindredBackupTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = KindredBackupTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C53067B56D19240E0CCC14C6 /* BackupModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupModels.swift; sourceTree = "<group>"; };
+		E24DD6997F26DB5C7129F86B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		E4C720A291EB4B77EC0D97CB /* BackupController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupController.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0B4387ED8ABC170FA88945F9 /* KindredBackup */ = {
+			isa = PBXGroup;
+			children = (
+				E24DD6997F26DB5C7129F86B /* Assets.xcassets */,
+				0F12F51B1B16E1AC8043FA52 /* BackgroundTransfer.swift */,
+				E4C720A291EB4B77EC0D97CB /* BackupController.swift */,
+				C53067B56D19240E0CCC14C6 /* BackupModels.swift */,
+				817A6EEC1B52BCC7B6AC2676 /* Info.plist */,
+				45C1D42CE904F20A483125A5 /* KindredBackupApp.swift */,
+				98B5F85C595FB02223DD57E8 /* PhotoAccess.swift */,
+			);
+			path = KindredBackup;
+			sourceTree = "<group>";
+		};
+		19DECAF9D1B907BF1ECDA580 /* KindredBackupTests */ = {
+			isa = PBXGroup;
+			children = (
+				65DC5D61D1574445944A7EEB /* BackupSafetyTests.swift */,
+			);
+			path = KindredBackupTests;
+			sourceTree = "<group>";
+		};
+		6583C66ED7C6BB6F92DFCD80 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				80A026C7F746C24523758BAD /* KindredBackup.app */,
+				BB0DDD4F4BC80512E296040D /* KindredBackupTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		8BB7A84212BDECDFCF8692DA = {
+			isa = PBXGroup;
+			children = (
+				0B4387ED8ABC170FA88945F9 /* KindredBackup */,
+				19DECAF9D1B907BF1ECDA580 /* KindredBackupTests */,
+				6583C66ED7C6BB6F92DFCD80 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		61E580E6660F0DC321F2B993 /* KindredBackup */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 559B3B2D61EC92EF15ACED2D /* Build configuration list for PBXNativeTarget "KindredBackup" */;
+			buildPhases = (
+				0E9B3A1A49F1A1177FFF05B2 /* Sources */,
+				5D84C36454FC24E427E4A0A7 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = KindredBackup;
+			packageProductDependencies = (
+			);
+			productName = KindredBackup;
+			productReference = 80A026C7F746C24523758BAD /* KindredBackup.app */;
+			productType = "com.apple.product-type.application";
+		};
+		6E88BAE3272A1EEDFC02F085 /* KindredBackupTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 70A47B25F4595DEEFB58997A /* Build configuration list for PBXNativeTarget "KindredBackupTests" */;
+			buildPhases = (
+				98C96EC727AA8BA2E8065059 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				41BA644F0ECA7201218C0D90 /* PBXTargetDependency */,
+			);
+			name = KindredBackupTests;
+			packageProductDependencies = (
+			);
+			productName = KindredBackupTests;
+			productReference = BB0DDD4F4BC80512E296040D /* KindredBackupTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		90DAE10623AFDE6211FEF891 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					61E580E6660F0DC321F2B993 = {
+						DevelopmentTeam = L2T2KBN2GC;
+					};
+					6E88BAE3272A1EEDFC02F085 = {
+						DevelopmentTeam = L2T2KBN2GC;
+					};
+				};
+			};
+			buildConfigurationList = 2092F3592DBEED1BC460983F /* Build configuration list for PBXProject "KindredBackup" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 8BB7A84212BDECDFCF8692DA;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 6583C66ED7C6BB6F92DFCD80 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				61E580E6660F0DC321F2B993 /* KindredBackup */,
+				6E88BAE3272A1EEDFC02F085 /* KindredBackupTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5D84C36454FC24E427E4A0A7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7D31DF1BC3D4A492A921FD30 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0E9B3A1A49F1A1177FFF05B2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C654907B580202AFC82A19ED /* BackgroundTransfer.swift in Sources */,
+				1B697E9ED710BBE31D0304C5 /* BackupController.swift in Sources */,
+				A86056ECF835830A3629659B /* BackupModels.swift in Sources */,
+				8E5E9A7689447620B9F2A578 /* KindredBackupApp.swift in Sources */,
+				815BE023D50592602C6008DD /* PhotoAccess.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		98C96EC727AA8BA2E8065059 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9F36B6B85DA56DACC802646C /* BackupSafetyTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		41BA644F0ECA7201218C0D90 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 61E580E6660F0DC321F2B993 /* KindredBackup */;
+			targetProxy = 3CA6D94ED89A117E2C3868D8 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		064378D3C6A0190F0C865E0B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = L2T2KBN2GC;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		5772F9F2ECAFCDCF1C33485A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.kindlingsignal.kindredbackup.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/KindredBackup.app/KindredBackup";
+			};
+			name = Debug;
+		};
+		69BA22EA3FBD151233A529CD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = KindredBackup/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.kindlingsignal.kindredbackup;
+				PRODUCT_NAME = "Kindred Backup";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		97E0EEAA7D7DEB61EFCCEA19 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = L2T2KBN2GC;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		E299CB696DCA7FD768B21DE5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = KindredBackup/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.kindlingsignal.kindredbackup;
+				PRODUCT_NAME = "Kindred Backup";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		FB3E8E8E08761773BE957E81 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.kindlingsignal.kindredbackup.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/KindredBackup.app/KindredBackup";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		2092F3592DBEED1BC460983F /* Build configuration list for PBXProject "KindredBackup" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				064378D3C6A0190F0C865E0B /* Debug */,
+				97E0EEAA7D7DEB61EFCCEA19 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		559B3B2D61EC92EF15ACED2D /* Build configuration list for PBXNativeTarget "KindredBackup" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				69BA22EA3FBD151233A529CD /* Debug */,
+				E299CB696DCA7FD768B21DE5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		70A47B25F4595DEEFB58997A /* Build configuration list for PBXNativeTarget "KindredBackupTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5772F9F2ECAFCDCF1C33485A /* Debug */,
+				FB3E8E8E08761773BE957E81 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 90DAE10623AFDE6211FEF891 /* Project object */;
+}
