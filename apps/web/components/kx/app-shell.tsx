@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useUser } from "@/lib/use-user";
 import type { User } from "@/types";
 import { KxSearchOverlay } from "./search-overlay";
+import { KxSearchProvider } from "./search-state";
 import { KxSidebar } from "./sidebar";
 import { KxTopbar } from "./topbar";
 import { KxUiProvider, useKxUi } from "./ui-state";
@@ -94,7 +95,9 @@ export function KxAppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <KxUiProvider isLibrary={pathname === LIBRARY_PATH || pathname === "/timeline"}>
-      <ShellFrame user={user?.loggedIn ? user : null}>{children}</ShellFrame>
+      <KxSearchProvider>
+        <ShellFrame user={user?.loggedIn ? user : null}>{children}</ShellFrame>
+      </KxSearchProvider>
     </KxUiProvider>
   );
 }

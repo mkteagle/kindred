@@ -10,16 +10,26 @@ interface SearchResponse {
   visual_pending?: boolean;
 }
 
-export const SEARCH_DELAY = 160;
 const EMPTY_RESULTS: SearchResult[] = [];
+const SEARCH_TIMEOUT_MS = 12_000;
 
 async function fetchSearch(params: string, limit: number, mode: "quick" | "visual", signal: AbortSignal) {
   const query = new URLSearchParams(params);
   query.set("limit", String(limit));
   query.set("mode", mode);
-  const response = await fetch(`${BACKEND}/search?${query}`, { signal });
-  if (!response.ok) throw new Error("Search is unavailable");
-  return response.json() as Promise<SearchResponse>;
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  if (signal.aborted) cancel();
+  signal.addEventListener("abort", cancel, { once: true });
+  const timer = setTimeout(cancel, SEARCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${BACKEND}/search?${query}`, { signal: controller.signal });
+    if (!response.ok) throw new Error("Search is unavailable");
+    return (await response.json()) as SearchResponse;
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener("abort", cancel);
+  }
 }
 
 export function useSearchResults(params: string, limit: number, enabled: boolean, expand: boolean) {

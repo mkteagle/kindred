@@ -11,7 +11,10 @@ import { KxEmptyResults, KxSkeletonCards } from "@/components/kx/states";
 import { KxDateFacet, type DateField, type DateRange } from "@/components/kx/date-facet";
 import { useNamedPeople } from "@/components/kx/use-people";
 import { photoThumb } from "@/lib/photo-url";
-import { SEARCH_DELAY, useSearchResults } from "@/lib/use-search-results";
+import { useSearchResults } from "@/lib/use-search-results";
+import { ClearSearchButton } from "@/components/kx/clear-search-button";
+import { useKxSearch } from "@/components/kx/search-state";
+import { useKxUi } from "@/components/kx/ui-state";
 
 type Media = "all" | "photo" | "video";
 
@@ -35,10 +38,11 @@ function SearchContent() {
   const searchParams = useSearchParams();
   const { openLightbox } = useLightbox();
 
-  const urlQuery = searchParams.get("q") || "";
-  const lastUrlQuery = useRef(urlQuery);
-  const [input, setInput] = useState(urlQuery);
-  const [debouncedQ, setDebouncedQ] = useState(urlQuery.trim());
+  const urlQuery = searchParams.get("q");
+  const lastUrlQuery = useRef<string | null | undefined>(urlQuery === null ? null : undefined);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { query: input, debouncedQuery: debouncedQ, setQuery: setInput, commitQuery } = useKxSearch();
+  const { searchOpen } = useKxUi();
   const [media, setMedia] = useState<Media>((searchParams.get("media") as Media) || "all");
   const [dates, setDates] = useState<DateRange>({
     field: (searchParams.get("date_field") as DateField) || "taken",
@@ -48,18 +52,7 @@ function SearchContent() {
   const [person, setPerson] = useState(searchParams.get("cluster_id") || "");
   const initialCategory = searchParams.get("category");
 
-  useEffect(() => {
-    if (lastUrlQuery.current === urlQuery) return;
-    lastUrlQuery.current = urlQuery;
-    setInput(urlQuery);
-    setDebouncedQ(urlQuery.trim());
-  }, [urlQuery]);
-
   const trimmed = input.trim();
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQ(trimmed), SEARCH_DELAY);
-    return () => clearTimeout(timer);
-  }, [trimmed]);
 
   useEffect(() => {
     rememberSearch(debouncedQ);
@@ -92,15 +85,21 @@ function SearchContent() {
   // Update the address without re-running the route or removing a lightbox link.
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (url.searchParams.get("q") !== null && url.searchParams.get("q") !== lastUrlQuery.current) return;
+    if (url.searchParams.get("q") !== lastUrlQuery.current) return;
     for (const name of ["q", "media", "date_from", "date_to", "date_field", "cluster_id", "category"]) {
       const value = params.get(name);
       if (value) url.searchParams.set(name, value);
       else url.searchParams.delete(name);
     }
-    lastUrlQuery.current = params.get("q") || "";
+    lastUrlQuery.current = params.get("q");
     if (url.href !== window.location.href) window.history.replaceState(null, "", url);
   }, [params]);
+
+  useEffect(() => {
+    if (lastUrlQuery.current === urlQuery) return;
+    lastUrlQuery.current = urlQuery;
+    commitQuery(urlQuery ?? "");
+  }, [urlQuery, commitQuery]);
 
   const clearFilters = () => {
     setMedia("all");
@@ -113,7 +112,10 @@ function SearchContent() {
   // own, so a filter-only search runs immediately.
   const enabled = trimmed.length >= 2 || hasFacets;
   const settling = trimmed !== debouncedQ;
-  const { results, loading, error, retry } = useSearchResults(params.toString(), 100, enabled && !settling, true);
+  const queryReady = lastUrlQuery.current === urlQuery || urlQuery === input;
+  const { results, loading, error, retry } = useSearchResults(
+    params.toString(), 100, enabled && !settling && queryReady && !searchOpen, true,
+  );
   const searching = enabled && (settling || loading);
   const showResults = enabled && !settling && results.length > 0;
 
@@ -144,15 +146,20 @@ function SearchContent() {
         <div className="kx-searchfield">
           <SearchIcon size={20} />
           <input
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.nativeEvent.isComposing) setDebouncedQ(trimmed);
+              if (e.key === "Enter" && !e.nativeEvent.isComposing) commitQuery(input);
             }}
             placeholder="Describe what you are looking for…"
             aria-label="Search your library"
             autoFocus
           />
+          {input && <ClearSearchButton onClear={() => {
+            commitQuery("");
+            inputRef.current?.focus();
+          }} />}
           {showResults && (
             <span className="kx-mono">
               {fmt.format(results.length)} result{results.length === 1 ? "" : "s"}

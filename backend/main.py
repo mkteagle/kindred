@@ -708,8 +708,9 @@ def health():
     try:
         db_query("SELECT 1", fetch=True)
         return {"status": "ok", "db": "connected"}
-    except Exception as e:
-        return {"status": "ok", "db": f"error: {e}"}
+    except Exception as exc:
+        print(f"[health] database not ready ({type(exc).__name__})")
+        raise HTTPException(503, "Database unavailable") from exc
 
 @app.get("/app-config")
 def get_app_config():
@@ -2064,9 +2065,21 @@ def get_clusters(category: str):
     return _get_clusters_response(category)
 
 @app.get("/clusters/{category}/summary")
-def get_clusters_summary(category: str, sort_visual: bool = False, limit: int = 30, offset: int = 0, q: str = ""):
+def get_clusters_summary(category: str, sort_visual: bool = False, limit: int = 30, offset: int = 0,
+                         q: str = "", compact: bool = False):
     """Lightweight summary — single query, no N+1. sort_visual groups unnamed by visual similarity.
     Optional q parameter for fuzzy name search using pg_trgm similarity."""
+    if compact and limit > 0 and not sort_visual and not q.strip():
+        import cluster_browse
+
+        limit, offset = min(limit, 200), max(offset, 0)
+        cache_key = f"cluster-browse:{category}:{offset}:{limit}"
+        cached = get_cached(cache_key, ttl_seconds=30)
+        if cached is not None:
+            return cached
+        result = cluster_browse.summary(db_query, category, limit, offset)
+        set_cached(cache_key, result)
+        return result
 
     # If searching, filter cluster IDs by name first
     filtered_ids = None
@@ -4198,8 +4211,10 @@ def _direct_search_matches(query, facets, sort, limit):
             ranked.append(people)
 
     literal = search_api.by_text(db_query, query, facets, limit=limit)
+    if not literal and not any(ranked):
+        literal = search_api.by_catalog_context(db_query, query, facets, limit=limit)
     for row in literal:
-        row.setdefault("match_type", "text")
+        row["match_type"] = "text"
     ranked.append(literal)
 
     return search_api.merge(*ranked, limit=limit)

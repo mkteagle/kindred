@@ -26,6 +26,8 @@ Back up PostgreSQL and persistent backend data. Thumbnails can be regenerated; i
 
 For social login, configure the web server's own Google/Apple credentials from `.env.example`, with exact callback URLs `/api/auth/google/callback` and `/api/auth/apple/callback`. Apple requires an HTTPS domain. Owner-approved verified identity mappings attach existing household accounts; matching an email alone does not grant arbitrary access to a household.
 
+An Apple sign-in can attach to an existing Google-linked account when Apple provides the same verified Gmail address and the account has no conflicting Apple connection. Apple relay addresses and third-party Google addresses can be linked explicitly in Settings → Integrations.
+
 Set `AUTH_ORIGIN` to the canonical web origin on both the web and API services. Google development credentials must allow the exact localhost callback, including its port. Apple web sign-in uses the registered HTTPS domain. For passkeys, sign in to that same Kindred address and add a key under Settings → Integrations. Passkeys are scoped to that site and can be removed from the same screen.
 
 Preview heartbeats update every three seconds while fetching, rendering, or saving. Counts are initialized from committed database rows and only advance after a successful transaction. The live event stream updates preview totals directly without repeatedly recounting millions of rows; a rolling worker rate avoids conflicting estimates from multiple open browser tabs. Timing totals distinguish rendering, metadata extraction, and database commits. Decode time is summed across threads, not elapsed wall time.

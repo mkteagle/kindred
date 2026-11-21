@@ -5,7 +5,7 @@ from unittest.mock import Mock
 from fastapi import HTTPException
 
 import search_api
-from search_api import Facets, browse, by_text, by_vector, candidate_pool, merge
+from search_api import Facets, browse, by_catalog_context, by_text, by_vector, candidate_pool, merge
 
 
 class FacetValidationTests(unittest.TestCase):
@@ -137,11 +137,14 @@ class AgainstSqliteTests(unittest.TestCase):
         self.db.executescript("""
             CREATE TABLE photos (id TEXT, legacy_photo_id TEXT, media_type TEXT,
                 title TEXT, original_filename TEXT, taken_at TEXT, created_at TEXT,
+                description TEXT DEFAULT '',
                 media_kind TEXT GENERATED ALWAYS AS (
                     CASE WHEN media_type LIKE 'video/%' THEN 'video' ELSE 'photo' END) STORED,
                 duration_seconds REAL);
             CREATE TABLE photo_copies (photo_id TEXT, provider TEXT, status TEXT,
                 provider_key TEXT, remote_url TEXT);
+            CREATE TABLE albums (id TEXT, name TEXT);
+            CREATE TABLE album_photos (album_id TEXT, photo_id TEXT);
             INSERT INTO photos (id,media_type,title,original_filename,taken_at,created_at) VALUES
                 ('p1','image/jpeg','Beach day','beach.jpg','2024-06-01','2024-06-01'),
                 ('p2','video/mp4','Beach video','beach.mp4','2024-07-01','2024-07-01'),
@@ -206,6 +209,17 @@ class AgainstSqliteTests(unittest.TestCase):
         self.db.execute("UPDATE photos SET original_filename='beach_1.jpg' WHERE id='p1'")
         self.db.execute("UPDATE photos SET original_filename='beacha1.mp4' WHERE id='p2'")
         self.assertEqual([row["photo_id"] for row in by_text(self.query, "beach_1", Facets())], ["p1"])
+
+    def test_catalog_context_reaches_captions_folders_and_albums_without_embeddings(self):
+        self.db.execute("UPDATE photos SET description='Keeping bees' WHERE id='p1'")
+        self.db.execute("UPDATE photo_copies SET provider_key='library/Bees/IMG_1234.mp4' WHERE photo_id='p2'")
+        self.db.execute("INSERT INTO albums VALUES ('album1','Backyard bees')")
+        self.db.execute("INSERT INTO album_photos VALUES ('album1','p1'), ('album1','p3')")
+        self.assertEqual(by_text(self.query, "bees", Facets()), [])
+        results = by_catalog_context(self.query, "bees", Facets())
+        self.assertEqual([row["photo_id"] for row in results], ["p2", "p1", "p3"])
+        videos = by_catalog_context(self.query, "bees", Facets(media="video"))
+        self.assertEqual([row["photo_id"] for row in videos], ["p2"])
 
 
 if __name__ == "__main__":

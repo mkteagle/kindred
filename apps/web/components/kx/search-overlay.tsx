@@ -9,8 +9,10 @@ import { useRouter } from "next/navigation";
 import { BACKEND, fmt } from "@/lib/constants";
 import type { SearchResult } from "@/types";
 import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
-import { SEARCH_DELAY, useSearchResults } from "@/lib/use-search-results";
+import { useSearchResults } from "@/lib/use-search-results";
 import { SearchIcon } from "./icons";
+import { useKxSearch } from "./search-state";
+import { ClearSearchButton } from "./clear-search-button";
 
 const SUGGESTIONS = [
   "marshmallows by the fire",
@@ -59,8 +61,7 @@ export function KxSearchOverlay({ open, onClose }: { open: boolean; onClose: () 
   const bodyRef = useRef<HTMLDivElement>(null);
   const scrollTop = useRef(0);
   const { openLightbox } = useLightbox();
-  const [query, setQuery] = useState("");
-  const [debounced, setDebounced] = useState("");
+  const { query, debouncedQuery: debounced, setQuery, commitQuery } = useKxSearch();
   const [recent, setRecent] = useState<string[]>([]);
 
   useLayoutEffect(() => {
@@ -75,11 +76,6 @@ export function KxSearchOverlay({ open, onClose }: { open: boolean; onClose: () 
   }, [open]);
 
   const trimmed = query.trim();
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(trimmed), SEARCH_DELAY);
-    return () => clearTimeout(timer);
-  }, [trimmed]);
-
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -130,6 +126,7 @@ export function KxSearchOverlay({ open, onClose }: { open: boolean; onClose: () 
   );
 
   const goToResults = () => {
+    commitQuery(query);
     rememberSearch(trimmed);
     onClose();
     router.push(`/search?${new URLSearchParams({ q: trimmed })}`);
@@ -164,6 +161,12 @@ export function KxSearchOverlay({ open, onClose }: { open: boolean; onClose: () 
             placeholder="Search people, places, or things…"
             aria-label="Search your library"
           />
+          {query && <ClearSearchButton onClear={() => {
+            scrollTop.current = 0;
+            if (bodyRef.current) bodyRef.current.scrollTop = 0;
+            commitQuery("");
+            inputRef.current?.focus();
+          }} />}
           <kbd className="kx-kbd">esc</kbd>
         </div>
 

@@ -10,6 +10,42 @@ from fastapi import HTTPException
 from psycopg2.extras import RealDictCursor
 
 
+def _verified_email(claims):
+    email = claims.get("email")
+    if claims.get("email_verified") is not True or not isinstance(email, str):
+        return None
+    email = email.strip().lower()
+    if (len(email) > 320 or email.count("@") != 1 or email.startswith("@")
+            or email.endswith("@") or any(char.isspace() for char in email)):
+        return None
+    return email
+
+
+def _apple_google_match(cur, email, claims):
+    # Google's older identity records only store provider-verified email.
+    # Gmail addresses are Google-managed; third-party emails need explicit linking.
+    if (claims["provider"] != "apple" or not email
+            or email.rsplit("@", 1)[1] not in {"gmail.com", "googlemail.com"}
+            or claims.get("private_email") is True):
+        return None
+    cur.execute("""
+        SELECT u.id, u.username, u.display_name, u.role, apple.subject AS apple_subject
+        FROM user_identities google
+        JOIN users u ON u.id = google.user_id
+        LEFT JOIN user_identities apple ON apple.user_id = u.id AND apple.provider = 'apple'
+        WHERE google.provider = 'google' AND LOWER(google.email) = %s
+        LIMIT 2
+    """, (email,))
+    rows = cur.fetchall()
+    if len(rows) > 1 or (rows and rows[0]["apple_subject"]):
+        raise HTTPException(409, "That email already has a conflicting sign-in connection")
+    if not rows:
+        return None
+    user = dict(rows[0])
+    user.pop("apple_subject")
+    return user
+
+
 def exchange_identity(assertion: str, secret: str, connect, create_session, current_user=None):
     if not secret:
         raise HTTPException(503, "Social sign-in is not configured on this server")
@@ -22,6 +58,7 @@ def exchange_identity(assertion: str, secret: str, connect, create_session, curr
     except (jwt.PyJWTError, ValueError):
         raise HTTPException(401, "Invalid social sign-in assertion")
 
+    email = _verified_email(claims)
     with closing(connect()) as conn, conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("DELETE FROM social_auth_assertions WHERE expires_at < now()")
@@ -51,13 +88,10 @@ def exchange_identity(assertion: str, secret: str, connect, create_session, curr
             elif identity:
                 user = identity
             else:
-                # Only an explicit owner approval may link by verified email.
-                # Never infer identity from an account's username or email.
                 approved = None
-                email = claims.get('email')
-                if claims.get('email_verified') is True and isinstance(email, str):
+                if email:
                     cur.execute("SELECT user_id, linked_subject FROM identity_link_approvals WHERE provider=%s AND email=%s FOR UPDATE",
-                                (claims['provider'], email.strip().lower()))
+                                (claims['provider'], email))
                     approved = cur.fetchone()
                 if approved:
                     if approved['linked_subject'] and approved['linked_subject'] != claims['sub']:
@@ -71,9 +105,9 @@ def exchange_identity(assertion: str, secret: str, connect, create_session, curr
                     if existing and existing['subject'] != claims['sub']:
                         raise HTTPException(409, "A different identity is already linked to this account")
                     cur.execute("UPDATE identity_link_approvals SET linked_subject=%s, linked_at=now() WHERE provider=%s AND email=%s",
-                                (claims['sub'], claims['provider'], email.strip().lower()))
+                                (claims['sub'], claims['provider'], email))
                 else:
-                    user = None
+                    user = _apple_google_match(cur, email, claims)
                 if user is None:
                     invite_code = claims.get('invite_code')
                     if invite_code:
@@ -89,11 +123,14 @@ def exchange_identity(assertion: str, secret: str, connect, create_session, curr
                         role = 'admin'
                     username = f"{claims['provider']}-{claims['jti'][:12]}"
                     cur.execute("INSERT INTO users (username, display_name, role) VALUES (%s,%s,%s) RETURNING id, username, display_name, role",
-                                (username, (claims.get('name') or claims.get('email') or 'Kindred member')[:200], role))
+                                (username, (claims.get('name') or email or 'Kindred member')[:200], role))
                     user = cur.fetchone()
                     if invite_code:
                         cur.execute("UPDATE invites SET used_by=%s WHERE id=%s", (str(user['id']), str(invite['id'])))
-            cur.execute("INSERT INTO user_identities (provider, subject, user_id, email) VALUES (%s,%s,%s,%s) ON CONFLICT (provider, subject) DO NOTHING",
-                        (claims['provider'], claims['sub'], str(user['id']), claims.get('email')))
+            cur.execute("""
+                INSERT INTO user_identities (provider, subject, user_id, email) VALUES (%s,%s,%s,%s)
+                ON CONFLICT (provider, subject) DO UPDATE
+                SET email = COALESCE(EXCLUDED.email, user_identities.email)
+            """, (claims['provider'], claims['sub'], str(user['id']), email))
     uid = str(user['id'])
     return {'user': dict(user, id=uid), 'session': create_session(uid)}

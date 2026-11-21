@@ -6,7 +6,6 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { BACKEND, fmt, toBackendCategory } from "@/lib/constants";
 import type { ClusterSummary, ClustersSummaryResponse } from "@/types";
 import { KxEmpty, KxErrorBanner, KxSkeletonCards } from "./states";
-import { useReviewCounts } from "./use-review";
 
 const PAGE_SIZE = 60;
 
@@ -58,7 +57,6 @@ export function KxClusterBrowse({
   const copy = COPY[category] ?? COPY.people;
   const backendCat = toBackendCategory(category);
   const sentinel = useRef<HTMLDivElement>(null);
-  const counts = useReviewCounts(category);
   // People are faces; animals and vehicles are shapes a circle would crop away.
   const round = category === "people";
 
@@ -66,9 +64,14 @@ export function KxClusterBrowse({
     useInfiniteQuery<ClustersSummaryResponse>({
       queryKey: ["kx-cluster-browse", backendCat],
       initialPageParam: 0,
-      queryFn: async ({ pageParam }) => {
-        const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(pageParam) });
-        const response = await fetch(`${BACKEND}/clusters/${backendCat}/summary?${params}`);
+      staleTime: 30_000,
+      retry: false,
+      queryFn: async ({ pageParam, signal }) => {
+        const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(pageParam), compact: "true" });
+        const requestSignal = typeof AbortSignal.any === "function"
+          ? AbortSignal.any([signal, AbortSignal.timeout(15_000)])
+          : signal;
+        const response = await fetch(`${BACKEND}/clusters/${backendCat}/summary?${params}`, { signal: requestSignal });
         if (!response.ok) throw new Error("These groups could not be loaded.");
         return response.json();
       },
@@ -82,6 +85,9 @@ export function KxClusterBrowse({
       ),
     [data],
   );
+  const firstPage = data?.pages[0];
+  const named = firstPage?.named_total ?? Object.values(firstPage?.labels ?? {}).filter(Boolean).length;
+  const unnamed = Math.max(0, (firstPage?.total ?? 0) - named);
 
   useEffect(() => {
     const target = sentinel.current;
@@ -114,17 +120,17 @@ export function KxClusterBrowse({
       {/* Naming people is a first-class job with its own screen, not a button
           filed under settings — so the work outstanding is stated here, on the
           screen where it is felt. */}
-      {counts && counts.unnamed > 0 && (
+      {unnamed > 0 && (
         <div className="kx-reviewbanner">
           <span className="kx-reviewbanner-copy">
             <strong>
-              {fmt.format(counts.unnamed)} {counts.unnamed === 1 ? copy.singular : copy.plural} still
-              need{counts.unnamed === 1 ? "s" : ""} a name
+              {fmt.format(unnamed)} {unnamed === 1 ? copy.singular : copy.plural} still
+              need{unnamed === 1 ? "s" : ""} a name
             </strong>
             {/* TODO: the design's "12 look like someone you already named" needs
                 candidate pairs with a similarity score, which nothing produces
                 — see use-review.ts. It is left out rather than invented. */}
-            <span className="kx-mono">{fmt.format(counts.named)} named so far</span>
+            <span className="kx-mono">{fmt.format(named)} named so far</span>
           </span>
           <Link className="kx-button primary" href={`/review?category=${category}`}>
             Start review

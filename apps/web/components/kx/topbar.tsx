@@ -5,6 +5,7 @@ import { MenuIcon, MoonIcon, SearchIcon, SunIcon, ZoomInIcon, ZoomOutIcon } from
 import { useTheme } from "./theme";
 import { useKxUi, TILE_MAX, TILE_MIN } from "./ui-state";
 import { KxUserMenu } from "./user-menu";
+import { useKxSearch } from "./search-state";
 
 function ThemeToggle() {
   const { theme, toggle } = useTheme();
@@ -33,6 +34,8 @@ export function KxTopbar({
   onOpenDrawer: () => void;
 }) {
   const { tile, zoomIn, zoomOut, selecting, setSelecting, isLibrary, setSearchOpen, setUploadOpen } = useKxUi();
+  const { query } = useKxSearch();
+  const term = query.trim();
 
   return (
     <header className="kx-topbar">
@@ -46,9 +49,9 @@ export function KxTopbar({
         <MenuIcon />
       </button>
 
-      <button className="kx-searchtrigger" onClick={() => setSearchOpen(true)} aria-label="Search photos">
+      <button className={`kx-searchtrigger${term ? " has-query" : ""}`} onClick={() => setSearchOpen(true)} aria-label={term ? `Search photos for ${term}` : "Search photos"}>
         <SearchIcon size={17} />
-        <span>Search people, places, moments…</span>
+        <span>{term || "Search people, places, moments…"}</span>
         <kbd className="kx-kbd">⌘K</kbd>
       </button>
 

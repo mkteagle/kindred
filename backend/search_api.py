@@ -208,6 +208,33 @@ def by_text(query, text, facets, limit=60):
     return [dict(row) for row in rows]
 
 
+def by_catalog_context(query, text, facets, limit=60):
+    """Find photos by their captions, NAS paths, or album names before ML indexing."""
+    pattern = f"%{escape_like(text)}%"
+    clauses, params = facets.where()
+    rows = query(
+        f"""WITH matches AS (
+                SELECT id AS photo_id FROM photos
+                WHERE description <> '' AND description ILIKE %s ESCAPE '!'
+                UNION
+                SELECT photo_id FROM photo_copies
+                WHERE provider = 'nas' AND status = 'available'
+                  AND provider_key ILIKE %s ESCAPE '!'
+                UNION
+                SELECT ap.photo_id FROM albums a
+                JOIN album_photos ap ON ap.album_id = a.id
+                WHERE a.name ILIKE %s ESCAPE '!'
+            )
+            SELECT {SELECT_COLUMNS} {JOINS}
+            JOIN matches ON matches.photo_id = p.id
+            WHERE {' AND '.join(clauses)}
+            ORDER BY COALESCE(p.taken_at,p.created_at) DESC, p.id DESC
+            LIMIT %s""",
+        tuple([pattern, pattern, pattern, *params, limit]),
+    )
+    return [dict(row) for row in rows]
+
+
 def merge(*result_sets, limit):
     """Concatenate ranked result sets, keeping the first hit for each photo."""
     seen, merged = set(), []

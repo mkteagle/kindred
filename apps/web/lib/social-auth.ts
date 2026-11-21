@@ -138,6 +138,7 @@ export async function finishSocialAuth(req: NextRequest, provider: SocialProvide
     if (!payload.sub || payload.nonce !== flow.nonce) return fail("oauth_failed");
     const verifiedEmail = payload.email_verified === true || payload.email_verified === "true";
     const assertion = await new SignJWT({ provider, email: verifiedEmail ? payload.email : undefined, email_verified: verifiedEmail,
+      private_email: provider === "apple" && (payload.is_private_email === true || payload.is_private_email === "true"),
       name: typeof payload.name === "string" ? payload.name : undefined,
       link_user_id: flow.link_user_id || undefined, invite_code: flow.invite_code || undefined })
       .setProtectedHeader({ alg: "HS256" }).setIssuer("kindred-web").setAudience("kindred-backend")
@@ -149,10 +150,14 @@ export async function finishSocialAuth(req: NextRequest, provider: SocialProvide
     try {
       result = await fetch(`${BACKEND_URL}/auth/social/exchange`, { method: "POST", headers,
         body: JSON.stringify({ assertion }), cache: "no-store", signal: AbortSignal.timeout(15_000) });
-    } catch {
+    } catch (error) {
+      console.warn(`[auth] ${provider} account exchange could not reach the API (${error instanceof Error ? error.name : "unknown error"})`);
       return fail("oauth_backend");
     }
-    if (result.status >= 500 || result.status === 404) return fail("oauth_backend");
+    if (result.status >= 500 || result.status === 404) {
+      console.warn(`[auth] ${provider} account exchange failed (HTTP ${result.status})`);
+      return fail("oauth_backend");
+    }
     const account = await result.json();
     if (!result.ok) return fail(account.detail === "account_not_linked" ? "account_not_linked" : "account_access");
     const response = NextResponse.redirect(new URL(safeReturnPath(flow.returnPath), origin), { status: 303 });

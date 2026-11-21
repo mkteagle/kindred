@@ -10,9 +10,10 @@ SECRET = 'kindred-test-bridge-secret-never-production'
 
 class SocialAuthTests(unittest.TestCase):
     def assertion(self, **claims):
-        return jwt.encode(dict(iss='kindred-web', aud='kindred-backend', sub='external-id',
-                               iat=int(time.time()), exp=int(time.time()) + 60,
-                               jti='single-use-id', provider='google', **claims), SECRET, algorithm='HS256')
+        payload = dict(iss='kindred-web', aud='kindred-backend', sub='external-id',
+                       iat=int(time.time()), exp=int(time.time()) + 60,
+                       jti='single-use-id', provider='google')
+        return jwt.encode({**payload, **claims}, SECRET, algorithm='HS256')
 
     def connection(self, results):
         conn = MagicMock()
@@ -92,5 +93,43 @@ class SocialAuthTests(unittest.TestCase):
         create = MagicMock()
         with self.assertRaises(HTTPException) as error:
             exchange_identity(self.assertion(link_user_id='owner'), SECRET, lambda: conn, create, {'user_id': 'owner'})
+        self.assertEqual(error.exception.status_code, 409)
+        create.assert_not_called()
+
+    def test_verified_apple_email_links_to_the_existing_google_account(self):
+        user = {'id': 'existing', 'username': 'owner', 'display_name': 'Owner', 'role': 'admin'}
+        conn = self.connection([{'id': 'single-use-id'}, None, None])
+        cursor = conn.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = [{**user, 'apple_subject': None}]
+        create = MagicMock(return_value={'token': 'session'})
+        result = exchange_identity(self.assertion(provider='apple', email='Owner@gmail.com', email_verified=True),
+                                   SECRET, lambda: conn, create)
+        self.assertEqual(result['user'], user)
+        create.assert_called_once_with('existing')
+        self.assertEqual(cursor.execute.call_args.args[1], ('apple', 'external-id', 'existing', 'owner@gmail.com'))
+
+    def test_unverified_relay_and_third_party_email_do_not_trigger_auto_link(self):
+        for claims in (
+            dict(email='owner@gmail.com', email_verified=False),
+            dict(email='owner@privaterelay.appleid.com', email_verified=True),
+            dict(email='owner@private.icloud.com', email_verified=True),
+            dict(email='owner@example.com', email_verified=True),
+            dict(email='owner@gmail.com', email_verified=True, private_email=True),
+        ):
+            with self.subTest(claims=claims):
+                approvals = [None] if claims['email_verified'] else []
+                conn = self.connection([{'id': 'single-use-id'}, None, *approvals, {'n': 1}])
+                with self.assertRaises(HTTPException) as error:
+                    exchange_identity(self.assertion(provider='apple', **claims), SECRET, lambda: conn, MagicMock())
+                self.assertEqual(error.exception.detail, 'account_not_linked')
+                conn.cursor.return_value.__enter__.return_value.fetchall.assert_not_called()
+
+    def test_a_google_account_with_an_existing_apple_link_cannot_be_reassigned(self):
+        conn = self.connection([{'id': 'single-use-id'}, None, None])
+        conn.cursor.return_value.__enter__.return_value.fetchall.return_value = [{'id': 'existing', 'apple_subject': 'other'}]
+        create = MagicMock()
+        with self.assertRaises(HTTPException) as error:
+            exchange_identity(self.assertion(provider='apple', email='owner@gmail.com', email_verified=True),
+                              SECRET, lambda: conn, create)
         self.assertEqual(error.exception.status_code, 409)
         create.assert_not_called()

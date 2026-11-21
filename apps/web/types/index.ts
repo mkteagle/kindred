@@ -38,6 +38,7 @@ export interface ClustersSummaryResponse {
   noise_count?: number;
   labels?: Record<string, string>;
   total?: number;
+  named_total?: number;
   has_more?: boolean;
   offset?: number;
   limit?: number;

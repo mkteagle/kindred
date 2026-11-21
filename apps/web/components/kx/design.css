@@ -82,7 +82,8 @@ body:has(.kx) { background:#f7f7f3; }
 @media (width > 640px) {
   :is(:root[data-sidebar="collapsed"] .kx-shell, .kx-shell.is-compact) .kx-storage-card, :is(:root[data-sidebar="collapsed"] .kx-shell, .kx-shell.is-compact) .kx-account-copy, :is(:root[data-sidebar="collapsed"] .kx-shell, .kx-shell.is-compact) .kx-sidebar-settings { display:none; }
   :is(:root[data-sidebar="collapsed"] .kx-shell, .kx-shell.is-compact) .kx-sidebar-account { margin-top:auto; }
-  :is(:root[data-sidebar="collapsed"] .kx-shell, .kx-shell.is-compact) .kx-more-nav summary { font-size:0; padding:4px; }
+  :is(:root[data-sidebar="collapsed"] .kx-shell, .kx-shell.is-compact) .kx-more-nav summary { display:grid; place-items:center; min-height:32px; font-size:0; padding:4px; }
+  :is(:root[data-sidebar="collapsed"] .kx-shell, .kx-shell.is-compact) .kx-more-nav summary::-webkit-details-marker { display:none; }
   :is(:root[data-sidebar="collapsed"] .kx-shell, .kx-shell.is-compact) .kx-more-nav summary::after { content:"•••"; font-size:15px; }
   :is(:root[data-sidebar="collapsed"] .kx-shell, .kx-shell.is-compact) .kx-account-row { justify-content:center; }
 }
@@ -108,7 +109,7 @@ body:has(.kx) { background:#f7f7f3; }
   .kx-topbar { gap:8px; padding:12px 16px; }
   .kx-topbar-actions { gap:8px; }
   .kx-topbar .kx-searchtrigger { padding:0 10px; }
-  .kx-topbar .kx-searchtrigger span { display:none; }
+  .kx-topbar .kx-searchtrigger:not(.has-query) span { display:none; }
   .kx-topbar .kx-button.primary { font-size:12px; padding:0 12px; }
   .kx-shell { --kx-content-inset-start:16px; --kx-content-inset-end:12px; }
   .kx-lede { font-size:14px; }

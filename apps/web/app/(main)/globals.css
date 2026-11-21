@@ -105,7 +105,7 @@ img {
    would leave the placeholder invisible. Use the same fill the kx skeletons
    do, so a legacy grid loading next to a ported one looks like one product. */
 .kx .skeleton-card {
-  background: var(--fill-2);
+  background: var(--tile-bg);
   animation: kx-pulse 1.6s ease-in-out infinite;
 }
 
@@ -9816,7 +9816,7 @@ button.kx-avatar { cursor: pointer; }
   cursor: pointer;
 }
 
-.kx-searchtrigger span { flex: 1 1 auto; }
+.kx-searchtrigger span { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .kx-searchtrigger svg { flex: none; }
 
 .kx-searchtrigger:hover {
@@ -10434,6 +10434,23 @@ button.kx-avatar { cursor: pointer; }
 }
 
 .kx-searchdialog-head input::placeholder { color: var(--ink-3); }
+
+.kx-clear-search {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.kx-clear-search:hover { background: var(--fill-2); color: var(--ink); }
+.kx-clear-search:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 .kx-searchdialog-body {
   display: flex;
@@ -11159,13 +11176,13 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
 .kx-skel {
   display: block;
   border-radius: 3px;
-  background: var(--fill-2);
+  background: var(--tile-bg);
   animation: kx-pulse 1.6s ease-in-out infinite;
 }
 
 /* Every third tile sits a shade brighter so the block reads as photographs
    of differing weight rather than one flat panel. */
-.kx-skel.deep { background: var(--fill-3); }
+.kx-skel.deep { background: color-mix(in srgb, var(--tile-bg) 90%, var(--ink)); }
 .kx-skel.wide { grid-column: span 2; }
 .kx-skel.big { grid-column: span 2; grid-row: span 2; }
 .kx-skel.card { border-radius: 12px; }
