@@ -1,11 +1,7 @@
-import { withRedact } from '@tanstack/redact/next';
-import { createMDX } from 'fumadocs-mdx/next';
-
-const withMDX = createMDX();
-
 /** @type {import('next').NextConfig} */
 const config = {
-  output: "standalone",
+  cacheComponents: true,
+  output: process.env.NITRO_PRESET === "vercel" ? undefined : "standalone",
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "live.staticflickr.com" },
@@ -15,4 +11,4 @@ const config = {
   },
 };
 
-export default withRedact(withMDX(config));
+export default config;

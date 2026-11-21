@@ -1,4 +1,7 @@
 .next
+.vinext
+.vercel
+dist
 node_modules
 .env*
 docs

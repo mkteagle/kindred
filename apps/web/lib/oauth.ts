@@ -90,15 +90,6 @@ export function getSessionFromRequest(req: Request): SessionData | null {
   return data as unknown as SessionData;
 }
 
-export async function getSessionFromCookieStore(): Promise<SessionData | null> {
-  const cookieStore = await cookies();
-  const session = cookieStore.get("kindred_session");
-  if (!session?.value) return null;
-  const data = decryptToken(session.value);
-  if (!data || !data.session_token) return null;
-  return data as unknown as SessionData;
-}
-
 // ── Flickr API helpers ──────────────────────────────────────────────────────
 
 export function signedFlickrUrl(

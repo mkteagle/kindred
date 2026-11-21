@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { Suspense, use, useCallback, useEffect, useState } from "react";
 
 /**
  * Public share viewer.
@@ -52,6 +52,18 @@ function formatDuration(seconds: number | null): string | null {
 }
 
 export default function SharePage({ params }: { params: Promise<{ token: string }> }) {
+  return (
+    <Suspense fallback={<ShareLoading />}>
+      <ShareViewer params={params} />
+    </Suspense>
+  );
+}
+
+function ShareLoading() {
+  return <main className="share-page"><p role="status">Loading…</p></main>;
+}
+
+function ShareViewer({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params);
 
   const [view, setView] = useState<ShareView | null>(null);
@@ -110,7 +122,7 @@ export default function SharePage({ params }: { params: Promise<{ token: string 
   }, [token, password]);
 
   if (status === "loading") {
-    return <main className="share-page"><p role="status">Loading…</p></main>;
+    return <ShareLoading />;
   }
 
   // Revoked, expired and never-existed are deliberately indistinguishable.

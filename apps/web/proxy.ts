@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { decryptToken } from "@/lib/oauth";
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const session = request.cookies.get("kindred_session");
   const flickrToken = request.cookies.get("flickr_token");
   const { pathname } = request.nextUrl;
+
+  if (pathname === "/" && session?.value && decryptToken(session.value)?.session_token) {
+    const response = NextResponse.redirect(new URL("/gallery", request.url));
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
+  }
 
   // Allow: landing page, demo, login, join, reset, API routes, docs, static files
   if (

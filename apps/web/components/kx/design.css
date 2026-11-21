@@ -176,6 +176,7 @@ body:has(.kx) { background:#f7f7f3; }
 .kr-login-main { padding-block:clamp(14px, 3svh, 36px) clamp(12px, 2svh, 25px); }
 .kr-login-form { padding-block:clamp(12px, 2svh, 24px); }
 @media(max-height:820px), (max-width:760px) {
+  .kr-login-form { padding-block:12px; }
   .kr-login-form h2 { margin-block:10px 5px; }
   .kr-login-form > p { margin-block:0; }
   .kr-login-form .kr-social-buttons { margin-top:14px; gap:7px; }

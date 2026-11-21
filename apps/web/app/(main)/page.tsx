@@ -1,10 +1,6 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { getSessionFromCookieStore } from "@/lib/oauth";
 
-export default async function HomePage() {
-  const session = await getSessionFromCookieStore();
-  if (session) redirect("/gallery");
+export default function HomePage() {
   return <div className="kx kr-public kr-landing">
     <header className="kr-public-nav"><Link href="/" aria-label="Kindred home"><img src="/brand/kindred-wordmark.svg" width="160" height="43" alt="Kindred" /></Link><nav aria-label="Main"><a href="#how-it-works">How it works</a><Link href="/docs">Self-hosting</Link><Link href="/login" className="kr-nav-signin">Sign in <span>↗</span></Link></nav></header>
     <main><section className="kr-hero"><div className="kr-hero-copy"><span className="kr-overline"><i/> A LITTLE CLOSER TO WHAT MATTERS</span><h1>Your whole life.<br/><em>Beautifully</em><br/>in one place.</h1><p>All the big days, little adventures, and blurry in-betweens. A private home for your photos and videos, on storage you control.</p><div className="kr-hero-actions"><Link className="kr-primary" href="/login">Open your library <span>→</span></Link><Link className="kr-secondary" href="/docs">Make Kindred your own</Link></div><small>Self-hosted. Made for your people.</small></div>

@@ -9,10 +9,17 @@ import { notFound } from 'next/navigation';
 import { getMDXComponents } from '@/components/docs-mdx';
 import type { Metadata } from 'next';
 import { createRelativeLink } from 'fumadocs-ui/mdx';
+import { cacheLife } from 'next/cache';
 
 export default async function Page(props: { params: Promise<{ slug?: string[] }> }) {
   const params = await props.params;
-  const page = source.getPage(params.slug);
+  return <CachedArticle slug={params.slug} />;
+}
+
+async function CachedArticle({ slug }: { slug?: string[] }) {
+  'use cache';
+  cacheLife('max');
+  const page = source.getPage(slug);
   if (!page) notFound();
 
   const MDX = page.data.body;

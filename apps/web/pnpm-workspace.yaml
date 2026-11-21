@@ -3,3 +3,5 @@ onlyBuiltDependencies:
   - esbuild
   - protobufjs
   - sharp
+overrides:
+  "satori>fflate": "0.7.5"
