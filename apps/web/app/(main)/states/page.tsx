@@ -16,7 +16,6 @@ import {
 export default function StatesReferencePage() {
   return (
     <main className="kx-page" style={{ maxWidth: 1000 }}>
-      <span className="kx-eyebrow">Reference</span>
       <h1 className="kx-title" style={{ fontSize: 40 }}>
         Empty, loading, broken.
       </h1>
@@ -24,17 +23,17 @@ export default function StatesReferencePage() {
 
       <div className="kx-stateset" style={{ marginTop: 28 }}>
         <section>
-          <span className="kx-eyebrow quiet">Loading · skeleton tiles, no spinner on grids</span>
+          <span className="kx-field-label">Loading · skeleton tiles, no spinner on grids</span>
           <KxSkeletonGrid count={6} tile={150} gap={4} />
         </section>
 
         <section className="kx-emptyrow">
-          <KxEmptyLibrary eyebrow="Empty · nothing synced yet" />
-          <KxEmptyResults eyebrow="Empty · search found nothing" onClear={() => undefined} />
+          <KxEmptyLibrary />
+          <KxEmptyResults onClear={() => undefined} />
         </section>
 
         <section>
-          <span className="kx-eyebrow quiet">Error · server unreachable, sync failed</span>
+          <span className="kx-field-label">Error · server unreachable, sync failed</span>
           <KxErrorBanner
             detail="Last successful sync 3 hours ago · retrying in 30s"
             onRetry={() => undefined}

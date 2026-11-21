@@ -270,7 +270,6 @@ function ReviewScreen() {
     <>
       <div className="kx-reviewhead">
         <div>
-          <span className="kx-eyebrow">Review</span>
           <h1 className="kx-title" style={{ fontSize: 40 }}>
             Who is this?
           </h1>
@@ -333,7 +332,7 @@ function ReviewScreen() {
 
             {(named ?? []).length > 0 && (
               <div className="kx-reusenames">
-                <span className="kx-eyebrow quiet">Or reuse a name</span>
+                <span className="kx-field-label">Or reuse a name</span>
                 {(named ?? []).slice(0, 8).map((person) => (
                   <button
                     key={person.id}
@@ -375,7 +374,7 @@ function ReviewScreen() {
 
           <div className="kx-reviewevidence">
             <section>
-              <span className="kx-eyebrow quiet">
+              <span className="kx-field-label">
                 Faces in this group · click one to remove it
               </span>
               {detailPending ? (
@@ -401,7 +400,7 @@ function ReviewScreen() {
             </section>
 
             <section>
-              <span className="kx-eyebrow quiet">Where they show up</span>
+              <span className="kx-field-label">Where they show up</span>
               {detailPending ? (
                 <KxSkeletonCards count={6} minWidth={120} height={120} />
               ) : (

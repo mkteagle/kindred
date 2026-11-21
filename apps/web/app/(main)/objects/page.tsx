@@ -68,7 +68,6 @@ export default function ObjectsPage() {
 
   return (
     <main className="kx-page">
-      <span className="kx-eyebrow">Objects</span>
       <h1 className="kx-title">The things in the frame.</h1>
       <p className="kx-lede">
         Worked out on your server, never sent anywhere. Handy for the specific: the guitar, the
@@ -122,7 +121,7 @@ export default function ObjectsPage() {
       {open && (
         <>
           <div className="kx-chiprow" style={{ marginTop: 30 }}>
-            <span className="kx-eyebrow quiet" style={{ width: "auto", alignSelf: "center" }}>
+            <span className="kx-field-label" style={{ width: "auto", alignSelf: "center" }}>
               {open}
             </span>
             <span className="kx-cardmeta" style={{ alignSelf: "center" }}>

@@ -4,6 +4,8 @@ import base64
 import binascii
 import json
 
+from library_junk import JUNK, visibility
+
 JOINS = """
 FROM photos p
 LEFT JOIN photo_copies n ON n.photo_id=p.id AND n.provider='nas' AND n.status='available'
@@ -33,7 +35,7 @@ SORTS = {
 MEDIA = {"all": None, "photo": "photo", "video": "video"}
 
 
-def facet_clauses(media, date_from=None, date_to=None, min_duration=None):
+def facet_clauses(media, date_from=None, date_to=None, min_duration=None, *, capture_order=None):
     """Filters the gallery understands beyond its media kind.
 
     The video screen's "this year" and "over a minute" chips need these: a
@@ -42,11 +44,16 @@ def facet_clauses(media, date_from=None, date_to=None, min_duration=None):
     """
     sql, params = media_clause(media)
     clauses = [sql]
+    date_column = capture_order or "p.taken_at"
+    if capture_order and (date_from or date_to):
+        # Keep undated rows out even when only one bound is supplied. Use the
+        # indexed sort expression for the bounds so Postgres can seek to them.
+        clauses.append("p.taken_at IS NOT NULL")
     if date_from:
-        clauses.append("p.taken_at >= %s")
+        clauses.append(f"{date_column} >= %s")
         params.append(date_from)
     if date_to:
-        clauses.append("p.taken_at < (%s::date + 1)")
+        clauses.append(f"{date_column} < (%s::date + 1)")
         params.append(date_to)
     if min_duration is not None:
         clauses.append("p.duration_seconds >= %s")
@@ -54,7 +61,7 @@ def facet_clauses(media, date_from=None, date_to=None, min_duration=None):
     return " AND ".join(clauses), params
 
 
-def years(query, media="all"):
+def years(query, media="all", junk="all"):
     """Every year the library covers, newest first, with a count each.
 
     The year scrubber needs the whole span up front; deriving it from the pages
@@ -62,13 +69,14 @@ def years(query, media="all"):
     the thing a scrubber exists to avoid.
     """
     kind_sql, params = media_clause(media)
+    junk_sql, junk_params = visibility(junk)
     rows = query(
         f"""/*kindred-catalog-aggregate*/ SELECT EXTRACT(YEAR FROM p.taken_at)::int AS year,
                    count(*) AS count
-            {JOINS} WHERE {AVAILABLE} AND {kind_sql}
+            {JOINS} WHERE {AVAILABLE} AND {kind_sql} AND {junk_sql}
               AND p.taken_at IS NOT NULL
             GROUP BY 1 ORDER BY 1 DESC""",
-        tuple(params),
+        tuple(params + junk_params),
     )
     return [{"year": int(row["year"]), "count": int(row["count"])} for row in rows]
 
@@ -116,8 +124,29 @@ def counts(query):
     return row
 
 
+def visible_counts(query, junk, viewer_id=None):
+    junk_sql, params = visibility(junk, viewer_id)
+    return dict(query(
+        f"""/*kindred-catalog-aggregate*/ SELECT
+            count(*) AS total_files,
+            count(*) FILTER (WHERE {IMAGE}) AS photos,
+            count(*) FILTER (WHERE p.media_kind = 'video') AS videos
+            {JOINS} WHERE {AVAILABLE} AND {junk_sql}""",
+        tuple(params),
+    )[0])
+
+
+def is_favorite(query, photo_id, user_id):
+    rows = query(
+        "SELECT 1 FROM photo_favorites WHERE photo_id = %s AND user_id = %s",
+        (photo_id, user_id),
+    )
+    return bool(rows)
+
+
 def gallery(query, sort, limit, media="all", cursor=None,
-            date_from=None, date_to=None, min_duration=None, favorited_by=None, album_id=None):
+            date_from=None, date_to=None, min_duration=None, favorited_by=None, album_id=None,
+            junk="all", viewer_id=None):
     """One page of the catalog, ordered by `sort` and filtered by `media`.
 
     Pages by keyset rather than OFFSET: the cursor carries the last row's sort
@@ -127,7 +156,8 @@ def gallery(query, sort, limit, media="all", cursor=None,
     if sort not in SORTS:
         raise HTTPException(400, 'Unsupported gallery sort')
     order_expr, direction = SORTS[sort]
-    kind_sql, params = facet_clauses(media, date_from, date_to, min_duration)
+    capture_order = order_expr if sort in {"newest", "oldest"} else None
+    kind_sql, params = facet_clauses(media, date_from, date_to, min_duration, capture_order=capture_order)
 
     if favorited_by:
         # Favourites are one member's own, so this is always scoped to a user
@@ -139,6 +169,9 @@ def gallery(query, sort, limit, media="all", cursor=None,
     if album_id:
         kind_sql += " AND EXISTS (SELECT 1 FROM album_photos ap WHERE ap.photo_id = p.id AND ap.album_id = %s)"
         params.append(album_id)
+
+    junk_sql, junk_params = visibility(junk, viewer_id)
+    params += junk_params
 
     keyset = "TRUE"
     if cursor:
@@ -155,9 +188,10 @@ def gallery(query, sort, limit, media="all", cursor=None,
         COALESCE(NULLIF(p.title,''),p.original_filename,'Untitled') AS photo_title,
         p.taken_at AS date_taken,
         p.media_kind, p.duration_seconds,
+        CASE WHEN {JUNK} THEN p.junk_classification END AS junk_reason,
         {order_expr} AS sort_value,
         f.remote_url AS flickr_url
-        {JOINS} WHERE {AVAILABLE} AND {kind_sql} AND {keyset}
+        {JOINS} WHERE {AVAILABLE} AND {kind_sql} AND {junk_sql} AND {keyset}
         ORDER BY {order_expr} {direction}, p.id {direction} LIMIT %s""", tuple(params))
 
     has_more = len(rows) > limit

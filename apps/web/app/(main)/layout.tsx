@@ -2,8 +2,7 @@ import { Providers } from "./providers";
 import { KxAppShell } from "@/components/kx/app-shell";
 import { SIDEBAR_BOOT_SCRIPT } from "@/components/kx/sidebar-script";
 import { THEME_BOOT_SCRIPT } from "@/components/kx/theme-script";
-import "./globals.css";
-import "@/components/kx/design.css";
+import "./main.css";
 
 export default function MainLayout({
   children,

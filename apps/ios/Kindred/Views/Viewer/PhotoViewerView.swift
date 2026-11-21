@@ -1,35 +1,49 @@
 import SwiftUI
 
-/// Screen 08 — Photo viewer. Dark stage, a stacked date/time nav title, the
-/// image fitted rather than filled, people and object chips, a filmstrip, and
-/// a Share / Favorite / Info / Delete dock.
+/// A photo-first viewer with a filmstrip and three primary actions.
 struct PhotoViewerView: View {
     let photos: [LibraryPhoto]
     let initial: LibraryPhoto
+    let startsFavorited: Bool
 
     @Environment(\.displayScale) private var displayScale
-    @State private var index = 0
-    @State private var isFavorite = false
+    @State private var index: Int
+    @State private var favoriteStates: [String: Bool] = [:]
+    @State private var favoriteChecksFinished: Set<String> = []
+    @State private var favoriteRequests: Set<String> = []
     @State private var dragOffset: CGFloat = 0
     @State private var zoom: CGFloat = 1
     @State private var showInfo = false
     @State private var showShare = false
-    @State private var people: [SearchHit] = []
+    @State private var playing: LibraryPhoto?
     @Environment(\.dismiss) private var dismiss
+
+    init(photos: [LibraryPhoto], initial: LibraryPhoto, startsFavorited: Bool = false) {
+        self.initial = initial
+        self.startsFavorited = startsFavorited
+        if let index = photos.firstIndex(where: { $0.id == initial.id }) {
+            self.photos = photos
+            _index = State(initialValue: index)
+        } else {
+            self.photos = [initial] + photos
+            _index = State(initialValue: 0)
+        }
+    }
 
     private var current: LibraryPhoto {
         guard photos.indices.contains(index) else { return initial }
         return photos[index]
     }
 
+    private var isFavorite: Bool { favoriteStates[current.photo_id] ?? startsFavorited }
+
     var body: some View {
         ZStack {
-            KindredTheme.stage.ignoresSafeArea()
+            KindredTheme.bg.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 navBar
                 stage
-                metadataStrip
                 filmstrip
                 dock
             }
@@ -45,217 +59,199 @@ struct PhotoViewerView: View {
         .sheet(isPresented: $showShare) {
             SelectionShareSheet(photos: [current])
         }
-        .task {
-            index = photos.firstIndex(of: initial) ?? 0
+        .fullScreenCover(item: $playing) { video in
+            VideoPlayerView(video: video)
         }
-        .onChange(of: index) { _, _ in isFavorite = false }
+        .onChange(of: index) { _, _ in zoom = 1 }
+        .task(id: current.id) {
+            let id = current.id
+            guard !startsFavorited, !favoriteChecksFinished.contains(id) else { return }
+            let accountID = SessionManager.shared.currentUser?.id
+            let saved = try? await APIClient.shared.favoriteStatus(photoID: id)
+            guard !Task.isCancelled, SessionManager.shared.currentUser?.id == accountID else { return }
+            if let saved { favoriteStates[id] = saved }
+            favoriteChecksFinished.insert(id)
+        }
     }
 
     // MARK: - Chrome
 
     private var navBar: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Button {
                 dismiss()
             } label: {
-                LazyHStack(spacing: 3) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 19, weight: .semibold))
-                    Text(monthLabel)
-                        .font(.body(15, weight: .semibold, relativeTo: .headline))
-                }
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 20, weight: .semibold))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
-            .foregroundStyle(KindredTheme.ink)
             .accessibilityLabel("Close photo")
 
-            Spacer()
-
-            VStack(spacing: 1) {
-                Text(dateLabel)
-                    .font(.body(13, weight: .bold, relativeTo: .subheadline))
-                    .foregroundStyle(KindredTheme.ink)
-                if let detail = timeAndPlaceLabel {
-                    Text(detail)
-                        .font(.kindredMeta)
-                        .foregroundStyle(KindredTheme.inkMeta)
-                }
-            }
-            .accessibilityElement(children: .combine)
-
-            Spacer()
+            Text(dateLabel)
+                .font(.display(18, weight: .bold, relativeTo: .headline))
+                .foregroundStyle(KindredTheme.ink)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+                .accessibilityAddTraits(.isHeader)
 
             Menu {
-                Button("Photo info") { showInfo = true }
-                Button("Share") { showShare = true }
+                Button("Photo info", systemImage: "info.circle") { showInfo = true }
+                Button("Share", systemImage: "square.and.arrow.up") { showShare = true }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 20))
-                    .foregroundStyle(KindredTheme.ink)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(KindredTheme.inkSecondary)
+                    .frame(width: 36, height: 36)
+                    .overlay { Circle().strokeBorder(KindredTheme.hairlineStrong) }
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .accessibilityLabel("More actions")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .buttonStyle(.plain)
+        .foregroundStyle(KindredTheme.accent)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
     }
 
     // MARK: - Stage
 
     private var stage: some View {
         GeometryReader { geo in
-        TabView(selection: $index) {
-            ForEach(Array(photos.enumerated()), id: \.element.photo_id) { position, photo in
-                Group {
-                    if abs(position - index) <= 2 {
-                        KindredThumbnail(photo: photo, variant: .preview, contentMode: .fit)
-                    } else {
-                        KindredTheme.stage
+            TabView(selection: $index) {
+                ForEach(Array(photos.enumerated()), id: \.element.photo_id) { position, photo in
+                    Group {
+                        if abs(position - index) <= 2 {
+                            KindredThumbnail(photo: photo, variant: .preview, cornerRadius: 14,
+                                             contentMode: .fit, placeholder: KindredTheme.bg)
+                        } else {
+                            KindredTheme.bg
+                        }
                     }
-                }
-                    .scaleEffect(position == index ? zoom : 1)
-                    // Pinch zooms.
-                    .gesture(
-                        MagnificationGesture()
-                            .onChanged { zoom = max(1, min(4, $0)) }
-                            .onEnded { _ in
-                                if zoom < 1.1 { withAnimation(KindredTheme.ease()) { zoom = 1 } }
+                        .scaleEffect(position == index ? zoom : 1)
+                        // Pinch zooms.
+                        .gesture(
+                            MagnificationGesture()
+                                .onChanged { zoom = max(1, min(4, $0)) }
+                                .onEnded { _ in
+                                    if zoom < 1.1 { withAnimation(KindredTheme.ease()) { zoom = 1 } }
+                                }
+                        )
+                        .overlay {
+                            if photo.isVideo && position == index {
+                                Button {
+                                    playing = photo
+                                } label: {
+                                    Image(systemName: "play.fill")
+                                        .font(.system(size: 25, weight: .semibold))
+                                        .foregroundStyle(.white)
+                                        .frame(width: 62, height: 62)
+                                        .background(KindredTheme.onPhotoChip, in: Circle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Play video")
                             }
-                    )
-                    .tag(position)
-            }
-        }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        .frame(maxHeight: .infinity)
-        .task(id: "\(index):\(geo.size.width):\(displayScale)") {
-            @MainActor func pixels(for photo: LibraryPhoto) -> CGFloat {
-                guard let thumb = PhotoImageDelivery.shared.thumbnail(for: photo.photo_id) else { return geo.size.width * displayScale }
-                return min(geo.size.width, geo.size.height * thumb.size.width / max(1, thumb.size.height)) * displayScale
-            }
-            if !current.isVideo, let url = APIClient.optimizedImageURL(photoID: current.photo_id, pixels: pixels(for: current)) {
-                _ = await PhotoImageDelivery.shared.image(url)
-            }
-            for offset in [1, -1, 2, -2] {
-                guard !Task.isCancelled else { return }
-                let position = index + offset
-                guard photos.indices.contains(position), !photos[position].isVideo,
-                      let url = APIClient.optimizedImageURL(photoID: photos[position].photo_id, pixels: pixels(for: photos[position])) else { continue }
-                _ = await PhotoImageDelivery.shared.image(url, speculative: true)
-            }
-        }
-        }
-        .padding(.vertical, 10)
-    }
-
-    // MARK: - People and objects
-
-    private var metadataStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(people) { person in
-                    HStack(spacing: 6) {
-                        KindredAvatar(url: nil, size: 20)
-                        Text(person.match_name ?? "")
-                            .font(.body(12, weight: .semibold, relativeTo: .footnote))
-                    }
-                    .padding(.leading, 4)
-                    .padding(.trailing, 10)
-                    .padding(.vertical, 4)
-                    .foregroundStyle(KindredTheme.ink)
-                    .background(KindredTheme.fillStrongest, in: Capsule())
+                        }
+                        .tag(position)
                 }
-                // TODO: object/scene chips for one photo need a per-photo
-                // detections endpoint. /objects and /scenes group the whole
-                // library, so nothing here is invented from them.
             }
-            .padding(.horizontal, 16)
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(maxHeight: .infinity)
+            .task(id: "\(index):\(geo.size.width):\(displayScale)") {
+                guard !DemoDataProvider.shared.isActive else { return }
+                @MainActor func pixels(for photo: LibraryPhoto) -> CGFloat {
+                    guard let thumb = PhotoImageDelivery.shared.thumbnail(for: photo.photo_id) else { return geo.size.width * displayScale }
+                    return min(geo.size.width, geo.size.height * thumb.size.width / max(1, thumb.size.height)) * displayScale
+                }
+                if !current.isVideo, let url = APIClient.optimizedImageURL(photoID: current.photo_id, pixels: pixels(for: current)) {
+                    _ = await PhotoImageDelivery.shared.image(url)
+                }
+                for offset in [1, -1, 2, -2] {
+                    guard !Task.isCancelled else { return }
+                    let position = index + offset
+                    guard photos.indices.contains(position), !photos[position].isVideo,
+                          let url = APIClient.optimizedImageURL(photoID: photos[position].photo_id, pixels: pixels(for: photos[position])) else { continue }
+                    _ = await PhotoImageDelivery.shared.image(url, speculative: true)
+                }
+            }
         }
-        .scrollClipDisabled()
-        .frame(height: people.isEmpty ? 0 : 40)
-        .opacity(people.isEmpty ? 0 : 1)
+        .clipShape(.rect(cornerRadius: 14))
+        .padding(.horizontal, 12)
     }
 
     // MARK: - Filmstrip
 
+    @ViewBuilder
     private var filmstrip: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 3) {
-                    ForEach(Array(photos.enumerated()), id: \.element.photo_id) { position, photo in
-                        let isCurrent = position == index
-                        KindredThumbnail(photo: photo)
-                            .frame(width: isCurrent ? 44 : 38, height: isCurrent ? 44 : 38)
-                            .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusTile))
-                            .overlay {
-                                if isCurrent {
-                                    RoundedRectangle(cornerRadius: KindredTheme.radiusTile)
-                                        .strokeBorder(KindredTheme.accent, lineWidth: 2)
-                                }
-                            }
-                            .opacity(isCurrent ? 1 : 0.55)
-                            .id(position)
-                            .onTapGesture {
+        if photos.count > 1 {
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 6) {
+                        ForEach(Array(photos.enumerated()), id: \.element.photo_id) { position, photo in
+                            Button {
                                 withAnimation(KindredTheme.ease(0.2)) { index = position }
+                            } label: {
+                                KindredThumbnail(photo: photo, cornerRadius: 10)
+                                    .frame(width: 56, height: 56)
+                                    .clipShape(.rect(cornerRadius: 10))
+                                    .padding(3)
+                                    .overlay {
+                                        if position == index {
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .strokeBorder(KindredTheme.accent, lineWidth: 2)
+                                        }
+                                    }
                             }
-                            .accessibilityHidden(true)
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(position == index ? .isSelected : [])
+                            .id(position)
+                        }
                     }
+                    .padding(.horizontal, 14)
                 }
-                .padding(.horizontal, 16)
-                .frame(height: 48)
+                .onAppear { proxy.scrollTo(index, anchor: .center) }
+                .onChange(of: index) { _, new in
+                    withAnimation(KindredTheme.ease(0.24)) { proxy.scrollTo(new, anchor: .center) }
+                }
+                .accessibilityIdentifier("viewer.filmstrip")
+                .frame(height: 62)
             }
-            .scrollClipDisabled()
-            .onChange(of: index) { _, new in
-                withAnimation(KindredTheme.ease(0.24)) { proxy.scrollTo(new, anchor: .center) }
-            }
-            .accessibilityLabel("Filmstrip")
-            .accessibilityValue("Photo \(index + 1) of \(photos.count)")
+            .padding(.vertical, 13)
         }
-        .padding(.bottom, 12)
     }
 
-    // MARK: - Dock
-
     private var dock: some View {
-        HStack {
+        HStack(spacing: 0) {
             dockButton("square.and.arrow.up", "Share") { showShare = true }
-            Spacer()
-            dockButton(isFavorite ? "heart.fill" : "heart", "Favorite", tint: isFavorite ? KindredTheme.accent : nil) {
+            dockButton(isFavorite ? "heart.fill" : "heart", "Favorite",
+                       tint: isFavorite ? KindredTheme.accent : KindredTheme.inkSecondary,
+                       accessibilityLabel: isFavorite ? "Remove favorite" : "Favorite") {
                 Task { await toggleFavorite() }
             }
-            Spacer()
+            .disabled(favoriteRequests.contains(current.id) || (!startsFavorited && !favoriteChecksFinished.contains(current.id)))
             dockButton("info.circle", "Info") { showInfo = true }
-            Spacer()
-            // TODO: deleting a catalog photo needs DELETE /photos/{id}. The
-            // backend only exposes Flickr-side deletion today, which would
-            // leave the NAS copy behind, so this is deliberately inert.
-            dockButton("trash", "Delete", tint: KindredTheme.dangerText) {}
-                .disabled(true)
-                .opacity(0.45)
         }
-        .padding(.horizontal, 22)
-        .padding(.top, 12)
-        .padding(.bottom, 12)
-        .background(
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .overlay(KindredTheme.chrome)
-                .overlay(alignment: .top) {
-                    Rectangle().fill(KindredTheme.hairline).frame(height: 1)
-                }
-                .ignoresSafeArea(edges: .bottom)
-        )
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .overlay(alignment: .top) { Divider() }
     }
 
     private func dockButton(
-        _ icon: String, _ label: String, tint: Color? = nil, action: @escaping () -> Void
+        _ icon: String, _ label: String, tint: Color = KindredTheme.inkSecondary,
+        accessibilityLabel: String? = nil, action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 20))
-                .foregroundStyle(tint ?? KindredTheme.inkSecondary)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
+            VStack(spacing: 4) {
+                Image(systemName: icon).font(.system(size: 22))
+                Text(label).font(.kindredCaption)
+            }
+            .foregroundStyle(tint)
+            .frame(maxWidth: .infinity, minHeight: 49)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(label)
+        .accessibilityLabel(accessibilityLabel ?? label)
     }
 
     // MARK: - Gestures
@@ -263,11 +259,11 @@ struct PhotoViewerView: View {
     private var dismissGesture: some Gesture {
         DragGesture(minimumDistance: 20)
             .onChanged { value in
-                guard zoom <= 1.01, value.translation.height > 0 else { return }
+                guard zoom <= 1.01, value.translation.height > abs(value.translation.width) else { return }
                 dragOffset = value.translation.height
             }
             .onEnded { value in
-                if value.translation.height > 140 {
+                if zoom <= 1.01, value.translation.height > 140, value.translation.height > abs(value.translation.width) {
                     dismiss()
                 } else {
                     withAnimation(KindredTheme.ease()) { dragOffset = 0 }
@@ -278,39 +274,24 @@ struct PhotoViewerView: View {
     // MARK: - Data
 
     private func toggleFavorite() async {
-        let next = !isFavorite
-        isFavorite = next
+        let id = current.photo_id
+        guard favoriteRequests.insert(id).inserted else { return }
+        defer { favoriteRequests.remove(id) }
+        let previous = isFavorite
+        favoriteStates[id] = !previous
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         do {
-            isFavorite = try await APIClient.shared.setFavorite(
-                photoID: current.photo_id, favorited: next
+            favoriteStates[id] = try await APIClient.shared.setFavorite(
+                photoID: id, favorited: !previous
             )
         } catch {
-            isFavorite = !next
+            favoriteStates[id] = previous
         }
     }
 
-    private var monthLabel: String {
-        guard let date = current.takenAt else { return "Back" }
-        let formatter = DateFormatter()
-        formatter.setLocalizedDateFormatFromTemplate("MMMM")
-        return formatter.string(from: date)
-    }
-
     private var dateLabel: String {
-        guard let date = current.takenAt else { return current.photo_title ?? "Photo" }
-        let formatter = DateFormatter()
-        formatter.setLocalizedDateFormatFromTemplate("d MMMM yyyy")
-        return formatter.string(from: date)
-    }
-
-    /// Time, and a place only if the catalog has one. The handoff forbids an
-    /// invented place, so an unknown location simply shows the time.
-    private var timeAndPlaceLabel: String? {
-        guard let date = current.takenAt else { return nil }
-        let formatter = DateFormatter()
-        formatter.setLocalizedDateFormatFromTemplate("HH:mm")
-        return formatter.string(from: date)
+        current.takenAt?.formatted(.dateTime.month(.abbreviated).day().year())
+            ?? (current.photo_title ?? "Photo")
     }
 }
 
@@ -322,12 +303,11 @@ struct PhotoInfoSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            KindredEyebrow(text: "Photo")
-                .padding(.top, 20)
             Text(photo.photo_title ?? "Untitled")
-                .font(.display(21, weight: .semibold, relativeTo: .title3))
+                .font(.kindredH2)
                 .foregroundStyle(KindredTheme.ink)
-                .padding(.top, 8)
+                .accessibilityAddTraits(.isHeader)
+                .padding(.top, 24)
 
             VStack(alignment: .leading, spacing: 8) {
                 if let date = photo.takenAt {
@@ -354,9 +334,8 @@ struct PhotoInfoSheet: View {
 
     private func infoRow(_ label: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(label.uppercased())
-                .font(.kindredEyebrow)
-                .tracking(1.4)
+            Text(label)
+                .font(.kindredLabel)
                 .foregroundStyle(KindredTheme.inkMeta)
                 .frame(width: 84, alignment: .leading)
             Text(value)

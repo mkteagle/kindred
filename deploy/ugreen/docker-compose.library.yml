@@ -6,7 +6,7 @@ x-library-worker: &library-worker
     api:
       condition: service_healthy
   environment: &library-environment
-    DATABASE_URL: postgresql://${POSTGRES_USER:-kindred}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-kindred}
+    DATABASE_URL: ${RAILWAY_DATABASE_URL:-postgresql://${POSTGRES_USER:-kindred}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-kindred}}
     PHOTO_STORAGE_ROOT: /data/photos/originals
     PHOTO_LIBRARY_ROOT: /data/library
     KINDRED_BROWSE_ROOT: /data/library
@@ -57,3 +57,28 @@ services:
     cpus: 4
     mem_limit: 8g
     command: [python, -u, /app/index_nas_watch.py]
+
+  r2-thumbnail-publisher:
+    image: kindred-api:${KINDRED_REVISION:?Set KINDRED_REVISION}
+    profiles: [r2]
+    restart: "on-failure:5"
+    cpus: 1
+    mem_limit: 512m
+    env_file:
+      - path: .env.r2
+        required: false
+    command:
+      - python
+      - -u
+      - /app/publish_r2_thumbnails.py
+      - --wait-for-previews
+      - /app/data
+      - --checkpoint
+      - /app/publisher/thumbnails.sqlite
+    volumes:
+      - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/backend:/app/data:ro
+      - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/r2-publisher:/app/publisher
+    networks: [kindred-internal]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}

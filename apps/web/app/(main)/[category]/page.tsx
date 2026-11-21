@@ -911,7 +911,7 @@ export default function CategoryPage() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell kx-manage-clusters">
       <main className="page">
         {isEffectiveAdmin && scanning && (
           <section className="scan-card">
@@ -980,7 +980,7 @@ export default function CategoryPage() {
 
         <div className="content-head">
           <div>
-            <h2>{activeInfo.label}</h2>
+            <h1>{`Manage ${activeInfo.label.toLowerCase()}`}</h1>
             <p>
               {activeCategory === "people"
                 ? "Tap a card name to label it. Open a card to review the matching photos."
@@ -989,6 +989,7 @@ export default function CategoryPage() {
             <button className="button ghost small" onClick={() => setManaging(false)}>
               &larr; Back to browsing
             </button>
+            {activeCategory === "people" && <Link href="/review/names" className="button ghost small">Suggested names</Link>}
           </div>
           {stats && (
             <div className="summary-note">

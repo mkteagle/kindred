@@ -2,15 +2,15 @@
 
 import Link from "next/link";
 import { VirtualPhotoRows } from "./virtual-photo-rows";
-import { DiscoveryProgress } from "./discovery-progress";
+import { ChevronDownIcon, NavIcon, SearchIcon, ZoomInIcon, ZoomOutIcon } from "./icons";
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { BACKEND, fmt } from "@/lib/constants";
 import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
-import { useKxUi } from "@/components/kx/ui-state";
-import { useLibraryCounts } from "@/components/kx/use-library";
-import { KxEmptyLibrary, KxErrorBanner, KxSkeletonGrid } from "@/components/kx/states";
+import { TILE_MAX, TILE_MIN, useKxUi } from "@/components/kx/ui-state";
+import { useLibraryMediaCounts } from "@/components/kx/use-library";
+import { KxEmpty, KxEmptyLibrary, KxErrorBanner, KxSkeletonGrid } from "@/components/kx/states";
 import { KxSelectBar } from "@/components/kx/select-bar";
 import { useLibraryDayLabels } from "@/components/kx/day-labels";
 import { formatDuration, groupByDay, thumbUrl, type LibraryPhoto } from "@/components/kx/photos";
@@ -27,10 +27,10 @@ interface Marquee {
   height: number;
 }
 
-export function ChronologicalLibrary({ timeline = false, albumId }: { timeline?: boolean; albumId?: string }) {
-  const { selecting, setSelecting, selected, setSelected, toggleSelected } = useKxUi();
+export function ChronologicalLibrary({ timeline = false, albumId, junkOnly = false }: { timeline?: boolean; albumId?: string; junkOnly?: boolean }) {
+  const { selecting, setSelecting, selected, setSelected, toggleSelected, setUploadOpen, tile, zoomIn, zoomOut } = useKxUi();
   const { openLightbox } = useLightbox();
-  const { data: counts } = useLibraryCounts();
+  const { data: counts } = useLibraryMediaCounts(junkOnly ? "junk" : "library", !albumId);
 
 
 
@@ -45,7 +45,6 @@ export function ChronologicalLibrary({ timeline = false, albumId }: { timeline?:
   const draggedRef = useRef(false);
 
   const [marquee, setMarquee] = useState<Marquee | null>(null);
-  const [activeYear, setActiveYear] = useState<number | null>(null);
   /**
    * The year the scrubber has seeked to, or null for the whole library.
    *
@@ -60,13 +59,15 @@ export function ChronologicalLibrary({ timeline = false, albumId }: { timeline?:
   const [grain, setGrain] = useState<"days" | "months" | "years">(timeline ? "months" : "days");
   const [dateTo, setDateTo] = useState("");
   const [dateOpen, setDateOpen] = useState(false);
+  const [layoutOpen, setLayoutOpen] = useState(false);
 
   const { data, error, isPending, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } =
     useInfiniteQuery<Page>({
-      queryKey: ["library-mosaic", media, seekYear, dateTo, albumId],
+      queryKey: ["library-mosaic", media, seekYear, dateTo, albumId, junkOnly],
       initialPageParam: null as string | null,
       queryFn: async ({ pageParam, signal }) => {
         const params = new URLSearchParams({ sort: "newest", media, limit: "96" });
+        if (junkOnly) params.set("junk", "only");
         if (pageParam) params.set("cursor", pageParam as string);
         if (albumId) params.set("album_id", albumId);
         if (dateTo || seekYear) params.set("date_to", dateTo || `${seekYear}-12-31`);
@@ -111,6 +112,7 @@ export function ChronologicalLibrary({ timeline = false, albumId }: { timeline?:
         media_kind: photo.media_kind,
         duration_seconds: photo.duration_seconds,
         flickr_url: photo.flickr_url,
+        junk_reason: photo.junk_reason,
       })),
     [photos],
   );
@@ -119,9 +121,9 @@ export function ChronologicalLibrary({ timeline = false, albumId }: { timeline?:
   // give a scrubber that grows as you scroll, which is the one thing a
   // scrubber exists to avoid; /library/years answers it in a single group-by.
   const { data: yearRows } = useQuery<{ years: { year: number; count: number }[] }>({
-    queryKey: ["library-years", media],
+    queryKey: ["library-years", media, junkOnly, Boolean(albumId)],
     queryFn: async () => {
-      const response = await fetch(`${BACKEND}/library/years?media=${media}`);
+      const response = await fetch(`${BACKEND}/library/years?media=${media}&junk=${junkOnly ? "only" : albumId ? "all" : "default"}`);
       if (!response.ok) throw new Error("The year list could not be loaded.");
       return response.json();
     },
@@ -141,7 +143,6 @@ export function ChronologicalLibrary({ timeline = false, albumId }: { timeline?:
   const seekToYear = useCallback((year: number) => {
     setDateTo("");
     setSeekYear(year);
-    setActiveYear(year);
     scrollToTop();
   }, [scrollToTop]);
 
@@ -261,33 +262,63 @@ export function ChronologicalLibrary({ timeline = false, albumId }: { timeline?:
 
   return (
     <main className="kx-page kx-library-page">
-      {!albumId && <DiscoveryProgress />}
       <div className="kx-pagehead">
         <div className="kx-pagehead-copy">
           {albumId && <Link href="/albums" className="kx-connection-help">← Albums</Link>}
-          <h1 className="kx-title">{albumId ? album.data?.name || "Your album." : timeline ? "A little time travel." : "Your library."}</h1>
-          <p className="kx-lede">{albumId ? "A few moments that belong together." : timeline ? "Big milestones. Ordinary Tuesdays. Every moment in between." : "Every little moment. Right where it belongs."}</p>
+          {junkOnly && <Link href="/gallery" className="kx-connection-help">← Library</Link>}
+          <h1 className="kx-title">{albumId ? album.data?.name || "Album" : timeline ? "Timeline" : junkOnly ? "Junk" : "Library"}</h1>
         </div>
-        <span className="kx-library-total">{totalItems === undefined ? "Your moments, together" : `${fmt.format(totalItems)} items`} · Newest first</span>
+        {!albumId && !timeline && !junkOnly && (
+          <Link href="/search?focus=1" className="kx-library-search">
+            <SearchIcon size={20} />
+            Search your library
+          </Link>
+        )}
+        <div className="kx-pagehead-pills">
+          <button className="kx-button" onClick={() => setSelecting(!selecting)} aria-pressed={selecting}>
+            {selecting ? "Cancel" : "Select"}
+          </button>
+          {!junkOnly && <button className="kx-button primary" onClick={() => setUploadOpen(true)}>
+            <NavIcon d="M12 5v14M5 12h14" size={18} /> Add photos
+          </button>}
+        </div>
       </div>
+      {junkOnly && <p className="kx-setting-description">Automatically marked photos. A household owner can keep individual photos from the photo viewer.</p>}
       <div className="kx-library-filters">
         <div className="kx-chiprow" role="group" aria-label="Media type">
-          {[["all", "All media"], ["photo", "Photos"], ["video", "Videos"]].map(([value, label]) => (
+          {!junkOnly && [["all", "All media"], ["photo", "Photos"], ["video", "Videos"]].map(([value, label]) => (
             <button key={value} className={`kx-chip ${media === value ? "is-active" : ""}`} aria-pressed={media === value} onClick={() => { setMedia(value); scrollToTop(); }}>{label}</button>
           ))}
-          <Link className="kx-chip" href="/people">People</Link>
-          <button className={`kx-chip ${dateTo ? "is-active" : ""}`} aria-expanded={dateOpen} onClick={() => setDateOpen(!dateOpen)}>Date{dateTo ? ` · ${dateTo}` : ""}</button>
-          <Link className="kx-chip" href="/search">More filters</Link>
+          <button className={`kx-chip withface ${dateTo || seekYear ? "is-active" : ""}`} aria-expanded={dateOpen} onClick={() => setDateOpen(!dateOpen)}>
+            <NavIcon d="M3 6h18v15H3z M3 10h18 M8 3v5m8-5v5" size={16} />
+            Date{dateTo || seekYear ? ` · ${dateTo || seekYear}` : ""} <ChevronDownIcon />
+          </button>
+          <button className="kx-chip withface" aria-label="Tile size" aria-expanded={layoutOpen} onClick={() => setLayoutOpen(!layoutOpen)}>
+            <NavIcon d="M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z" size={16} />
+            <ChevronDownIcon />
+          </button>
+          {layoutOpen && <div className="kx-tile-size" role="group" aria-label="Adjust tile size">
+            <button className="kx-iconbutton" onClick={zoomOut} disabled={tile <= TILE_MIN} aria-label="Smaller tiles"><ZoomOutIcon /></button>
+            <button className="kx-iconbutton" onClick={zoomIn} disabled={tile >= TILE_MAX} aria-label="Bigger tiles"><ZoomInIcon /></button>
+          </div>}
         </div>
+        {!albumId && !timeline && !junkOnly && <Link className="kx-chip" href="/gallery/junk">Junk</Link>}
+        {totalItems !== undefined && !timeline && <span className="kx-library-total">{fmt.format(totalItems)} items</span>}
         {timeline && <div className="kx-grain" role="group" aria-label="Group timeline">
           {(["years", "months", "days"] as const).map(value => <button key={value} className={grain === value ? "is-active" : ""} aria-pressed={grain === value} onClick={() => setGrain(value)}>{value[0].toUpperCase() + value.slice(1)}</button>)}
         </div>}
       </div>
       {dateOpen && <div className="kx-date-filter">
-        <label>Jump to date <input className="kx-input" type="date" value={dateTo} onChange={e => { setSeekYear(null); setActiveYear(null); setDateTo(e.target.value); scrollToTop(); }} /></label>
-        {(dateTo || seekYear) && <button className="kx-button" onClick={() => { setDateTo(""); setSeekYear(null); setActiveYear(null); }}>Show all dates</button>}
+        <label>Jump to date <input className="kx-input" type="date" value={dateTo} onChange={e => { setSeekYear(null); setDateTo(e.target.value); scrollToTop(); }} /></label>
+        {years.length > 0 && <label>Jump to year <select className="kx-input" value={seekYear ?? ""} onChange={event => {
+          if (event.target.value) seekToYear(Number(event.target.value));
+        }}>
+          <option value="">Choose a year</option>
+          {years.map(year => <option key={year} value={year}>{year}</option>)}
+        </select></label>}
+        {(dateTo || seekYear) && <button className="kx-button" onClick={() => { setDateTo(""); setSeekYear(null); }}>Show all dates</button>}
       </div>}
-      {counts && counts.pending_index > 0 && <p className="kx-index-note">Your library is ready to browse. Search keeps getting better as indexing finishes. <Link href="/pipelines">View progress →</Link></p>}
+
 
       <div className="kx-library-body">
         <div className="kx-mosaic-column" ref={columnRef} onMouseDown={onColumnMouseDown}>
@@ -295,7 +326,7 @@ export function ChronologicalLibrary({ timeline = false, albumId }: { timeline?:
             onSelectDay={selectDay} onTileClick={onTileClick} registerTile={registerTile}
             dayLabels={grain === "days" ? dayLabels : undefined}
             hasNextPage={hasNextPage} fetching={isFetchingNextPage} error={Boolean(error)}
-            fetchNextPage={() => void fetchNextPage()} onActiveYear={setActiveYear}
+            fetchNextPage={() => void fetchNextPage()}
           />
 
           {marquee && (
@@ -306,7 +337,9 @@ export function ChronologicalLibrary({ timeline = false, albumId }: { timeline?:
           )}
 
           {isPending && <KxSkeletonGrid count={18} />}
-          {!isPending && !error && photos.length === 0 && <KxEmptyLibrary />}
+          {!isPending && !error && photos.length === 0 && (junkOnly
+            ? <KxEmpty title="No marked photos here" body="Photos that Kindred marks will appear here." />
+            : <KxEmptyLibrary />)}
           {error && (
             <KxErrorBanner
               detail={(error as Error).message}
@@ -327,32 +360,7 @@ export function ChronologicalLibrary({ timeline = false, albumId }: { timeline?:
 
         </div>
 
-        <nav className="kx-scrubber" aria-label="Jump to year">
-          {(seekYear !== null || dateTo) && (
-            <button
-              className="kx-scrubber-all"
-              onClick={() => {
-                setSeekYear(null);
-                setDateTo("");
-                setActiveYear(null);
-                scrollToTop();
-              }}
-              title="Show the whole library again"
-            >
-              All
-            </button>
-          )}
-          {years.map((year) => (
-            <button
-              key={year}
-              className={year === activeYear ? "is-active" : ""}
-              aria-current={year === activeYear ? "true" : undefined}
-              onClick={() => seekToYear(year)}
-            >
-              {year}
-            </button>
-          ))}
-        </nav>
+
       </div>
 
       <KxSelectBar />

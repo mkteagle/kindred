@@ -1,274 +1,322 @@
 import SwiftUI
 
-/// Screen 01 — Home. The inverse lockup and a bell, a time-of-day eyebrow over
-/// the standing title, the brand's memory wall, two stat cards, and the latest
-/// day as a mosaic.
 struct HomeView: View {
+    var isActive = true
     var onNavigateToTab: ((Int) -> Void)? = nil
 
-    @State private var recent: [LibraryPhoto] = []
-    @State private var latestDay: PhotoDay?
-    @State private var newThisWeek: Int?
-    @State private var newThisWeekIsFloor = false
-    @State private var peopleToName: Int?
+    @State private var favorites: [LibraryPhoto]?
+    @State private var albums: [Album]?
+    @State private var favoritesFailed = false
+    @State private var albumsFailed = false
     @State private var inboxVM = InboxViewModel()
     @ObservedObject private var readState = NotificationReadState.shared
     @State private var showInbox = false
     @State private var viewing: LibraryPhoto?
-    @State private var hasAppeared = false
-    @State private var lastLoadedAt: Date?
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var favoritesRequest = UUID()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var isIPad: Bool { horizontalSizeClass == .regular }
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 2)
 
     var body: some View {
         NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 29) {
+                    favoritesSection
+                    albumsSection
+                }
+                .padding(.horizontal, KindredTheme.gutter)
+                .padding(.top, 7)
+                .padding(.bottom, 28)
+                .frame(maxWidth: 560)
+                .frame(maxWidth: .infinity)
+                .safeAreaInset(edge: .top, spacing: 0) {
                     KindredAppBar(
                         unreadCount: inboxVM.unreadCount(readState: readState),
-                        onBellTap: { showInbox = true }
+                        onAction: { showInbox = true }
                     )
-
-                    greeting
-                        .kindredEntry(hasAppeared)
-
-                    MemoryWall(photos: Array(recent.prefix(4)))
-                        .frame(height: isIPad ? 250 : 196)
-                        .padding(.horizontal, 14)
-                        .padding(.top, 22)
-                        .padding(.bottom, 6)
-                        .kindredEntry(hasAppeared, delay: 0.06)
-
-                    thisWeek
-                        .kindredEntry(hasAppeared, delay: 0.12)
-
-                    latestDaySection
-                        .kindredEntry(hasAppeared, delay: 0.18)
-
-                    Color.clear.frame(height: 32)
+                    .frame(maxWidth: 560)
+                    .frame(maxWidth: .infinity)
+                    .background(KindredTheme.bg)
                 }
-                .frame(maxWidth: isIPad ? 900 : .infinity, alignment: .leading)
-                .frame(maxWidth: .infinity)
             }
+            .scrollIndicators(.hidden)
             .accessibilityIdentifier("home.scrollView")
-            .background(KindredTheme.bg.ignoresSafeArea())
-            .navigationBarHidden(true)
-            .fullScreenCover(item: $viewing) { photo in
-                PhotoViewerView(photos: latestDay?.photos ?? recent, initial: photo)
+            .kindredPaperBackground()
+            .toolbar(.hidden, for: .navigationBar)
+            .fullScreenCover(item: $viewing, onDismiss: {
+                Task { await loadFavorites() }
+            }) { photo in
+                let featured = favorites ?? []
+                PhotoViewerView(photos: featured.contains(photo) ? featured : [photo],
+                                initial: photo, startsFavorited: true)
             }
             .sheet(isPresented: $showInbox) {
                 NotificationInboxView(onNavigateToTab: onNavigateToTab)
             }
-            .task {
-                await load()
-                withAnimation { hasAppeared = true }
-            }
             .refreshable { await load() }
-            .onReceive(
-                NotificationCenter.default.publisher(
-                    for: UIApplication.willEnterForegroundNotification
-                )
-            ) { _ in
-                guard let loaded = lastLoadedAt, Date().timeIntervalSince(loaded) > 300 else { return }
-                Task { await load() }
-            }
+        }
+        .task(id: isActive) {
+            if isActive { await load() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .kindredFavoriteChanged).receive(on: RunLoop.main)) { _ in
+            if isActive && viewing == nil { Task { await loadFavorites() } }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            if isActive { Task { await load() } }
         }
     }
 
-    // MARK: - Greeting
-
-    private var greeting: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            KindredEyebrow(text: timeOfDay, color: KindredTheme.amber)
-            Text("A quieter view\nof your week.")
-                .font(.display(33, weight: .bold, relativeTo: .largeTitle))
-                .tracking(-0.33)
-                .lineSpacing(-4)
-                .foregroundStyle(KindredTheme.ink)
-                .accessibilityAddTraits(.isHeader)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, KindredTheme.gutter)
-        .padding(.top, 14)
-    }
-
-    private var timeOfDay: String {
-        let now = Date()
-        let formatter = DateFormatter()
-        formatter.setLocalizedDateFormatFromTemplate("EEEE")
-        let day = formatter.string(from: now)
-        switch Calendar.current.component(.hour, from: now) {
-        case 5..<12: return "\(day) morning"
-        case 12..<17: return "\(day) afternoon"
-        case 17..<21: return "\(day) evening"
-        default: return "\(day) night"
-        }
-    }
-
-    // MARK: - This week
-
-    private var thisWeek: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            KindredEyebrow(text: "This week")
-            HStack(spacing: 10) {
-                KindredStatCard(value: newThisWeekLabel, label: "new moments")
-                Button {
-                    onNavigateToTab?(1)
+    private var favoritesSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                heading("Favorites")
+                    .accessibilityIdentifier("home.favoritesHeading")
+                Spacer(minLength: 8)
+                NavigationLink {
+                    HomeGalleryView(title: "Favorites", source: .favorites)
                 } label: {
-                    KindredStatCard(
-                        value: peopleToName.map { "\($0)" } ?? "—", label: "people to name"
-                    )
+                    Text("See all")
+                        .font(.body(15, weight: .semibold, relativeTo: .body))
+                        .foregroundStyle(KindredTheme.accent)
+                        .padding(.vertical, 8)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityHint("Opens People")
+                .accessibilityLabel("See all favorites")
             }
-        }
-        .padding(.horizontal, KindredTheme.gutter)
-        .padding(.top, 16)
-    }
 
-    /// The catalog has no "count matching these facets" endpoint, so this is
-    /// the size of one page of the last seven days. When the page is full there
-    /// are more, and the number is shown as a floor rather than a guess.
-    /// TODO: a `/library/count` taking the same facets as /library/photos
-    /// would make this exact.
-    private var newThisWeekLabel: String {
-        guard let newThisWeek else { return "—" }
-        return newThisWeekIsFloor ? "\(newThisWeek)+" : "\(newThisWeek)"
-    }
-
-    // MARK: - Latest day
-
-    @ViewBuilder
-    private var latestDaySection: some View {
-        if let day = latestDay {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(day.longTitle)
-                        .font(.display(17, weight: .semibold, relativeTo: .headline))
-                        .foregroundStyle(KindredTheme.ink)
-                        .accessibilityAddTraits(.isHeader)
-                    Text(day.countLabel)
-                        .font(.kindredMeta)
-                        .foregroundStyle(KindredTheme.inkMeta)
-                    Spacer()
+            if let favorites, !favorites.isEmpty {
+                LazyVGrid(columns: columns, spacing: 6) {
+                    ForEach(favorites) { photo in
+                        Button {
+                            viewing = photo
+                        } label: {
+                            PhotoTile(photo: photo, cornerRadius: 12)
+                                .aspectRatio(1, contentMode: .fit)
+                                .overlay(alignment: .topTrailing) {
+                                    Image(systemName: "heart.fill")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(.white)
+                                        .shadow(color: .black.opacity(0.45), radius: 3, y: 1)
+                                        .padding(8)
+                                        .accessibilityHidden(true)
+                                }
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                .padding(.horizontal, KindredTheme.gutter)
-
-                MosaicGrid(
-                    photos: Array(day.photos.prefix(9)),
-                    rowHeight: isIPad ? 120 : 84,
-                    spacing: 2,
-                    onTap: { viewing = $0 }
-                )
-                .padding(.horizontal, KindredTheme.gutter)
+            } else if favorites == nil && !favoritesFailed {
+                skeleton(count: 4, aspectRatio: 1)
+                    .accessibilityLabel("Loading favorites")
+            } else if !favoritesFailed {
+                Text("Tap the heart on a photo to see it here.")
+                    .font(.kindredBody)
+                    .foregroundStyle(KindredTheme.inkSecondary)
             }
-            .padding(.top, 20)
+
+            if favoritesFailed {
+                retry("Couldn’t load favorites. Try again", action: loadFavorites)
+            }
         }
     }
 
-    // MARK: - Data
+    private var albumsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            heading("Albums")
+            if let albums, !albums.isEmpty {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
+                    ForEach(albums, id: \.id) { album in
+                        if let id = album.id {
+                            NavigationLink {
+                                HomeGalleryView(title: album.name, source: .album(id: id))
+                            } label: {
+                                HomeAlbumTile(album: album, albumID: id)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            } else if albums == nil && !albumsFailed {
+                skeleton(count: 2, aspectRatio: 1.2)
+                    .accessibilityLabel("Loading albums")
+            } else if !albumsFailed {
+                Text("Your albums will appear here.")
+                    .font(.kindredBody)
+                    .foregroundStyle(KindredTheme.inkSecondary)
+            }
+
+            if albumsFailed {
+                retry("Couldn’t load albums. Try again", action: loadAlbums)
+            }
+        }
+    }
+
+    private func heading(_ title: String) -> some View {
+        Text(title)
+            .font(.display(28, weight: .bold, relativeTo: .largeTitle))
+            .foregroundStyle(KindredTheme.ink)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func skeleton(count: Int, aspectRatio: CGFloat) -> some View {
+        LazyVGrid(columns: columns, spacing: 6) {
+            ForEach(0..<count, id: \.self) { _ in
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(KindredTheme.tile)
+                    .aspectRatio(aspectRatio, contentMode: .fit)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+    }
+
+    private func retry(_ title: String, action: @escaping () async -> Void) -> some View {
+        Button(title) { Task { await action() } }
+            .font(.kindredCaption.weight(.semibold))
+            .foregroundStyle(KindredTheme.accent)
+            .frame(minHeight: 44, alignment: .leading)
+            .multilineTextAlignment(.leading)
+    }
 
     private func load() async {
-        if DemoDataProvider.shared.isActive {
-            recent = DemoDataProvider.shared.libraryPage().photos
-            latestDay = PhotoDay.group(recent).first
-            newThisWeek = recent.count
-            newThisWeekIsFloor = false
-            peopleToName = DemoDataProvider.shared
-                .getClusterSummary(category: "people").clusters
-                .filter { $0.label == nil }.count
-            lastLoadedAt = Date()
-            return
-        }
-
-        async let page = try? await APIClient.shared.libraryPhotos(limit: 60)
-        async let weekPage = try? await APIClient.shared.libraryPhotos(
-            dateFrom: HomeView.sevenDaysAgo, limit: 100
-        )
-        async let people = try? await APIClient.shared.getClusterSummary(category: "people")
-        async let inbox: () = inboxVM.loadSyncHistory()
-
-        let library = await page
-        recent = library?.photos ?? []
-        latestDay = PhotoDay.group(recent).first
-
-        if let week = await weekPage {
-            newThisWeek = week.photos.count
-            newThisWeekIsFloor = week.next_cursor != nil
-        }
-
-        if let people = await people {
-            peopleToName = people.clusters.filter { $0.label == nil }.count
-        }
-        await inbox
-        lastLoadedAt = Date()
+        async let favoriteTask: Void = loadFavorites()
+        async let albumTask: Void = loadAlbums()
+        async let inboxTask: Void = inboxVM.loadSyncHistory()
+        _ = await (favoriteTask, albumTask, inboxTask)
     }
 
-    private static var sevenDaysAgo: String {
-        let date = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
+    private func loadFavorites() async {
+        let request = UUID()
+        favoritesRequest = request
+        do {
+            let page = DemoDataProvider.shared.isActive
+                ? DemoDataProvider.shared.favoritesPage()
+                : try await APIClient.shared.favorites(media: .photo, limit: 4)
+            guard !Task.isCancelled, favoritesRequest == request else { return }
+            withAnimation(reduceMotion ? nil : KindredTheme.ease(0.18)) {
+                favorites = Array(page.photos.prefix(4))
+                favoritesFailed = false
+            }
+        } catch where !Task.isCancelled && favoritesRequest == request {
+            favoritesFailed = true
+        } catch {}
+    }
+
+    private func loadAlbums() async {
+        do {
+            let result = DemoDataProvider.shared.isActive
+                ? DemoDataProvider.shared.homeAlbums
+                : try await APIClient.shared.albums()
+            guard !Task.isCancelled else { return }
+            albums = result.filter { $0.id != nil }
+            albumsFailed = false
+        } catch where !Task.isCancelled {
+            albumsFailed = true
+        } catch {}
     }
 }
 
-// MARK: - Memory wall
-
-/// The brand's memory wall: four photos in 5pt near-white borders at fixed
-/// rotations, layered. Deliberately hand-placed rather than a grid — the
-/// scatter is the identity.
-struct MemoryWall: View {
-    let photos: [LibraryPhoto]
-
-    private struct Placement {
-        let x: CGFloat      // fraction of width, centre of the card
-        let y: CGFloat      // points from the top, centre of the card
-        let width: CGFloat  // fraction of width
-        let rotation: Double
-        let z: Double
-    }
-
-    private static let placements: [Placement] = [
-        .init(x: 0.23, y: 76, width: 0.38, rotation: -8, z: 1),
-        .init(x: 0.75, y: 62, width: 0.40, rotation: 6, z: 2),
-        .init(x: 0.43, y: 138, width: 0.46, rotation: -1, z: 5),
-        .init(x: 0.74, y: 150, width: 0.36, rotation: 4, z: 3),
-    ]
+private struct HomeAlbumTile: View {
+    let album: Album
+    let albumID: String
+    @State private var cover: LibraryPhoto?
 
     var body: some View {
-        GeometryReader { geo in
+        VStack(alignment: .leading, spacing: 5) {
             ZStack {
-                ForEach(Array(Self.placements.enumerated()), id: \.offset) { position, placement in
-                    card(at: position, placement: placement, width: geo.size.width)
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(KindredTheme.tile)
+                if let cover {
+                    KindredThumbnail(photo: cover, cornerRadius: 12)
                 }
             }
-            .frame(width: geo.size.width, height: geo.size.height)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Recent photos")
-    }
+            .aspectRatio(1.2, contentMode: .fit)
+            .clipShape(.rect(cornerRadius: 12))
+            .accessibilityHidden(true)
 
-    @ViewBuilder
-    private func card(at position: Int, placement: Placement, width: CGFloat) -> some View {
-        let cardWidth = width * placement.width
-        Group {
-            if photos.indices.contains(position) {
-                KindredThumbnail(photo: photos[position])
-            } else {
-                KindredTheme.tile
+            Text(album.name)
+                .font(.body(16, weight: .semibold, relativeTo: .body))
+                .foregroundStyle(KindredTheme.ink)
+                .lineLimit(1)
+        }
+        .accessibilityLabel(album.name)
+        .task(id: album.photo_count) {
+            guard album.photo_count > 0 else { cover = nil; return }
+            if DemoDataProvider.shared.isActive {
+                cover = DemoDataProvider.shared.albumPage(id: albumID).photos.first
+            } else if let page = try? await APIClient.shared.libraryPhotos(albumID: albumID, limit: 1),
+                      !Task.isCancelled {
+                cover = page.photos.first
             }
         }
-        .frame(width: cardWidth, height: cardWidth * 1.25)
-        .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusXS))
-        .padding(5)
-        .background(Color(hex: 0xF1F1EC, alpha: 0.92))
-        .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusXS))
-        .rotationEffect(.degrees(placement.rotation))
-        .shadow(color: .black.opacity(0.45), radius: 14, x: 0, y: 14)
-        .position(x: width * placement.x, y: placement.y)
-        .zIndex(placement.z)
+    }
+}
+
+private struct HomeGalleryView: View {
+    let title: String
+    let source: GalleryViewModel.Source
+    @State private var gallery = GalleryViewModel()
+    @State private var viewing: LibraryPhoto?
+    @State private var favoritesChanged = false
+
+    var body: some View {
+        ScrollView {
+            if (gallery.isLoading || gallery.hasMore) && gallery.photos.isEmpty && gallery.error == nil {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .padding(32)
+            } else if gallery.photos.isEmpty {
+                if gallery.error != nil {
+                    ContentUnavailableView {
+                        Label("Couldn’t load photos", systemImage: "photo")
+                    } actions: {
+                        Button("Try again") { Task { await gallery.reload() } }
+                    }
+                } else {
+                    ContentUnavailableView("No photos yet", systemImage: "photo")
+                }
+            } else {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: 3), spacing: 3) {
+                    ForEach(gallery.photos) { photo in
+                        Button {
+                            viewing = photo
+                        } label: {
+                            PhotoTile(photo: photo)
+                                .aspectRatio(1, contentMode: .fit)
+                        }
+                        .buttonStyle(.plain)
+                        .task { await gallery.loadMoreIfNeeded(currentItem: photo) }
+                    }
+                }
+                .padding(3)
+                if gallery.isLoadingMore {
+                    ProgressView().padding()
+                }
+                if gallery.error != nil {
+                    Button("Couldn’t load all photos. Reload") { Task { await gallery.reload() } }
+                        .padding()
+                }
+            }
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .kindredPaperBackground()
+        .fullScreenCover(item: $viewing, onDismiss: {
+            guard favoritesChanged else { return }
+            favoritesChanged = false
+            Task { await gallery.reload() }
+        }) { photo in
+            PhotoViewerView(photos: gallery.photos, initial: photo, startsFavorited: source == .favorites)
+        }
+        .task {
+            gallery.source = source
+            await gallery.reload()
+        }
+        .refreshable { await gallery.reload() }
+        .onReceive(NotificationCenter.default.publisher(for: .kindredFavoriteChanged).receive(on: RunLoop.main)) { _ in
+            guard source == .favorites else { return }
+            if viewing != nil { favoritesChanged = true }
+            else { Task { await gallery.reload() } }
+        }
     }
 }

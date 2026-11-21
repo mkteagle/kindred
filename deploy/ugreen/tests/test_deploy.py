@@ -12,7 +12,8 @@ class DeployTests(unittest.TestCase):
     def test_render_pins_release_and_preserves_secret_references(self):
         template = (Path(__file__).parents[1] / 'docker-compose.release.yml').read_text()
         rendered = deploy.render(template, Path('/releases/abc'), Path('/live/data'), 'a' * 40)
-        self.assertNotIn('${KINDRED_', rendered)
+        for variable in ('KINDRED_SOURCE_ROOT', 'KINDRED_DATA_ROOT', 'KINDRED_REVISION'):
+            self.assertNotIn('${' + variable, rendered)
         self.assertIn('kindred-api:' + 'a' * 40, rendered)
         self.assertIn('org.opencontainers.image.revision: ' + 'a' * 40, rendered)
         self.assertIn('${POSTGRES_PASSWORD}', rendered)

@@ -113,7 +113,6 @@ export default function PipelinesPage() {
 
   return (
     <main className="kx-page" style={{ maxWidth: 900 }}>
-      <span className="kx-eyebrow">Operations</span>
       <h1 className="kx-title" style={{ fontSize: 40 }}>
         What the server is doing.
       </h1>

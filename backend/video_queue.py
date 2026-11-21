@@ -155,9 +155,12 @@ def reconcile_part(photo_id, number=None, flickr_id=None, confirmed_absent=False
 
 
 async def run_phase(main, root, mode):
+    earliest = float(os.environ.get("KINDRED_VIDEO_QUEUE_AFTER", "0"))
     for path in sorted(root.glob('*/job.json')):
-        await throttle.wait_for_capacity()
         try:
+            if earliest and path.stat().st_mtime < earliest:
+                continue
+            await throttle.wait_for_capacity()
             await process(main, path, mode)
         except Exception as exc:
             print(f'[video-{mode}] invalid job {path}: {type(exc).__name__}: {exc}', flush=True)
@@ -172,7 +175,12 @@ async def run():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         async def loop(mode):
             while True:
-                await run_phase(main, root, mode)
+                try:
+                    credentials = await asyncio.to_thread(main.get_flickr_credentials)
+                    if credentials and credentials.get("verified"):
+                        await run_phase(main, root, mode)
+                except Exception as exc:
+                    print(f"[video-{mode}] queue unavailable: {type(exc).__name__}", flush=True)
                 await asyncio.sleep(15)
         await asyncio.gather(loop('convert'), loop('upload'))
 

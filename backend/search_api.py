@@ -14,6 +14,8 @@ the facets stand alone and the query is a plain indexed range scan.
 """
 from fastapi import HTTPException
 
+from library_junk import visibility
+
 # How many ANN candidates to pull per requested result. Filtering happens after
 # the index answers, so a selective facet needs a wider pool to fill a page.
 OVERFETCH = 8
@@ -56,7 +58,8 @@ class Facets:
     """Validated filter set. Ordering of `params` follows the SQL it builds."""
 
     def __init__(self, media="all", date_from=None, date_to=None,
-                 cluster_id=None, category=None, album_id=None, date_field="taken"):
+                 cluster_id=None, category=None, album_id=None, date_field="taken",
+                 junk="all", viewer_id=None):
         if media not in MEDIA_KINDS:
             raise HTTPException(400, "media must be all, photo, or video")
         if date_field not in DATE_FIELDS:
@@ -71,6 +74,8 @@ class Facets:
         self.cluster_id = cluster_id
         self.category = category
         self.album_id = album_id
+        self.junk = junk
+        self.viewer_id = viewer_id
 
     @property
     def active(self):
@@ -101,6 +106,10 @@ class Facets:
             clauses.append("EXISTS (SELECT 1 FROM album_photos ap "
                            "WHERE ap.photo_id = p.id AND ap.album_id = %s)")
             params.append(self.album_id)
+        if self.junk != "all":
+            junk_sql, junk_params = visibility(self.junk, self.viewer_id)
+            clauses.append(junk_sql)
+            params += junk_params
         return clauses, params
 
 

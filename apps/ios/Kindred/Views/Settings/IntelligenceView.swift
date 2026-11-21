@@ -158,17 +158,17 @@ struct IntelligenceView: View {
                 .padding(.top, 4)
 
             // Status section
-            sectionEyebrow("Status")
+            sectionLabel("Status")
             statusCard
                 .padding(.horizontal, 16)
 
             // What we look for
-            sectionEyebrow("What we look for")
+            sectionLabel("What we look for")
             categoriesCard
                 .padding(.horizontal, 16)
 
             // Maintenance
-            sectionEyebrow("Maintenance")
+            sectionLabel("Maintenance")
             maintenanceCard
                 .padding(.horizontal, 16)
         }
@@ -184,7 +184,7 @@ struct IntelligenceView: View {
                 .padding(.top, 4)
 
             // While off section
-            sectionEyebrow("While off")
+            sectionLabel("While off")
             whileOffCard
                 .padding(.horizontal, 16)
         }
@@ -209,17 +209,10 @@ struct IntelligenceView: View {
                     .offset(x: 30, y: -30)
 
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("PRIVATE INTELLIGENCE")
-                        .font(.kindredEyebrow)
-                        .tracking(1.8)
-                        .foregroundStyle(KindredTheme.ember)
-
                     Text("Your photos stay\nin your household.")
                         .font(.display(22, weight: .bold))
                         .foregroundStyle(KindredTheme.ash)
-                        .lineSpacing(-2)
-                        .tracking(-0.11)
-                        .padding(.top, 6)
+                        .accessibilityAddTraits(.isHeader)
 
                     Text("Kindred clusters faces, recognises pets, places, and objects on your server. Nothing is sent to any third party for analysis.")
                         .font(.body(13))
@@ -280,16 +273,10 @@ struct IntelligenceView: View {
 
     private var heroCardDisabled: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("INTELLIGENCE \u{00b7} PAUSED")
-                .font(.kindredEyebrow)
-                .tracking(1.8)
-                .foregroundStyle(KindredTheme.mist)
-
-            Text("Nothing is being analysed.")
+            Text("Intelligence is paused")
                 .font(.display(20, weight: .bold))
                 .foregroundStyle(KindredTheme.ash)
-                .lineSpacing(-2)
-                .padding(.top, 6)
+                .accessibilityAddTraits(.isHeader)
 
             Text("Existing groups stay where they are. New photos won\u{2019}t be sorted into people, pets, or places until you turn this back on.")
                 .font(.body(13))
@@ -525,10 +512,10 @@ struct IntelligenceView: View {
         .kindredGroupedCard()
     }
 
-    // MARK: - Section Eyebrow Helper
+    // MARK: - Section Label Helper
 
-    private func sectionEyebrow(_ text: String) -> some View {
-        KindredEyebrow(text: text, color: KindredTheme.pine)
+    private func sectionLabel(_ text: String) -> some View {
+        KindredSectionLabel(text: text, color: KindredTheme.pine)
             .padding(.horizontal, 20)
             .padding(.top, 18)
             .padding(.bottom, 6)
@@ -546,18 +533,10 @@ struct IntelligenceExplainerSheet: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    // Eyebrow + title
-                    Text("WHAT RUNS ON YOUR SERVER")
-                        .font(.kindredEyebrow)
-                        .tracking(1.8)
-                        .foregroundStyle(KindredTheme.ember)
-                        .padding(.top, 4)
-
                     Text("Recognition happens on your server, not in the cloud.")
                         .font(.display(22, weight: .bold))
                         .foregroundStyle(KindredTheme.ash)
-                        .lineSpacing(-2)
-                        .tracking(-0.11)
+                        .accessibilityAddTraits(.isHeader)
                         .padding(.top, 8)
 
                     // Diagram card
@@ -717,10 +696,9 @@ struct IntelligenceOnboardingView: View {
             VStack(spacing: 0) {
                 // Step indicator
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("STEP 4 OF 5")
-                        .font(.kindredEyebrow)
-                        .tracking(1.8)
-                        .foregroundStyle(KindredTheme.ember)
+                    Text("Step 4 of 5")
+                        .font(.kindredCaption)
+                        .foregroundStyle(KindredTheme.inkSecondary)
 
                     // Progress bar
                     GeometryReader { geo in

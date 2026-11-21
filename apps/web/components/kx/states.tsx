@@ -99,25 +99,17 @@ export function KxSkeletonRows({ count = 5, height = 52 }: { count?: number; hei
 
 /* ── 2. Empty ────────────────────────────────────────────────────────── */
 
-/**
- * An empty card. `eyebrow` is only for the reference screen, where several
- * empties sit side by side and have to be told apart; product screens leave
- * it off.
- */
 export function KxEmpty({
-  eyebrow,
   title,
   body,
   action,
 }: {
-  eyebrow?: string;
   title: string;
   body: string;
   action?: { label: string; onClick?: () => void; href?: string; primary?: boolean };
 }) {
   return (
     <div className="kx-emptycard">
-      {eyebrow && <span className="kx-eyebrow quiet">{eyebrow}</span>}
       <strong>{title}</strong>
       <p>{body}</p>
       {action &&
@@ -141,10 +133,9 @@ export function KxEmpty({
 }
 
 /** Nothing has ever synced. The one useful action is connecting the library. */
-export function KxEmptyLibrary({ eyebrow }: { eyebrow?: string }) {
+export function KxEmptyLibrary() {
   return (
     <KxEmpty
-      eyebrow={eyebrow}
       title="Nothing here yet."
       body="Connect your Flickr library and the first sync will fill this in."
       action={{ label: "Connect library", href: "/settings", primary: true }}
@@ -154,15 +145,12 @@ export function KxEmptyLibrary({ eyebrow }: { eyebrow?: string }) {
 
 /** A search or a filter set that matched nothing. */
 export function KxEmptyResults({
-  eyebrow,
   onClear,
 }: {
-  eyebrow?: string;
   onClear?: () => void;
 }) {
   return (
     <KxEmpty
-      eyebrow={eyebrow}
       title="No matches."
       body="Nothing matched those filters. Try widening the dates, or clearing a filter."
       action={onClear ? { label: "Clear filters", onClick: onClear } : undefined}

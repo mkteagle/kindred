@@ -1,26 +1,15 @@
 import SwiftUI
 
-// MARK: - Eyebrow
+// MARK: - Section Label
 
-/// Mono uppercase eyebrow — 10pt/600, .18em tracking, terracotta.
-/// The handoff makes this *required* above every section title.
-struct KindredEyebrow: View {
+struct KindredSectionLabel: View {
     let text: String
-    var color: Color = KindredTheme.accent
-    var isPill: Bool = false
+    var color: Color = KindredTheme.inkSecondary
 
     var body: some View {
-        Text(text.uppercased())
-            .font(.kindredEyebrow)
-            .tracking(1.8) // .18em at 10pt
+        Text(text)
+            .font(.kindredLabel)
             .foregroundStyle(color)
-            .if(isPill) { view in
-                view
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 6)
-                    .background(KindredTheme.accent.opacity(0.16))
-                    .clipShape(Capsule())
-            }
             .accessibilityAddTraits(.isHeader)
     }
 }
@@ -90,9 +79,9 @@ struct KindredButton: View {
 
     private var foregroundColor: Color {
         switch style {
-        // Brand rule: ink on terracotta is #14150f, never white.
         case .primary: return KindredTheme.onAccent
-        case .dark, .ghost, .forest: return KindredTheme.ink
+        case .dark, .ghost: return KindredTheme.ink
+        case .forest: return KindredTheme.onSuccess
         case .danger: return KindredTheme.dangerText
         }
     }
@@ -296,34 +285,34 @@ struct KindredTabBar: View {
 
 // MARK: - App Bar (top bar for Home)
 
-/// The inverse lockup — mark plus wordmark, no plate behind it — and a bell.
+/// The Kindred wordmark and a screen-level action.
 struct KindredAppBar: View {
     var unreadCount: Int = 0
-    var onBellTap: (() -> Void)? = nil
+    var actionIcon = "bell"
+    var actionLabel: String? = nil
+    var onAction: () -> Void
 
     var body: some View {
         HStack(spacing: 9) {
             Image("KindredLogo")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 21, height: 21)
+                .frame(width: 20, height: 20)
                 .accessibilityHidden(true)
             Text("kindred")
-                .font(.display(18, weight: .semibold, relativeTo: .headline))
+                .font(.display(22, weight: .bold, relativeTo: .headline))
                 .foregroundStyle(KindredTheme.ink)
                 .accessibilityAddTraits(.isHeader)
 
             Spacer()
 
-            Button {
-                onBellTap?()
-            } label: {
+            Button(action: onAction) {
                 ZStack(alignment: .topTrailing) {
                     Circle()
-                        .stroke(Color(hex: 0xF1F1EC, alpha: 0.14), lineWidth: 1)
+                        .stroke(KindredTheme.hairlineStrong, lineWidth: 1)
                         .frame(width: 34, height: 34)
                         .overlay {
-                            Image(systemName: "bell")
+                            Image(systemName: actionIcon)
                                 .font(.system(size: 16, weight: .medium))
                                 .foregroundStyle(KindredTheme.inkSecondary)
                         }
@@ -337,60 +326,35 @@ struct KindredAppBar: View {
                             .offset(x: 4, y: -4)
                     }
                 }
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
-                unreadCount > 0 ? "Notifications, \(unreadCount) unread" : "Notifications"
+                actionLabel ?? (unreadCount > 0 ? "Notifications, \(unreadCount) unread" : "Notifications")
             )
         }
         .padding(.horizontal, KindredTheme.gutter)
-        .padding(.vertical, 6)
-    }
-}
-
-// MARK: - Section Header
-
-struct KindredSectionHeader: View {
-    let eyebrow: String
-    let title: String
-    var trailingText: String? = nil
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            KindredEyebrow(text: eyebrow)
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(title)
-                    .font(.kindredH2)
-                    .foregroundStyle(KindredTheme.ink)
-                if let trailing = trailingText {
-                    Spacer()
-                    Text(trailing)
-                        .font(.kindredMeta)
-                        .foregroundStyle(KindredTheme.inkMeta)
-                }
-            }
-        }
     }
 }
 
 // MARK: - Page Header
 
-/// Large title under a mono eyebrow — the standard screen opening.
 struct KindredPageHeader: View {
-    var eyebrow: String? = nil
     let title: String
-    var eyebrowColor: Color = KindredTheme.accent
+    var subtitle: String? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            if let eyebrow {
-                KindredEyebrow(text: eyebrow, color: eyebrowColor)
-            }
+        VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.kindredH1)
-                .tracking(-0.3) // -.01em
                 .foregroundStyle(KindredTheme.ink)
                 .accessibilityAddTraits(.isHeader)
+            if let subtitle {
+                Text(subtitle)
+                    .font(.kindredCaption)
+                    .foregroundStyle(KindredTheme.inkSecondary)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, KindredTheme.gutter)
@@ -469,16 +433,17 @@ struct SkeletonCard: View {
 
 // MARK: - Stat Card
 
-/// 8px stat card: Space Grotesk number over a mono label.
 struct KindredStatCard: View {
     let value: String
     let label: String
+    var isLoading = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(value)
+            Text(isLoading ? "00" : value)
                 .font(.display(22, weight: .semibold, relativeTo: .title2))
                 .foregroundStyle(KindredTheme.ink)
+                .redacted(reason: isLoading ? .placeholder : [])
             Text(label)
                 .font(.kindredMeta)
                 .foregroundStyle(KindredTheme.inkMeta)
@@ -488,7 +453,7 @@ struct KindredStatCard: View {
         .padding(.vertical, 13)
         .kindredCardStyle()
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(value) \(label)")
+        .accessibilityLabel(isLoading ? "\(label), loading" : "\(value) \(label)")
     }
 }
 
@@ -549,7 +514,7 @@ struct KindredPhotoBadge: View {
             Text(text)
                 .font(.kindredMicro)
         }
-        .foregroundStyle(KindredTheme.ink)
+        .foregroundStyle(KindredTheme.onPhotoInk)
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
         .background(KindredTheme.onPhotoChip, in: Capsule())

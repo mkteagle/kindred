@@ -4,6 +4,7 @@ import SwiftUI
 /// Screen 10 — Upload sheet. A detented sheet over the dimmed library, with
 /// the destination album, the queue, and the two actions.
 struct UploadSheetView: View {
+    @State private var flickrConnection: HouseholdFlickrConnection = .checking
     @State private var viewModel = UploadViewModel()
     @State private var uploader = FlickrUploader.shared
     @State private var albums: [Album] = []
@@ -27,20 +28,21 @@ struct UploadSheetView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                KindredEyebrow(text: "Upload")
-                    .padding(.top, 6)
-
                 Text("Add to the library")
-                    .font(.display(21, weight: .semibold, relativeTo: .title3))
+                    .font(.kindredH2)
                     .foregroundStyle(KindredTheme.ink)
-                    .padding(.top, 8)
+                    .padding(.top, 16)
                     .padding(.bottom, 6)
                     .accessibilityAddTraits(.isHeader)
 
-                Text("Saved to your NAS, mirrored to Flickr, then analyzed on your server.")
+                Text("Kindred saves originals to your NAS and queues a copy for Flickr.")
                     .font(.kindredBody)
                     .foregroundStyle(KindredTheme.inkBody)
                     .lineSpacing(2)
+                    .padding(.bottom, 6)
+                Text("Household Flickr: \(flickrConnection.rawValue)")
+                    .font(.kindredCaption)
+                    .foregroundStyle(KindredTheme.inkSecondary)
                     .padding(.bottom, 16)
 
                 albumRow
@@ -52,6 +54,18 @@ struct UploadSheetView: View {
                     upToDateNotice
                 } else {
                     queueRows
+                }
+
+                if uploader.isUploading {
+                    Text(uploader.currentAssetTitle)
+                        .font(.kindredCaption)
+                        .foregroundStyle(KindredTheme.inkSecondary)
+                        .padding(.top, 12)
+                } else if let error = uploader.lastError {
+                    Text(error)
+                        .font(.kindredCaption)
+                        .foregroundStyle(KindredTheme.inkSecondary)
+                        .padding(.top, 12)
                 }
 
                 actions
@@ -76,6 +90,7 @@ struct UploadSheetView: View {
             await viewModel.refreshPhotos()
             albums = (try? await APIClient.shared.albums()) ?? []
         }
+        .task { flickrConnection = await HouseholdFlickrConnection.load() }
     }
 
     // MARK: - Album
@@ -148,10 +163,12 @@ struct UploadSheetView: View {
 
     private var upToDateNotice: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Everything on this device is backed up.")
+            Text(manager.flickrPendingCount > 0 ? "Flickr copies pending" : "No new items to upload")
                 .font(.kindredLabel)
                 .foregroundStyle(KindredTheme.ink)
-            Text("New photos are picked up automatically.")
+            Text(manager.flickrPendingCount > 0
+                 ? "Originals are on your NAS. See both destinations in Settings → Storage."
+                 : "See the NAS and Flickr copy counts in Settings → Storage.")
                 .font(.kindredMeta)
                 .foregroundStyle(KindredTheme.inkMeta)
         }
@@ -196,13 +213,19 @@ struct UploadSheetView: View {
             ) {
                 Task {
                     if viewModel.selectedAssets.isEmpty { viewModel.selectAll() }
-                    await viewModel.uploadSelected()
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    let summary = await viewModel.uploadSelected()
+                    if !summary.succeededIdentifiers.isEmpty, summary.failedIdentifiers.isEmpty, !summary.wasCancelled {
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    }
                 }
             }
             .disabled(candidates.isEmpty || uploader.isUploading)
 
-            KindredButton(title: "Done", style: .ghost) { dismiss() }
+            if uploader.isUploading {
+                KindredButton(title: "Pause backup", style: .ghost) { uploader.pauseBackup() }
+            } else {
+                KindredButton(title: "Done", style: .ghost) { dismiss() }
+            }
         }
     }
 }

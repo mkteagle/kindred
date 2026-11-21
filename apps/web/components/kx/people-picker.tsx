@@ -79,7 +79,7 @@ export function KxPeoplePicker({
 
       {open && (
         <div className="kx-menu picker" role="menu">
-          <span className="kx-eyebrow quiet" style={{ padding: "8px 10px 6px" }}>
+          <span className="kx-field-label" style={{ padding: "8px 10px 6px" }}>
             {label}
           </span>
           {(people ?? []).length === 0 && (

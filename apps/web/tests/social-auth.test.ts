@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash, randomBytes } from "node:crypto";
 import { before, after, test } from "node:test";
 import { NextRequest } from "next/server";
 import { exportJWK, generateKeyPair, jwtVerify, SignJWT } from "jose";
@@ -113,6 +114,49 @@ test("Apple form POST links the original account even without a Lax session cook
   assert.equal(new URL(response.headers.get("location")!).pathname, "/settings/integrations");
   assert.ok(response.cookies.get("kindred_session"));
   expectedLink = undefined;
+});
+
+test("iPhone Google and Apple sign-in require the original app's verifier before exchanging a session", async () => {
+  for (const provider of ["google", "apple"] as const) {
+    const startCount = exchanges;
+    const state = randomBytes(32).toString("base64url");
+    const verifier = randomBytes(32).toString("base64url");
+    const challenge = createHash("sha256").update(verifier).digest("base64url");
+    const query = new URLSearchParams({ mobile_state: state, mobile_challenge: challenge });
+    const start = await auth.beginSocialAuth(new NextRequest(`https://kindred.example/api/auth/${provider}?${query}`), provider);
+    const saved = start.cookies.get(`kindred_oauth_${provider}`)!;
+    const flow = cookie.decryptToken(saved.value)!;
+    idToken = await token(provider, flow.nonce);
+    const callbackURL = `https://kindred.example/api/auth/${provider}/callback`;
+    let cookies = `${saved.name}=${saved.value}`;
+    if (provider === "apple") {
+      const post = await auth.beginAppleCallback(new NextRequest(callbackURL, {
+        method: "POST", body: new URLSearchParams({ state: flow.state, code: "fixture" }),
+      }));
+      const handoff = post.cookies.get("kindred_apple_handoff")!;
+      cookies += `; ${handoff.name}=${handoff.value}`;
+    }
+    const callback = await auth.finishSocialAuth(new NextRequest(`${callbackURL}?code=fixture&state=${flow.state}`, {
+      headers: { cookie: cookies },
+    }), provider);
+    const redirect = new URL(callback.headers.get("location")!);
+    assert.equal(redirect.protocol, "kindred:");
+    assert.equal(redirect.hostname, "social-auth");
+    assert.equal(redirect.searchParams.get("state"), state);
+    assert.equal(callback.headers.get("cache-control"), "no-store");
+    assert.equal(callback.cookies.get("kindred_session"), undefined);
+    assert.equal(exchanges, startCount);
+
+    const exchange = (value: string) => auth.finishMobileSocialAuth(new NextRequest("https://kindred.example/api/auth/mobile", {
+      method: "POST", body: JSON.stringify({ proof: redirect.searchParams.get("proof"), verifier: value }),
+    }));
+    assert.equal((await exchange(randomBytes(32).toString("base64url"))).status, 401);
+    assert.equal(exchanges, startCount);
+    const response = await exchange(verifier);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).session.token, "new-session");
+    assert.equal(exchanges, startCount + 1);
+  }
 });
 test("provider login starts on the same host that owns the callback", async () => {
   const start = await auth.beginSocialAuth(new NextRequest("http://localhost:3018/api/auth/google?return=%2Fgallery"), "google");

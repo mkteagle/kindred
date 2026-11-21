@@ -11,7 +11,7 @@ export function storageSize(bytes: number) {
 }
 
 export function StorageCard({ full = false }: { full?: boolean }) {
-  const { data, isPending, error, refetch } = useStorageStatus();
+  const { data, isPending, error, refetch } = useStorageStatus(false);
   const { data: counts } = useLibraryCounts();
   const known = data?.available && data.total_bytes !== null && data.total_bytes > 0 && data.used_bytes !== null;
   const percent = known ? Math.min(100, Math.max(0, Math.round(data.used_bytes! / data.total_bytes! * 100))) : null;

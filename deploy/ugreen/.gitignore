@@ -1,2 +1,4 @@
 .env
+.env.railway
+.env.r2
 data/

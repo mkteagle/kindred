@@ -4,24 +4,20 @@ struct OnboardingView: View {
     @State private var currentPage = 0
     let onComplete: () -> Void
 
-    private let pages: [(eyebrow: String, title: String, subtitle: String)] = [
+    private let pages: [(title: String, subtitle: String)] = [
         (
-            "Welcome to Kindred",
             "A calmer home for\nfamily photos.",
             "Backed up to your Flickr, organized by household — without ever leaving your hands."
         ),
         (
-            "AI-powered",
             "We find the people,\nplaces, and moments.",
             "Face recognition, object detection, and scene understanding — all running on your own server."
         ),
         (
-            "Family first",
             "One household,\nevery memory.",
             "Invite your family. Everyone sees the same library, organized by AI, backed by Flickr."
         ),
         (
-            "Private by design",
             "Your photos never\nleave your control.",
             "Self-hosted backend, Flickr storage you own, no third-party access. Ever."
         ),
@@ -38,12 +34,10 @@ struct OnboardingView: View {
 
                 // Text content
                 VStack(alignment: .leading, spacing: 0) {
-                    KindredEyebrow(text: pages[currentPage].eyebrow, color: KindredTheme.gold)
-                        .padding(.bottom, 10)
-
                     Text(pages[currentPage].title)
                         .font(.kindredH1)
                         .foregroundStyle(KindredTheme.ash)
+                        .accessibilityAddTraits(.isHeader)
                         .lineSpacing(-2)
                         .padding(.bottom, 12)
 

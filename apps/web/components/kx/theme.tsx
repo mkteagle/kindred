@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { DEFAULT_THEME, THEME_KEY } from "./theme-script";
 
 export type Theme = "dark" | "light";
@@ -13,22 +13,20 @@ function readTheme(): Theme {
   return attr === "light" || attr === "dark" ? attr : FALLBACK;
 }
 
-/**
- * The current theme plus a toggle. State is mirrored on <html data-theme>,
- * which is what the token blocks in globals.css key off, and persisted to
- * localStorage. The boot script has already set the attribute, so the first
- * client render agrees with the server-rendered markup.
- */
-export function useTheme() {
-  const [theme, setThemeState] = useState<Theme>(FALLBACK);
+const THEME_CHANGE = "kindred-theme-change";
 
-  useEffect(() => {
-    setThemeState(readTheme());
-  }, []);
+function subscribeToTheme(callback: () => void) {
+  window.addEventListener(THEME_CHANGE, callback);
+  return () => window.removeEventListener(THEME_CHANGE, callback);
+}
+
+/** Theme shared by the app shell and Appearance settings. */
+export function useTheme() {
+  const theme = useSyncExternalStore(subscribeToTheme, readTheme, () => FALLBACK);
 
   const setTheme = useCallback((next: Theme) => {
-    setThemeState(next);
     document.documentElement.setAttribute("data-theme", next);
+    window.dispatchEvent(new Event(THEME_CHANGE));
     try {
       localStorage.setItem(THEME_KEY, next);
     } catch {

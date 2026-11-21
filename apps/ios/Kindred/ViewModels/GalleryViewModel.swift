@@ -130,6 +130,10 @@ final class GalleryViewModel {
             switch source {
             case .cluster(let id, let category):
                 return DemoDataProvider.shared.clusterPage(clusterID: id, category: category)
+            case .favorites:
+                return DemoDataProvider.shared.favoritesPage(media: media)
+            case .album(let id):
+                return DemoDataProvider.shared.albumPage(id: id, media: media)
             default:
                 return DemoDataProvider.shared.libraryPage(media: media)
             }
@@ -155,12 +159,7 @@ final class GalleryViewModel {
                 photos: response.results.map(\.asLibraryPhoto), next_cursor: nil
             )
         case .album(let id):
-            let response = try await APIClient.shared.searchLibrary(
-                media: media, albumID: id, limit: 200
-            )
-            return LibraryPage(
-                photos: response.results.map(\.asLibraryPhoto), next_cursor: nil
-            )
+            return try await APIClient.shared.libraryPhotos(media: media, cursor: cursor, albumID: id)
         }
     }
 

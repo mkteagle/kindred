@@ -57,7 +57,6 @@ export default function ColorsPage() {
 
   return (
     <main className="kx-page">
-      <span className="kx-eyebrow">Colors</span>
       <h1 className="kx-title">Browse by what it looked like.</h1>
       <p className="kx-lede">
         Dominant colour is worked out per photo on your server. Useful when you remember the red
@@ -90,7 +89,7 @@ export default function ColorsPage() {
       </div>
 
       <div className="kx-chiprow" style={{ marginBottom: 12 }}>
-        <span className="kx-eyebrow quiet" style={{ width: "auto", alignSelf: "center" }}>
+        <span className="kx-field-label" style={{ width: "auto", alignSelf: "center" }}>
           {active.name}
         </span>
         {!isPending && !error && (

@@ -44,7 +44,6 @@ export default function LandmarksPage() {
 
   return (
     <main className="kx-page">
-      <span className="kx-eyebrow">Landmarks</span>
       <h1 className="kx-title">Places that name themselves.</h1>
       <p className="kx-lede">
         Landmarks and scenes, separate from GPS places — the same bridge from three different trips
@@ -93,7 +92,7 @@ export default function LandmarksPage() {
       {open && current.length > 0 && (
         <>
           <div className="kx-chiprow" style={{ marginTop: 30 }}>
-            <span className="kx-eyebrow quiet" style={{ width: "auto", alignSelf: "center" }}>
+            <span className="kx-field-label" style={{ width: "auto", alignSelf: "center" }}>
               {open}
             </span>
             <span className="kx-cardmeta" style={{ alignSelf: "center" }}>

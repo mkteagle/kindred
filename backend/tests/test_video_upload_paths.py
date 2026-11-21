@@ -25,7 +25,7 @@ def functions(names, namespace):
 
 class UploadPathsTests(unittest.TestCase):
     def namespace(self):
-        return dict(Path=Path, os=os, VIDEO_EXTENSIONS={'.mov', '.mp4'},
+        return dict(Path=Path, os=os, asyncio=asyncio, VIDEO_EXTENSIONS={'.mov', '.mp4'},
                     PHOTO_STORAGE_ROOT='/archive', UPLOAD_MAX_SIZE=1024**3,
                     # _store_nas_original hands back the capture date and GPS it
                     # read out of the file, which the caller prefers over
@@ -34,6 +34,7 @@ class UploadPathsTests(unittest.TestCase):
                         provider_key='videos/original.mov', sha256='checksum', deduplicated=False,
                         taken_at_unix=None, taken_at_source=None, latitude=None, longitude=None)),
                     _existing_flickr_copy=Mock(return_value=None), _queue_video=Mock(),
+                    _queue_phone_photo_mirror=Mock(),
                     _upload_to_flickr=AsyncMock(), _queue_flickr_replication=Mock(),
                     _set_replication_status=Mock(), _record_flickr_copy=Mock(),
                     db_query=Mock(), _flickr_set_dates=AsyncMock(),
@@ -49,7 +50,7 @@ class UploadPathsTests(unittest.TestCase):
             row = dict(temp_path=str(source), original_filename='camera.MOV', content_type='video/quicktime',
                        title='Camera', description='', taken_at_unix=123, latitude=1, longitude=2,
                        client_upload_id='client', album_id='album', user_id='user')
-            asyncio.run(ns['_finalize_resumable_upload']('session', row, {}))
+            asyncio.run(ns['_finalize_resumable_upload']('session', row))
             self.assertFalse(source.exists())
         ns['_queue_video'].assert_called_once()
         ns['_upload_to_flickr'].assert_not_called()
@@ -58,6 +59,21 @@ class UploadPathsTests(unittest.TestCase):
         self.assertIn("status = 'completed'", ns['db_query'].call_args.args[0])
         self.assertEqual(ns['db_query'].call_args.args[1], ('stable', None, 'session'))
         self.assertIsNone(ns['_add_photo_to_album_everywhere'].call_args.args[2])
+
+    def test_resumable_photo_finishes_nas_session_and_queues_flickr(self):
+        ns = functions({'_finalize_resumable_upload'}, self.namespace())
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / 'upload.part'
+            source.write_bytes(b'photo')
+            row = dict(temp_path=str(source), original_filename='camera.jpg',
+                       content_type='image/jpeg', title='', description='', taken_at_unix=None,
+                       latitude=None, longitude=None, client_upload_id='client', user_id='user')
+            asyncio.run(ns['_finalize_resumable_upload']('session', row))
+            self.assertFalse(source.exists())
+        ns['_queue_phone_photo_mirror'].assert_called_once_with('stable')
+        ns['_upload_to_flickr'].assert_not_called()
+        self.assertIn("status = 'completed'", ns['db_query'].call_args.args[0])
+        self.assertEqual(ns['db_query'].call_args.args[1], ('stable', None, 'session'))
 
     def test_ordinary_video_returns_pending_receipt_and_keeps_nas_album(self):
         ns = self.namespace()

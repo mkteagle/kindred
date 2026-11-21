@@ -21,7 +21,6 @@ export function GetTheApp() {
     <div className="app-gate" role="region" aria-label="Kindred on mobile">
       <div className="app-gate-inner">
         <BrandMark className="app-gate-mark" size={56} />
-        <p className="app-gate-eyebrow">KINDRED ON MOBILE</p>
         <h1 className="app-gate-title">Better in the app.</h1>
         <p className="app-gate-lede">
           The apps back up your camera roll on their own, keep recent photos

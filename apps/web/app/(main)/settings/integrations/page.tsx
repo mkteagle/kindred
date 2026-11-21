@@ -23,17 +23,18 @@ export default function IntegrationsPage() {
   const [notice, setNotice] = useState("");
   const providers = useQuery({ queryKey: ["auth-providers"], queryFn: () => read<{ google: boolean; apple: boolean }>("/api/auth/providers") });
   const identities = useQuery({ queryKey: ["auth-identities"], queryFn: () => read<{ identities: { provider: string; email?: string }[] }>(`${BACKEND}/auth/identities`), enabled: !!user });
-  const flickr = useQuery({ queryKey: ["flickr-integration"], queryFn: () => read<{ configured: boolean; connected: boolean; user_id?: string }>(`${BACKEND}/integrations/flickr`), enabled: isAdmin });
+  const flickr = useQuery({ queryKey: ["flickr-integration"], queryFn: () => read<{ configured: boolean; connected: boolean; verified?: boolean; user_id?: string }>(`${BACKEND}/integrations/flickr`), enabled: isAdmin });
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.has("error")) setNotice("The connection could not be completed. Sign in again and retry; an identity already linked to another account cannot be reused.");
+    if (params.get("error") === "flickr_destination") setNotice("Reconnect using the approved household Flickr account. All members back up to that account.");
+    else if (params.has("error")) setNotice("The connection could not be completed. Sign in again and retry; an identity already linked to another account cannot be reused.");
     if (params.get("connected") === "flickr") setNotice("Flickr is connected. Your Kindred sign-in stays the same.");
   }, []);
   if (isLoading) return <main className="kx-page"><p role="status">Loading connections…</p></main>;
   return <main className="kx-page kx-integrations-page">
-    <div className="kx-pagehead"><div><h1 className="kx-title">Make yourself at home.</h1><p className="kx-lede">Your account. Your storage. Everything connected in one place.</p></div></div>
+    <div className="kx-pagehead"><div><h1 className="kx-title">Connections</h1></div></div>
     {notice && <p className="kx-connection-notice" role="status">{notice}</p>}
-    <section className="kx-connection-section"><div className="kx-section-copy"><span className="kx-eyebrow">SIGN IN</span><h2>A familiar way in.</h2><p>Connect a provider to your existing Kindred account. Only invited members can join an established library.</p></div>
+    <section className="kx-connection-section" id="sign-in"><div className="kx-section-copy"><h2>Sign-in methods</h2><p>Connect Apple or Google to this Kindred account. Both sign-in methods open the same library, even when Apple uses a private relay email.</p></div>
       <div className="kx-connection-list">
         {user && <PasskeySettings userId={user.userId} />}
         {identities.error && <KxErrorBanner detail={identities.error.message} onRetry={() => void identities.refetch()} />}
@@ -48,13 +49,13 @@ export default function IntegrationsPage() {
         })}
       </div>
     </section>
-    <section className="kx-connection-section"><div className="kx-section-copy"><span className="kx-eyebrow">STORAGE & COPIES</span><h2>A home for every original.</h2><p>Keep originals on your own NAS. Add Flickr for a separate copy. Each connection belongs to this installation.</p></div>
+    <section className="kx-connection-section" id="storage-connections"><div className="kx-section-copy"><h2>Storage and backups</h2><p>Kindred saves originals to your NAS. Everyone in the household uses the same Flickr destination for the second copy.</p></div>
       <div className="kx-connection-list"><StorageCard full />
         {isAdmin && <Link href="/storage" className="kx-button" style={{ marginBottom: 18 }}>Browse NAS folders →</Link>}
         <div className="kx-connection"><span className="kx-provider-icon nas">NAS</span><div><h3>{storage?.name || "Your NAS"}</h3><p>{storage?.available ? "The server can reach your storage folder." : storage?.configured ? "The configured folder is unavailable. Check the server mount." : "Mount your NAS folder on the Kindred server and set PHOTO_STORAGE_ROOT."}</p></div>
           {isAdmin && <button className="kx-button" disabled={checking} onClick={async () => { const result = await refreshStorage(); setNotice(result.data?.available ? "The server can reach the storage folder and read its capacity." : "Storage is unavailable. Check the folder mounted on your Kindred server."); }}>{checking ? "Checking…" : "Check connection"}</button>}
         </div>
-        {isAdmin && <><div className="kx-connection"><span className="kx-provider-icon flickr"><i/><i/></span><div><h3>Flickr</h3><p>{flickr.data?.connected ? `Connected${flickr.data.user_id ? ` · ${flickr.data.user_id}` : ""}${counts ? ` · ${fmt.format(counts.on_flickr)} catalog items have a copy` : ""}` : "A separate copy of supported photos and videos."}</p></div>
+        {isAdmin && <><div className="kx-connection"><span className="kx-provider-icon flickr"><i/><i/></span><div><h3>Household Flickr</h3><p>{flickr.data?.connected ? `${flickr.data.verified ? "Verified" : "Connection needs verification"}${flickr.data.user_id ? ` · ${flickr.data.user_id}` : ""}${counts ? ` · ${fmt.format(counts.on_flickr)} catalog items have a Flickr copy` : ""}` : "Connect the Flickr account that receives copies for everyone."}</p></div>
           <a className="kx-button" aria-disabled={!flickr.data?.configured} href={flickr.data?.configured ? "/api/auth/flickr?integration=1" : undefined}>{flickr.data?.connected ? "Reconnect" : "Connect Flickr"}</a></div>
           {flickr.error && <KxErrorBanner detail={flickr.error.message} onRetry={() => void flickr.refetch()} />}
           {flickr.data && !flickr.data.configured && <p className="kx-connection-help">Add your own FLICKR_API_KEY and FLICKR_SECRET to the web app and server, then restart. Register /api/auth/callback on your web address as the Flickr callback.</p>}

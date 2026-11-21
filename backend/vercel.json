@@ -1,3 +1,20 @@
 {
-  "framework": "fastapi"
+  "framework": "fastapi",
+  "rewrites": [
+    { "source": "/photos/upload", "destination": "https://nas-api.kindredphotos.app/photos/upload" },
+    { "source": "/uploads/:path*", "destination": "https://nas-api.kindredphotos.app/uploads/:path*" },
+    { "source": "/phone-backups/:path*", "destination": "https://nas-api.kindredphotos.app/phone-backups/:path*" },
+    { "source": "/photos/:photoId/local", "destination": "https://nas-api.kindredphotos.app/photos/:photoId/local" },
+    {
+      "source": "/photos/:photoId/image",
+      "has": [{ "type": "query", "key": "size", "value": "o" }],
+      "destination": "https://nas-api.kindredphotos.app/photos/:photoId/image"
+    },
+    {
+      "source": "/photos/:photoId/image",
+      "has": [{ "type": "query", "key": "format", "value": "webp|avif" }],
+      "destination": "https://nas-api.kindredphotos.app/photos/:photoId/image"
+    },
+    { "source": "/users/:userId/avatar", "destination": "https://nas-api.kindredphotos.app/users/:userId/avatar" }
+  ]
 }

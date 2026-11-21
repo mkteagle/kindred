@@ -81,7 +81,6 @@ export default function FavoritesPage() {
     <main className="kx-page">
       <div className="kx-pagehead">
         <div className="kx-pagehead-copy">
-          <span className="kx-eyebrow">Favorites</span>
           <h1 className="kx-title">The ones you keep coming back to.</h1>
           <p className="kx-lede">
             Yours alone — every member of the household keeps their own.

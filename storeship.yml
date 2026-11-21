@@ -67,11 +67,11 @@ ios:
       household photos. Kindred is a self-hosted household photo application;
       connecting a real library requires a user-operated Kindred server.
   what_to_test: >-
-    Sign in with the supplied review account and browse the home feed, people
-    and pet collections,
-    natural-language search, Together results, photo details, and household
-    settings. This build also improves resumable background uploads for large
-    photos and videos, including recovery after interruptions.
+    Open Home on a slow connection and look for placeholders until photos arrive.
+    Start a backup, open Backup → Activity, and check each item's status. On
+    iOS 26 or later, switch apps while a backup is running and check progress
+    when you return. Flickr copy details are under Backup → Destinations.
+    Test with Google or Apple. The review account opens a sample library.
 
 brand:
   paper: "#FBF4E7"

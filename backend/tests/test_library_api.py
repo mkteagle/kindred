@@ -13,7 +13,9 @@ from unittest.mock import Mock
 
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
-from library_api import counts, gallery, years
+from library_api import counts, gallery, is_favorite, visible_counts, years
+from library_junk import keep
+from search_api import Facets, browse
 
 
 class CatalogTests(unittest.TestCase):
@@ -25,12 +27,14 @@ class CatalogTests(unittest.TestCase):
                 title TEXT, original_filename TEXT, taken_at TEXT, created_at TEXT,
                 media_kind TEXT GENERATED ALWAYS AS (
                     CASE WHEN media_type LIKE 'video/%' THEN 'video' ELSE 'photo' END) STORED,
-                duration_seconds REAL);
+                duration_seconds REAL, junk_classification TEXT);
             CREATE TABLE photo_copies (photo_id TEXT, provider TEXT, status TEXT,
                 provider_key TEXT, remote_url TEXT);
             CREATE TABLE processed_photos (photo_id TEXT);
             CREATE TABLE photo_favorites (photo_id TEXT, user_id TEXT, created_at TEXT);
             INSERT INTO photo_favorites VALUES ('b','u1','2024'),('c','u2','2024');
+            CREATE TABLE users (id TEXT, hide_library_junk BOOLEAN);
+            INSERT INTO users VALUES ('u1', TRUE), ('u2', FALSE);
             INSERT INTO photos (id,legacy_photo_id,media_type,title,original_filename,
                 taken_at,created_at,duration_seconds) VALUES
                 ('a',NULL,'image/heic','A','a.heic','2020-05-01','2024-01-01',NULL),
@@ -60,6 +64,28 @@ class CatalogTests(unittest.TestCase):
     def test_counts_do_not_double_count_mirrors_or_require_flickr_for_indexing(self):
         self.assertEqual(counts(self.query), dict(total_files=3, photos=2, videos=1,
             on_nas=3, on_flickr=1, indexed_photos=2, pending_index=0))
+
+    def test_junk_defaults_are_per_viewer_and_keep_survives_future_scans(self):
+        self.query("UPDATE photos SET junk_classification='screenshot' WHERE id='b'")
+        hidden = gallery(self.query, 'newest', 48, junk='default', viewer_id='u1')['photos']
+        visible = gallery(self.query, 'newest', 48, junk='default', viewer_id='u2')['photos']
+        junk = gallery(self.query, 'newest', 48, junk='only')['photos']
+        self.assertEqual([r['photo_id'] for r in hidden], ['c', 'a'])
+        self.assertEqual([r['photo_id'] for r in visible], ['c', 'b', 'a'])
+        self.assertEqual([(r['photo_id'], r['junk_reason']) for r in junk], [('b', 'screenshot')])
+        self.assertEqual(visible_counts(self.query, 'default', 'u1')['total_files'], 2)
+        self.assertEqual(visible_counts(self.query, 'default', 'u2')['total_files'], 3)
+        self.assertEqual(years(self.query, junk='only'), [{'year': 2021, 'count': 1}])
+        self.assertEqual(gallery(self.query, 'newest', 48, favorited_by='u1')['photos'][0]['photo_id'], 'b')
+
+        search = browse(self.query, Facets(junk='default', viewer_id='u1'))
+        self.assertEqual([r['photo_id'] for r in search], ['c', 'a'])
+        self.assertTrue(keep(self.query, 'b'))
+        self.assertTrue(keep(self.query, 'b'))
+        self.assertFalse(keep(self.query, 'a'))
+        self.assertEqual(gallery(self.query, 'newest', 48, junk='only')['photos'], [])
+        self.assertEqual(gallery(self.query, 'newest', 48, junk='default', viewer_id='u1')['photos'][1]['photo_id'], 'b')
+        self.assertEqual(counts(self.query)['total_files'], 3)
 
     def test_gallery_pages_by_cursor_and_sorts_including_heic(self):
         first = gallery(self.query, 'newest', 1, media='photo')
@@ -142,6 +168,12 @@ class CatalogTests(unittest.TestCase):
     def test_a_member_with_no_favourites_sees_an_empty_list_not_everything(self):
         self.assertEqual(gallery(self.query, 'newest', 48, favorited_by='nobody')['photos'], [])
 
+    def test_photo_heart_status_is_private_to_the_signed_in_member(self):
+        self.assertTrue(is_favorite(self.query, 'b', 'u1'))
+        self.assertFalse(is_favorite(self.query, 'b', 'u2'))
+        self.assertTrue(is_favorite(self.query, 'c', 'u2'))
+        self.assertFalse(is_favorite(self.query, 'c', 'u1'))
+
     def test_favourites_combine_with_the_media_facet(self):
         self.assertEqual(
             gallery(self.query, 'newest', 48, media='video', favorited_by='u1')['photos'], [])
@@ -175,7 +207,7 @@ class UndatedPhotoTests(unittest.TestCase):
                 title TEXT, original_filename TEXT, taken_at TEXT, created_at TEXT,
                 media_kind TEXT GENERATED ALWAYS AS (
                     CASE WHEN media_type LIKE 'video/%' THEN 'video' ELSE 'photo' END) STORED,
-                duration_seconds REAL);
+                duration_seconds REAL, junk_classification TEXT);
             CREATE TABLE photo_copies (photo_id TEXT, provider TEXT, status TEXT,
                 provider_key TEXT, remote_url TEXT);
             CREATE TABLE processed_photos (photo_id TEXT);

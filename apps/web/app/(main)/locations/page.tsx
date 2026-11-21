@@ -52,7 +52,6 @@ export default function LocationsPage() {
 
   return (
     <main className="kx-page">
-      <span className="kx-eyebrow">Locations</span>
       <h1 className="kx-title">Where it all happened.</h1>
       <p className="kx-lede">
         Places come from the GPS in each photo, resolved to a name once and cached. Pins cluster as
@@ -128,7 +127,7 @@ export default function LocationsPage() {
       {current && (
         <>
           <div className="kx-chiprow" style={{ marginTop: 30 }}>
-            <span className="kx-eyebrow quiet" style={{ width: "auto", alignSelf: "center" }}>
+            <span className="kx-field-label" style={{ width: "auto", alignSelf: "center" }}>
               {current.name}
             </span>
             <span className="kx-cardmeta" style={{ alignSelf: "center" }}>

@@ -81,7 +81,7 @@ export function AvatarEditor({ currentAvatarUrl, displayName, onSaved, onClose }
       .then((r) => r.json())
       .then((data) => {
         setPhotos(
-          (data || []).map((r: Record<string, string>) => ({
+          (Array.isArray(data) ? data : data.results ?? []).map((r: Record<string, string>) => ({
             photo_id: r.photo_id,
             thumb_url: r.thumb_url || r.photo_url,
             photo_url: r.photo_url,

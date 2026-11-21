@@ -6,7 +6,6 @@ export default function PrivacyPage() {
   return (
     <main className="legal-page">
       <div className="legal-content">
-        <span className="eyebrow">Legal</span>
         <h1>Privacy Policy</h1>
         <p className="legal-updated">Last updated: April 26, 2026</p>
 

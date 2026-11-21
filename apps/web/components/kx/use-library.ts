@@ -28,6 +28,20 @@ export function useLibraryCounts() {
   });
 }
 
+/** Visible totals for the Library and Junk views. Storage still uses the full catalog. */
+export function useLibraryMediaCounts(view: "library" | "junk", enabled: boolean) {
+  return useQuery<Pick<LibraryCounts, "total_files" | "photos" | "videos">>({
+    queryKey: ["library-counts", view],
+    enabled,
+    queryFn: async ({ signal }) => {
+      const response = await fetch(`${BACKEND}/library/counts?view=${view}`, { signal });
+      if (!response.ok) throw new Error("Library counts could not be loaded.");
+      return response.json();
+    },
+    staleTime: 60_000,
+  });
+}
+
 /** Cluster group counts per category (people / pets / vehicles). */
 export function useStats() {
   return useQuery<Stats>({
@@ -142,7 +156,7 @@ export interface StorageStatus {
   detail?: string;
 }
 
-export function useStorageStatus() {
+export function useStorageStatus(refetchInterval: number | false = 60_000) {
   return useQuery<StorageStatus>({
     queryKey: ["storage-status"],
     queryFn: async ({ signal }) => {
@@ -151,7 +165,7 @@ export function useStorageStatus() {
       return response.json();
     },
     staleTime: 60_000,
-    refetchInterval: 60_000,
+    refetchInterval,
     retry: 1,
   });
 }

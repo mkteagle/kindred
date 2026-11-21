@@ -25,7 +25,7 @@ struct PeopleView<Header: View>: View {
                 Color.clear.frame(height: 0).readsScrollOffset(in: "people")
 
                 CollapsingTitleHeader(
-                    eyebrow: "People first", title: "People", offset: scrollOffset
+                    title: "People", offset: scrollOffset
                 )
                 header
                     .padding(.bottom, 16)
@@ -169,8 +169,8 @@ struct ClusterGridView<Header: View>: View {
                 Color.clear.frame(height: 0).readsScrollOffset(in: "clusters")
 
                 CollapsingTitleHeader(
-                    eyebrow: "\(clusters.count) groups",
                     title: category.displayName,
+                    subtitle: "\(clusters.count) groups",
                     offset: scrollOffset
                 )
                 header

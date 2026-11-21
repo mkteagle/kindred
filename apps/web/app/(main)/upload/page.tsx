@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { BACKEND } from "@/lib/constants";
+import { uploadBackup } from "@/lib/upload-backup";
 
 /* ── Types ──────────────────────────────────────────────────────────── */
 
-type FileStatus = "pending" | "uploading" | "done" | "failed";
+type FileStatus = "pending" | "uploading" | "mirror_pending" | "done" | "failed";
 
 interface QueueItem {
   id: string;
@@ -15,6 +16,7 @@ interface QueueItem {
   preview: string;
   status: FileStatus;
   progress: number;
+  kindredPhotoId?: string;
   photoId?: string;
   error?: string;
   processed: boolean;
@@ -35,10 +37,6 @@ interface Album {
 const ACCEPT = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 const MAX_SIZE = 200 * 1024 * 1024; // 200 MB Flickr limit
 
-function fileId() {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
-
 function humanSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -56,6 +54,7 @@ export default function UploadPage() {
   const [uploading, setUploading] = useState(false);
   const [aborted, setAborted] = useState(false);
   const abortRef = useRef(false);
+  const currentUpload = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -71,6 +70,8 @@ export default function UploadPage() {
   // Summary counters
   const totalCount = queue.length;
   const doneCount = queue.filter((q) => q.status === "done").length;
+  const mirrorPending = queue.filter((q) => q.status === "mirror_pending");
+  const [checkingMirrors, setCheckingMirrors] = useState(false);
   const failedCount = queue.filter((q) => q.status === "failed").length;
   const processedCount = queue.filter((q) => q.processed).length;
 
@@ -125,7 +126,7 @@ export default function UploadPage() {
       if (!ACCEPT.includes(file.type)) continue;
       if (file.size > MAX_SIZE) continue;
       newItems.push({
-        id: fileId(),
+        id: crypto.randomUUID(),
         file,
         title: stripExt(file.name),
         preview: URL.createObjectURL(file),
@@ -185,91 +186,68 @@ export default function UploadPage() {
     [addFiles]
   );
 
-  /* ── Upload one file ─────────────────────────────────────────────── */
-
-  async function uploadOne(item: QueueItem): Promise<{ photoId?: string; error?: string }> {
-    const formData = new FormData();
-    formData.append("title", item.title);
-    formData.append("photo", item.file);
-
-    const xhr = new XMLHttpRequest();
-    const result = await new Promise<{ photoId?: string; error?: string }>((resolve) => {
-      xhr.upload.addEventListener("progress", (e) => {
-        if (e.lengthComputable) {
-          const pct = Math.round((e.loaded / e.total) * 100);
-          setQueue((prev) =>
-            prev.map((q) => (q.id === item.id ? { ...q, progress: pct } : q))
-          );
-        }
-      });
-
-      xhr.addEventListener("load", () => {
-        let parsed: { photo_id?: string; detail?: string; error?: string } = {};
-        try { parsed = JSON.parse(xhr.responseText); } catch { /* handled below */ }
-        if (xhr.status >= 200 && xhr.status < 300 && parsed.photo_id) {
-          resolve({ photoId: parsed.photo_id });
-          return;
-        }
-        resolve({ error: parsed.detail || parsed.error || `Upload failed (${xhr.status})` });
-      });
-
-      xhr.addEventListener("error", () => resolve({ error: "Network error during upload" }));
-      xhr.addEventListener("abort", () => resolve({ error: "Upload cancelled" }));
-
-      const query = albumRef ? `?album_id=${encodeURIComponent(albumRef)}` : "";
-      xhr.open("POST", `${BACKEND}/photos/upload${query}`);
-      xhr.send(formData);
-    });
-
-    return result;
-  }
-
-  /* ── Batch upload ────────────────────────────────────────────────── */
-
   async function startUpload() {
     abortRef.current = false;
     setAborted(false);
     setUploading(true);
 
-    const pending = queue.filter((q) => q.status === "pending" || q.status === "failed");
-
-    for (const item of pending) {
-      if (abortRef.current) break;
-
-      // Mark uploading
-      setQueue((prev) =>
-        prev.map((q) => (q.id === item.id ? { ...q, status: "uploading" as FileStatus, progress: 0, error: undefined } : q))
-      );
-
-      const result = await uploadOne(item);
-
-      if (result.photoId) {
-        setQueue((prev) =>
-          prev.map((q) =>
-            q.id === item.id
-              ? { ...q, status: "done" as FileStatus, progress: 100, photoId: result.photoId }
-              : q
-          )
-        );
-
-        // The backend starts ML processing after the NAS and Flickr copies are safe.
-      } else {
-        setQueue((prev) =>
-          prev.map((q) =>
-            q.id === item.id
-              ? { ...q, status: "failed" as FileStatus, error: result.error }
-              : q
-          )
-        );
+    try {
+      for (const item of queue.filter((item) => item.status === "pending" || item.status === "failed")) {
+        if (abortRef.current) break;
+        const controller = new AbortController();
+        currentUpload.current = controller;
+        const update = (updates: Partial<QueueItem>) =>
+          setQueue((current) => current.map((entry) => entry.id === item.id ? { ...entry, ...updates } : entry));
+        update({ status: "uploading", progress: 0, error: undefined });
+        try {
+          const receipt = await uploadBackup(item.file, item.id, item.title, albumRef,
+            (progress) => update({ progress }), controller.signal);
+          update({ status: receipt.flickrPhotoId ? "done" : "mirror_pending", progress: 100,
+            kindredPhotoId: receipt.kindredPhotoId, photoId: receipt.flickrPhotoId });
+        } catch (error) {
+          update(controller.signal.aborted
+            ? { status: "pending" }
+            : { status: "failed", error: error instanceof Error ? error.message : "Upload failed" });
+        } finally {
+          currentUpload.current = null;
+        }
       }
+    } finally {
+      setUploading(false);
     }
+  }
 
-    setUploading(false);
+  async function refreshMirrors() {
+    if (checkingMirrors) return;
+    setCheckingMirrors(true);
+    try {
+      for (let start = 0; start < mirrorPending.length; start += 500) {
+        const batch = mirrorPending.slice(start, start + 500);
+        const response = await fetch(`${BACKEND}/photos/backup-status`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kindred_photo_ids: batch.map((item) => item.kindredPhotoId) }),
+        });
+        if (!response.ok) throw new Error("Could not check the Flickr copies. Try again.");
+        const result: { items: { kindred_photo_id: string; flickr_photo_id?: string; cleanup_safe: boolean }[] } = await response.json();
+        const complete = new Map(result.items.filter((item) => item.cleanup_safe && item.flickr_photo_id)
+          .map((item) => [item.kindred_photo_id, item.flickr_photo_id]));
+        setQueue((current) => current.map((item) => {
+          const photoId = item.kindredPhotoId && complete.get(item.kindredPhotoId);
+          return item.status === "mirror_pending" && photoId ? { ...item, status: "done", photoId } : item;
+        }));
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not check the Flickr copies.";
+      setQueue((current) => current.map((item) => item.status === "mirror_pending" ? { ...item, error: message } : item));
+    } finally {
+      setCheckingMirrors(false);
+    }
   }
 
   function cancelUpload() {
     abortRef.current = true;
     setAborted(true);
+    currentUpload.current?.abort();
   }
 
   function clearDone() {
@@ -282,7 +260,7 @@ export default function UploadPage() {
   const hasPending = queue.some((q) => q.status === "pending" || q.status === "failed");
   const allDone = queue.length > 0 && queue.every((q) => q.status === "done");
   const overallProgress =
-    totalCount > 0 ? Math.round(((doneCount + failedCount) / totalCount) * 100) : 0;
+    totalCount > 0 ? Math.round(((doneCount + failedCount + mirrorPending.length) / totalCount) * 100) : 0;
 
   /* ── Render ──────────────────────────────────────────────────────── */
 
@@ -361,12 +339,21 @@ export default function UploadPage() {
               <div className="upload-total-fill" style={{ width: `${overallProgress}%` }} />
             </div>
             <span className="upload-total-label">
-              {doneCount + failedCount} / {totalCount} photos
+              {doneCount + failedCount + mirrorPending.length} / {totalCount} photos
             </span>
           </div>
         )}
 
         {/* Summary banner */}
+        {mirrorPending.length > 0 && !uploading && (
+          <div className="upload-complete-banner" role="status">
+            <span>{mirrorPending.length} saved to NAS, waiting for Flickr.</span>{" "}
+            <button type="button" onClick={() => void refreshMirrors()} disabled={checkingMirrors}>
+              {checkingMirrors ? "Checking…" : "Check Flickr copies"}
+            </button>
+          </div>
+        )}
+
         {allDone && !uploading && (
           <div className="upload-summary">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -511,6 +498,9 @@ export default function UploadPage() {
                             <span className="upload-processed-badge">ML processed</span>
                           )}
                         </span>
+                      )}
+                      {item.status === "mirror_pending" && (
+                        <span className="upload-status-pending">{item.error ?? "Saved to NAS. Waiting for Flickr."}</span>
                       )}
                       {item.status === "failed" && (
                         <span className="upload-status-failed">

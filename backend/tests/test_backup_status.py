@@ -47,6 +47,22 @@ class BackupStatusTests(unittest.TestCase):
         self.assertFalse(items[0]["cleanup_safe"])
         self.assertFalse(items[1]["cleanup_safe"])
 
+    def test_kindred_receipt_keeps_pending_video_and_returns_flickr_id_when_ready(self):
+        pending_id, mirrored_id = uuid.uuid4(), uuid.uuid4()
+        items = build_backup_status_items([], [
+            {"kindred_photo_id": pending_id, "flickr_photo_id": None,
+             "nas_status": "available", "flickr_status": "pending"},
+            {"kindred_photo_id": mirrored_id, "flickr_photo_id": "flickr-video",
+             "nas_status": "available", "flickr_status": "available"},
+        ], kindred_ids=[str(mirrored_id), str(pending_id)])
+
+        self.assertEqual([item["kindred_photo_id"] for item in items], [str(mirrored_id), str(pending_id)])
+        self.assertEqual(items[0]["flickr_photo_id"], "flickr-video")
+        self.assertTrue(items[0]["cleanup_safe"])
+        self.assertEqual(items[1]["flickr_status"], "pending")
+        self.assertIsNone(items[1]["flickr_photo_id"])
+        self.assertFalse(items[1]["cleanup_safe"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -128,7 +128,6 @@ function JoinContent() {
         <BrandMark />
 
         <div style={{ marginTop: 32 }}>
-          <div className="join-eyebrow">You&apos;re invited</div>
           <h1 className="join-headline">
             Join the family archive.
           </h1>

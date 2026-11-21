@@ -16,11 +16,13 @@ export function isThumbnailRequest(path: string, query: URLSearchParams) {
     : ["s", "q", "t", "m", "n", "z"].includes(query.get("size") || "");
 }
 
-const CATALOG_READ = /^(?:health|app-config|stats|locations|albums(?:\/[^/]+)?|favorites(?:\/count)?|library\/(?:photos|years|counts|day-labels)|photos\/[^/]+\/(?:metadata|detections)|clusters\/(?:named|[^/]+\/summary))$/;
+const CATALOG_READ = /^(?:health|app-config|stats|locations|albums(?:\/[^/]+)?|favorites(?:\/count)?|library\/(?:photos|years|counts|day-labels|junk-settings)|photos\/[^/]+\/(?:metadata|detections)|clusters\/(?:named|[^/]+\/summary))$/;
 
 export function catalogRequest(method: string, path: string, query: URLSearchParams) {
   if (path.startsWith("auth/")) return true;
   if (/^photos\/[^/]+\/favorite$/.test(path) && ["PUT", "DELETE"].includes(method)) return true;
+  if (path === "library/junk-settings" && method === "PATCH") return true;
+  if (method === "PUT" && /^photos\/[^/]+\/keep-in-library$/.test(path)) return true;
   if (method !== "GET") return false;
   if (path === "search") return query.get("mode") === "quick" || !query.get("q");
   return CATALOG_READ.test(path) || isThumbnailRequest(path, query);

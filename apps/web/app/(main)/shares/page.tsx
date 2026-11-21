@@ -133,7 +133,6 @@ export default function SharesPage() {
 
   return (
     <main className="kx-page" style={{ maxWidth: 1000 }}>
-      <span className="kx-eyebrow">Shared</span>
       <h1 className="kx-title">What has left the house.</h1>
       <p className="kx-lede">
         Every link you have handed out, what it points at, and how to take it back.

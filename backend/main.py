@@ -5,6 +5,7 @@ Kindred backend — FastAPI + PostgreSQL/pgvector
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
+from anyio.from_thread import run as run_from_worker_thread
 from pydantic import BaseModel, Field
 from typing import Literal, Optional, List
 from functools import lru_cache
@@ -27,6 +28,7 @@ from psycopg2.extras import RealDictCursor, execute_values
 from pgvector.psycopg2 import register_vector
 from datetime import datetime, timedelta, timezone
 from db_migrations import apply_migrations
+from library_junk import JunkMode
 from storage import LocalStorageProvider
 from storage.local import managed_originals
 from backup_status import build_backup_status_items
@@ -40,6 +42,7 @@ FLICKR_SECRET = os.environ.get("FLICKR_SECRET", "")
 FLICKR_OAUTH_TOKEN = os.environ.get("FLICKR_OAUTH_TOKEN", "")
 FLICKR_OAUTH_SECRET = os.environ.get("FLICKR_OAUTH_SECRET", "")
 FLICKR_USER_ID = os.environ.get("FLICKR_USER_ID", "")
+HOUSEHOLD_FLICKR_USER_ID = os.environ.get("KINDRED_HOUSEHOLD_FLICKR_USER_ID", "").strip()
 SCAN_SECRET = os.environ.get("SCAN_SECRET", "")
 API_KEY = os.environ.get("API_KEY", "")
 PHOTO_STORAGE_ROOT = os.environ.get("PHOTO_STORAGE_ROOT", "")
@@ -299,6 +302,8 @@ def db_query(sql, params=None, fetch=True):
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             if sql.lstrip().startswith('/*kindred-catalog-aggregate*/'):
                 cur.execute("SET LOCAL work_mem='128MB'")
+                # The managed database has limited shared memory for parallel hash joins.
+                cur.execute("SET LOCAL max_parallel_workers_per_gather=0")
             cur.execute(sql, params)
             if fetch:
                 result = cur.fetchall()
@@ -398,24 +403,14 @@ def validate_api_key(raw_key: str) -> dict | None:
     return None
 
 def get_flickr_credentials() -> dict | None:
-    """Get Flickr OAuth credentials from admin user in DB, falling back to env vars."""
-    rows = db_query(
-        "SELECT flickr_user_id, flickr_oauth_token, flickr_oauth_secret FROM users WHERE role = 'admin' AND flickr_user_id IS NOT NULL AND flickr_oauth_token IS NOT NULL ORDER BY updated_at DESC LIMIT 1"
-    )
-    if rows and rows[0].get("flickr_oauth_token") and rows[0].get("flickr_oauth_secret"):
-        return {
-            "user_id": rows[0]["flickr_user_id"],
-            "oauth_token": rows[0]["flickr_oauth_token"],
-            "oauth_secret": rows[0]["flickr_oauth_secret"],
-        }
-    # Fall back to env vars for backward compat
-    if FLICKR_OAUTH_TOKEN and FLICKR_OAUTH_SECRET:
-        return {
-            "user_id": FLICKR_USER_ID,
-            "oauth_token": FLICKR_OAUTH_TOKEN,
-            "oauth_secret": FLICKR_OAUTH_SECRET,
-        }
-    return None
+    from household_flickr import credentials
+
+    return credentials(db_query, HOUSEHOLD_FLICKR_USER_ID, {
+        "user_id": FLICKR_USER_ID,
+        "oauth_token": FLICKR_OAUTH_TOKEN,
+        "oauth_secret": FLICKR_OAUTH_SECRET,
+        "verified": False,
+    })
 
 # ── Lazy model init ───────────────────────────────────────────────────────────
 _face_app = None
@@ -482,7 +477,8 @@ class AnalyzeRequest(BaseModel):
     photos: list[dict]
 
 class BackupStatusRequest(BaseModel):
-    flickr_photo_ids: list[str]
+    flickr_photo_ids: list[str] = Field(default_factory=list)
+    kindred_photo_ids: list[uuid.UUID] = Field(default_factory=list)
 
 class ResumableUploadRequest(BaseModel):
     client_upload_id: str
@@ -738,7 +734,42 @@ def get_app_config():
         } if FLICKR_API_KEY else None,
     }
 
+
+@app.get("/health/backup")
+def backup_capacity(response: Response, user=Depends(get_current_user)):
+    """Report how many new uploads this NAS can accept from one client."""
+    from throttle import read_pressure
+
+    response.headers["Cache-Control"] = "private, no-store"
+    try:
+        configured = max(1, min(4, int(os.getenv("KINDRED_NAS_UPLOAD_LIMIT", "4"))))
+    except ValueError:
+        configured = 4
+    pressure = read_pressure()
+    if pressure is None:
+        return {"upload_limit": 1, "state": "unknown"}
+    if pressure.hurting or pressure.cpu_some >= 85:
+        return {"upload_limit": 1, "state": "busy"}
+    if not pressure.comfortable or pressure.cpu_some >= 60:
+        return {"upload_limit": min(configured, 2), "state": "moderate"}
+    return {"upload_limit": configured, "state": "available"}
+
 # ── Auth endpoints ───────────────────────────────────────────────────────────
+
+async def authorize_flickr_sign_in(request, user_id, token, token_secret):
+    bridge_key = request.headers.get("X-API-Key", "")
+    if API_KEY and secrets.compare_digest(bridge_key.encode(), API_KEY.encode()):
+        return
+    if not (FLICKR_API_KEY and FLICKR_SECRET and token and token_secret):
+        raise HTTPException(401, "Verified Flickr authorization is required")
+    credentials = {"user_id": user_id, "oauth_token": token, "oauth_secret": token_secret}
+    try:
+        identity = await asyncio.wait_for(flickr_api({"method": "flickr.test.login"}, creds=credentials), timeout=10)
+    except (HTTPException, TimeoutError):
+        raise HTTPException(401, "Flickr authorization could not be verified") from None
+    if identity.get("user", {}).get("id") != user_id:
+        raise HTTPException(401, "Flickr authorization could not be verified")
+
 
 class SetupRequest(BaseModel):
     username: str
@@ -748,11 +779,13 @@ class SetupRequest(BaseModel):
     flickr_oauth_secret: Optional[str] = None
 
 @app.post("/auth/setup")
-def auth_setup(req: SetupRequest):
+def auth_setup(req: SetupRequest, request: FastAPIRequest):
     """First-run admin creation. Only works if no users exist."""
     rows = db_query("SELECT COUNT(*) as cnt FROM users")
     if rows and rows[0]["cnt"] > 0:
         raise HTTPException(409, "Setup already complete — admin user exists")
+    run_from_worker_thread(authorize_flickr_sign_in, request, req.flickr_user_id,
+                           req.flickr_oauth_token, req.flickr_oauth_secret)
     user_rows = db_query(
         """INSERT INTO users (username, display_name, role, flickr_user_id, flickr_oauth_token, flickr_oauth_secret)
            VALUES (%s, %s, 'admin', %s, %s, %s) RETURNING id, username, display_name, role""",
@@ -776,8 +809,10 @@ class FlickrLoginRequest(BaseModel):
     flickr_oauth_secret: Optional[str] = None
 
 @app.post("/auth/flickr-login")
-def auth_flickr_login(req: FlickrLoginRequest):
+def auth_flickr_login(req: FlickrLoginRequest, request: FastAPIRequest):
     """Admin re-login via Flickr OAuth. Finds admin by flickr_user_id and refreshes tokens."""
+    run_from_worker_thread(authorize_flickr_sign_in, request, req.flickr_user_id,
+                           req.flickr_oauth_token, req.flickr_oauth_secret)
     rows = db_query(
         "SELECT id, username, display_name, role, avatar_photo_id, avatar_upload IS NOT NULL as has_avatar_upload FROM users WHERE flickr_user_id = %s AND role = 'admin'",
         (req.flickr_user_id,),
@@ -2066,18 +2101,19 @@ def get_clusters(category: str):
 
 @app.get("/clusters/{category}/summary")
 def get_clusters_summary(category: str, sort_visual: bool = False, limit: int = 30, offset: int = 0,
-                         q: str = "", compact: bool = False):
+                         q: str = "", compact: bool = False,
+                         name_state: Literal["named", "unnamed"] | None = None):
     """Lightweight summary — single query, no N+1. sort_visual groups unnamed by visual similarity.
     Optional q parameter for fuzzy name search using pg_trgm similarity."""
-    if compact and limit > 0 and not sort_visual and not q.strip():
+    if compact and limit > 0 and not sort_visual and (name_state or not q.strip()):
         import cluster_browse
 
         limit, offset = min(limit, 200), max(offset, 0)
-        cache_key = f"cluster-browse:{category}:{offset}:{limit}"
+        cache_key = f"cluster-browse:{category}:{offset}:{limit}:{name_state}:{q.strip()[:120]}"
         cached = get_cached(cache_key, ttl_seconds=30)
         if cached is not None:
             return cached
-        result = cluster_browse.summary(db_query, category, limit, offset)
+        result = cluster_browse.summary(db_query, category, limit, offset, name_state=name_state, name=q.strip()[:120])
         set_cached(cache_key, result)
         return result
 
@@ -3049,12 +3085,16 @@ def record_people_tags(photo_id: str, names, source: str = "google_takeout") -> 
 
 
 def _existing_flickr_copy(kindred_photo_id: str) -> str | None:
+    credentials = get_flickr_credentials()
+    if not credentials:
+        return None
     rows = db_query(
         """
         SELECT provider_key FROM photo_copies
         WHERE photo_id = %s AND provider = 'flickr' AND status = 'available'
+          AND provider_owner_id = %s
         """,
-        (kindred_photo_id,),
+        (kindred_photo_id, credentials["user_id"]),
     )
     return rows[0]["provider_key"] if rows else None
 
@@ -3105,25 +3145,146 @@ def _set_replication_status(job_id: int, status: str, error: str | None = None) 
     )
 
 
-def _record_flickr_copy(kindred_photo_id: str, flickr_photo_id: str, owner_id: str) -> None:
-    remote_url = (
-        f"https://www.flickr.com/photos/{owner_id}/{flickr_photo_id}"
-        if owner_id else None
+def _queue_phone_photo_mirror(kindred_photo_id: str) -> None:
+    db_query(
+        """
+        INSERT INTO replication_jobs (photo_id, source_provider, target_provider, phone_backup)
+        VALUES (%s, 'nas', 'flickr', true)
+        ON CONFLICT (photo_id) WHERE phone_backup DO NOTHING
+        """,
+        (kindred_photo_id,),
+        fetch=False,
     )
+
+
+async def _mirror_next_phone_photo(creds: dict) -> bool:
+    rows = await asyncio.to_thread(db_query, """
+        SELECT j.id, j.attempts, j.photo_id, p.original_filename, p.title, p.description,
+               p.taken_at, p.latitude, p.longitude, n.provider_key, n.byte_size
+        FROM replication_jobs j
+        JOIN photos p ON p.id = j.photo_id
+        JOIN photo_copies n ON n.photo_id = j.photo_id
+          AND n.provider = 'nas' AND n.status = 'available'
+        WHERE j.phone_backup AND j.status IN ('pending', 'retry', 'running')
+          AND j.next_attempt_at <= now()
+        ORDER BY j.next_attempt_at, j.id
+        LIMIT 1
+        """)
+    if not rows:
+        return False
+    job = rows[0]
+    photo_id = str(job["photo_id"])
+    await asyncio.to_thread(_set_replication_status, job["id"], "running")
+    try:
+        flickr_id = await asyncio.to_thread(_existing_flickr_copy, photo_id)
+        if not flickr_id:
+            provider = LocalStorageProvider(PHOTO_STORAGE_ROOT)
+            path = await asyncio.to_thread(provider.resolve_local_path, job["provider_key"])
+            if path is None or path.stat().st_size != job["byte_size"]:
+                raise FileNotFoundError("NAS copy is unavailable")
+            tag = "kindred:backup=" + photo_id.replace("-", "")
+            if job["attempts"]:
+                matches = await flickr_api({
+                    "method": "flickr.photos.search", "user_id": creds["user_id"],
+                    "machine_tags": tag, "per_page": 2,
+                }, creds=creds)
+                found = matches.get("photos", {}).get("photo", [])
+                if len(found) > 1:
+                    await asyncio.to_thread(_set_replication_status, job["id"], "failed",
+                                            "multiple_flickr_copies")
+                    return True
+                if found:
+                    flickr_id = found[0]["id"]
+            if not flickr_id:
+                import shutil
+                import tempfile
+                with tempfile.TemporaryDirectory(prefix="kindred-flickr-") as directory:
+                    upload_path = path
+                    if path.suffix.lower() in {".heic", ".heif"}:
+                        upload_path = Path(directory) / "original"
+                        await asyncio.to_thread(shutil.copyfile, path, upload_path)
+                    flickr_id = await asyncio.wait_for(_upload_to_flickr(
+                        str(upload_path), job["original_filename"], job["title"] or "",
+                        job["description"] or "", creds, tags=tag,
+                    ), timeout=180)
+            await asyncio.to_thread(_record_flickr_copy, photo_id, flickr_id, creds["user_id"])
+    except Exception as exc:
+        await asyncio.to_thread(_set_replication_status, job["id"], "retry", type(exc).__name__)
+        return True
+
+    await asyncio.to_thread(_set_replication_status, job["id"], "done")
+    try:
+        if job["taken_at"]:
+            await _flickr_set_dates(flickr_id, int(job["taken_at"].timestamp()), creds)
+        if job["latitude"] is not None and job["longitude"] is not None:
+            await _flickr_set_location(flickr_id, job["latitude"], job["longitude"], creds)
+        pending_albums = await asyncio.to_thread(db_query, """
+            SELECT a.* FROM albums a JOIN album_photos ap ON ap.album_id = a.id
+            WHERE ap.photo_id = %s AND ap.flickr_synced_at IS NULL
+            """, (photo_id,))
+        for album in pending_albums:
+            await _add_photo_to_album_everywhere(album, photo_id, flickr_id,
+                                                job["original_filename"], creds)
+    except Exception as exc:
+        print(f"[backup] optional Flickr metadata could not be applied: {type(exc).__name__}")
+    return True
+
+
+async def _phone_flickr_worker() -> None:
+    while True:
+        lock_conn = None
+        delay = 15
+        try:
+            creds = await asyncio.to_thread(get_flickr_credentials)
+            if creds and creds.get("verified"):
+                lock_conn = await asyncio.to_thread(get_db)
+                lock_conn.autocommit = True
+                with lock_conn.cursor() as cursor:
+                    cursor.execute("SELECT pg_try_advisory_lock(%s)", (4_921_733_109,))
+                    locked = cursor.fetchone()[0]
+                if locked and await _mirror_next_phone_photo(creds):
+                    delay = 1
+        except Exception as exc:
+            print(f"[backup] Flickr queue unavailable: {type(exc).__name__}")
+        finally:
+            if lock_conn:
+                lock_conn.close()
+        await asyncio.sleep(delay)
+
+
+@app.on_event("startup")
+async def _start_phone_flickr_worker():
+    if PHOTO_STORAGE_ROOT and FLICKR_API_KEY and FLICKR_SECRET:
+        app.state.phone_flickr_worker = asyncio.create_task(_phone_flickr_worker())
+
+
+@app.on_event("shutdown")
+async def _stop_phone_flickr_worker():
+    task = getattr(app.state, "phone_flickr_worker", None)
+    if task:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+def _record_flickr_copy(kindred_photo_id: str, flickr_photo_id: str, owner_id: str) -> None:
+    if not owner_id:
+        raise ValueError("The household Flickr destination is required")
+    remote_url = f"https://www.flickr.com/photos/{owner_id}/{flickr_photo_id}"
     db_query(
         """
         INSERT INTO photo_copies (
-            photo_id, provider, provider_key, remote_url, status, last_synced_at
-        ) VALUES (%s, 'flickr', %s, %s, 'available', now())
+            photo_id, provider, provider_key, remote_url, provider_owner_id, status, last_synced_at
+        ) VALUES (%s, 'flickr', %s, %s, %s, 'available', now())
         ON CONFLICT (photo_id, provider) DO UPDATE SET
             provider_key = EXCLUDED.provider_key,
             remote_url = EXCLUDED.remote_url,
+            provider_owner_id = EXCLUDED.provider_owner_id,
             status = 'available',
             last_error = NULL,
             last_synced_at = now(),
             updated_at = now()
         """,
-        (kindred_photo_id, flickr_photo_id, remote_url),
+        (kindred_photo_id, flickr_photo_id, remote_url, owner_id),
         fetch=False,
     )
 
@@ -3172,12 +3333,14 @@ def _validate_resumable_upload(body: ResumableUploadRequest) -> tuple[str, str, 
 
 
 def _resumable_receipt(row: dict) -> dict:
+    kindred_id = str(row["kindred_photo_id"]) if row.get("kindred_photo_id") else None
+    flickr_id = _existing_flickr_copy(kindred_id) if kindred_id else None
     return {
-        "photo_id": row["flickr_photo_id"],
-        "kindred_photo_id": str(row["kindred_photo_id"]) if row.get("kindred_photo_id") else None,
+        "photo_id": flickr_id,
+        "kindred_photo_id": kindred_id,
         "status": "ok",
-        "nas_status": "available" if row.get("kindred_photo_id") else "disabled",
-        "flickr_status": "available" if row.get("flickr_photo_id") else "pending",
+        "nas_status": "available" if kindred_id else "disabled",
+        "flickr_status": "available" if flickr_id else "pending",
         "deduplicated": True,
     }
 
@@ -3208,6 +3371,8 @@ async def _upload_to_flickr(
     description: str,
     creds: dict,
     privacy: str = "family",
+    *,
+    tags: str | None = None,
 ) -> str:
     """Stream a single file from disk to Flickr using the admin's OAuth credentials.
     Returns the Flickr photo ID. Caller is responsible for cleaning up file_path.
@@ -3216,6 +3381,8 @@ async def _upload_to_flickr(
     import hashlib
     import time as _t
     import urllib.parse
+
+    await _verify_household_flickr_destination(creds)
 
     ext = os.path.splitext(filename)[1].lower()
     if ext in VIDEO_EXTENSIONS:
@@ -3266,6 +3433,8 @@ async def _upload_to_flickr(
         "is_friend": is_friend,
         "is_family": is_family,
     }
+    if tags:
+        flickr_params["tags"] = tags
 
     # Build OAuth header (POST method for upload)
     oauth_params = {
@@ -3346,74 +3515,71 @@ def start_resumable_upload(
         if not album:
             raise HTTPException(404, f"Album '{body.album_id}' not found")
 
-    rows = db_query(
-        "SELECT * FROM upload_sessions WHERE client_upload_id = %s",
-        (client_upload_id,),
-    )
-    if rows:
-        row = rows[0]
-        if str(row["user_id"]) != str(user_id):
-            raise HTTPException(409, "Upload ID belongs to another account")
-        if row["original_filename"] != filename or int(row["byte_size"]) != body.byte_size:
-            raise HTTPException(409, "Upload ID was already used for a different file")
-
-        if row["status"] != "completed" and row["expires_at"] < datetime.now(timezone.utc):
-            try:
-                os.unlink(row["temp_path"])
-            except FileNotFoundError:
-                pass
-            db_query(
-                "DELETE FROM upload_sessions WHERE id = %s AND user_id = %s",
-                (str(row["id"]), user_id),
-                fetch=False,
-            )
-        else:
-            # Recover a finalization abandoned by a stopped server process.
-            if (
-                row["status"] == "finalizing"
-                and row["updated_at"] < datetime.now(timezone.utc) - timedelta(hours=2)
-            ):
-                updated = db_query(
-                    """
-                    UPDATE upload_sessions
-                    SET status = 'ready', updated_at = now()
-                    WHERE id = %s
-                    RETURNING *
-                    """,
-                    (str(row["id"]),),
-                )
-                row = updated[0]
-            return _resumable_session_response(row)
-
-    staging_directory = Path(PHOTO_STORAGE_ROOT) / ".uploads"
-    staging_directory.mkdir(parents=True, exist_ok=True)
-    upload_id = str(uuid.uuid4())
-    temp_path = str(staging_directory / f"{upload_id}.part")
-    Path(temp_path).touch(exist_ok=False)
+    staged_path = None
+    expired_path = None
+    conn = get_db()
     try:
-        rows = db_query(
-            """
-            INSERT INTO upload_sessions (
-                id, client_upload_id, user_id, original_filename, content_type,
-                byte_size, title, description, taken_at_unix, latitude,
-                longitude, temp_path, album_id
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING *
-            """,
-            (
-                upload_id, client_upload_id, user_id, filename, content_type,
-                body.byte_size, body.title or os.path.splitext(filename)[0],
-                body.description, body.taken_at_unix, body.latitude,
-                body.longitude, temp_path, album["id"] if album else None,
-            ),
-        )
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Retries can arrive before the first response. Serialize creation
+            # even when the row doesn't exist yet, then lock it against chunks.
+            cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, %s))",
+                        (client_upload_id, 4_921_733_111))
+            cur.execute("SELECT * FROM upload_sessions WHERE client_upload_id = %s FOR UPDATE",
+                        (client_upload_id,))
+            row = cur.fetchone()
+            now = datetime.now(timezone.utc)
+            if row:
+                if str(row["user_id"]) != str(user_id):
+                    raise HTTPException(409, "Upload ID belongs to another account")
+                if row["original_filename"] != filename or int(row["byte_size"]) != body.byte_size:
+                    raise HTTPException(409, "Upload ID was already used for a different file")
+
+                if row["status"] != "completed" and row["expires_at"] < now:
+                    expired_path = Path(row["temp_path"])
+                    cur.execute("DELETE FROM upload_sessions WHERE id = %s", (row["id"],))
+                    row = None
+                elif row["status"] == "finalizing" and row["updated_at"] < now - timedelta(hours=2):
+                    cur.execute("""UPDATE upload_sessions
+                        SET status = 'ready', updated_at = now()
+                        WHERE id = %s RETURNING *""", (row["id"],))
+                    row = cur.fetchone()
+
+            if row is None:
+                staging_directory = Path(PHOTO_STORAGE_ROOT) / ".uploads"
+                staging_directory.mkdir(parents=True, exist_ok=True)
+                upload_id = str(uuid.uuid4())
+                temp_path = staging_directory / f"{upload_id}.part"
+                temp_path.touch(exist_ok=False)
+                staged_path = temp_path
+                cur.execute("""
+                    INSERT INTO upload_sessions (
+                        id, client_upload_id, user_id, original_filename, content_type,
+                        byte_size, title, description, taken_at_unix, latitude,
+                        longitude, temp_path, album_id
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING *
+                    """, (
+                        upload_id, client_upload_id, user_id, filename, content_type,
+                        body.byte_size, body.title or os.path.splitext(filename)[0],
+                        body.description, body.taken_at_unix, body.latitude,
+                        body.longitude, str(temp_path), album["id"] if album else None,
+                    ))
+                row = cur.fetchone()
+        conn.commit()
     except Exception:
-        try:
-            os.unlink(temp_path)
-        except FileNotFoundError:
-            pass
+        conn.rollback()
+        if staged_path:
+            staged_path.unlink(missing_ok=True)
         raise
-    return _resumable_session_response(rows[0])
+    finally:
+        conn.close()
+
+    if expired_path:
+        try:
+            expired_path.unlink(missing_ok=True)
+        except OSError as exc:
+            print(f"[backup] expired staging cleanup failed: {type(exc).__name__}")
+    return _resumable_session_response(row)
 
 
 @app.put("/uploads/resumable/{upload_id}")
@@ -3498,103 +3664,57 @@ async def append_resumable_upload_chunk(
         conn.close()
 
 
-async def _finalize_resumable_upload(upload_id: str, row: dict, creds: dict) -> None:
-    """Finish NAS/Flickr persistence after the HTTP request has returned."""
-    nas_copy = None
-    replication_job_id = None
+async def _finalize_resumable_upload(upload_id: str, row: dict) -> None:
+    """Finish the NAS copy and queue Flickr independently of the phone."""
     try:
-        nas_copy = _store_nas_original(
-            row["temp_path"], row["original_filename"], row["content_type"],
+        nas_copy = await asyncio.to_thread(
+            _store_nas_original, row["temp_path"], row["original_filename"], row["content_type"],
             row["title"], row["description"], row["taken_at_unix"],
             row["latitude"], row["longitude"], row["client_upload_id"],
         )
         if not nas_copy:
             raise RuntimeError("NAS photo storage is not configured")
-        # What the file itself said, with the session's client-supplied values
-        # as the fallback _store_nas_original already folded in.
-        row = dict(row, taken_at_unix=nas_copy["taken_at_unix"],
-                   latitude=nas_copy["latitude"], longitude=nas_copy["longitude"])
 
-        photo_id = _existing_flickr_copy(nas_copy["kindred_photo_id"])
-        is_video = Path(row['original_filename']).suffix.lower() in VIDEO_EXTENSIONS
-        if not photo_id and is_video:
-            _queue_video(nas_copy, row['title'], row['description'], 'family',
-                         row['taken_at_unix'], row['latitude'], row['longitude'])
-        if not photo_id and not is_video:
-            replication_job_id = _queue_flickr_replication(nas_copy["kindred_photo_id"])
-            _set_replication_status(replication_job_id, "running")
-            photo_id = await _upload_to_flickr(
-                row["temp_path"], row["original_filename"], row["title"],
-                row["description"], creds, privacy="family",
-            )
-            _record_flickr_copy(
-                nas_copy["kindred_photo_id"], photo_id, creds.get("user_id", "")
-            )
-            _set_replication_status(replication_job_id, "done")
-
-        if photo_id and row["taken_at_unix"]:
-            try:
-                await _flickr_set_dates(photo_id, int(row["taken_at_unix"]), creds)
-            except Exception as exc:
-                print(f"[upload] setDates failed for photo {photo_id}: {exc}")
-        if photo_id and row["latitude"] is not None and row["longitude"] is not None:
-            try:
-                await _flickr_set_location(
-                    photo_id, float(row["latitude"]), float(row["longitude"]), creds
-                )
-            except Exception as exc:
-                print(f"[upload] setLocation failed for photo {photo_id}: {exc}")
-
+        kindred_id = nas_copy["kindred_photo_id"]
+        flickr_id = await asyncio.to_thread(_existing_flickr_copy, kindred_id)
         if row.get("album_id"):
-            album = _album_row(str(row["album_id"]))
+            album = await asyncio.to_thread(_album_row, str(row["album_id"]))
             if album:
                 await _add_photo_to_album_everywhere(
-                    album, nas_copy["kindred_photo_id"], photo_id,
-                    row["original_filename"], creds, str(row["user_id"]),
+                    album, kindred_id, None, row["original_filename"], {},
+                    str(row["user_id"]),
                 )
+        if not flickr_id:
+            if Path(row["original_filename"]).suffix.lower() in VIDEO_EXTENSIONS:
+                await asyncio.to_thread(
+                    _queue_video, nas_copy, row["title"], row["description"], "family",
+                    nas_copy["taken_at_unix"], nas_copy["latitude"], nas_copy["longitude"],
+                )
+            else:
+                await asyncio.to_thread(_queue_phone_photo_mirror, kindred_id)
 
-        db_query(
-            """
+        await asyncio.to_thread(db_query, """
             UPDATE upload_sessions
             SET status = 'completed', kindred_photo_id = %s, flickr_photo_id = %s,
                 last_error = NULL, updated_at = now()
             WHERE id = %s
-            """,
-            (nas_copy["kindred_photo_id"], photo_id, upload_id),
-            fetch=False,
-        )
-
-        for candidate in (row["temp_path"], row["temp_path"] + ".jpg"):
-            try:
-                os.unlink(candidate)
-            except FileNotFoundError:
-                pass
-
-        ext = os.path.splitext(row["original_filename"])[1].lower()
-        if ext not in VIDEO_EXTENSIONS:
-            try:
-                await _process_uploaded_photo(photo_id)
-            except Exception as exc:
-                print(f"[upload] processing failed for photo {photo_id}: {exc}")
+            """, (kindred_id, flickr_id, upload_id), False)
     except Exception as exc:
-        if replication_job_id is not None:
-            try:
-                _set_replication_status(replication_job_id, "retry", str(exc)[:1000])
-            except Exception:
-                pass
         try:
-            db_query(
-                """
+            await asyncio.to_thread(db_query, """
                 UPDATE upload_sessions
                 SET status = 'ready', last_error = %s, updated_at = now()
                 WHERE id = %s AND status = 'finalizing'
-                """,
-                (str(exc)[:1000], upload_id),
-                fetch=False,
-            )
+                """, (type(exc).__name__, upload_id), False)
         except Exception as update_exc:
-            print(f"[upload] could not persist finalization failure: {update_exc}")
-        print(f"[upload] resumable finalization failed for {upload_id}: {exc}")
+            print(f"[backup] could not save finalization failure: {type(update_exc).__name__}")
+        print(f"[backup] NAS finalization could not finish: {type(exc).__name__}")
+        return
+
+    try:
+        await asyncio.to_thread(Path(row["temp_path"]).unlink, missing_ok=True)
+    except OSError as exc:
+        print(f"[backup] staging cleanup failed: {type(exc).__name__}")
 
 
 @app.post("/uploads/resumable/{upload_id}/complete")
@@ -3611,10 +3731,6 @@ async def complete_resumable_upload(
         upload_id = str(uuid.UUID(upload_id))
     except ValueError:
         raise HTTPException(400, "Invalid upload ID")
-
-    creds = get_flickr_credentials()
-    if not creds:
-        raise HTTPException(500, "Flickr OAuth not configured — ask your household admin to connect Flickr")
 
     conn = get_db()
     try:
@@ -3658,7 +3774,7 @@ async def complete_resumable_upload(
         raise
     conn.close()
 
-    background_tasks.add_task(_finalize_resumable_upload, upload_id, dict(row), creds)
+    background_tasks.add_task(_finalize_resumable_upload, upload_id, dict(row))
     return _resumable_session_response(row)
 
 
@@ -3691,6 +3807,9 @@ async def upload_photo(
     """
     import tempfile
 
+    if not PHOTO_STORAGE_ROOT:
+        raise HTTPException(503, "NAS storage is required for household backups")
+
     if privacy not in PRIVACY_FLAGS:
         raise HTTPException(400, f"Invalid privacy '{privacy}'. Must be one of: {', '.join(PRIVACY_FLAGS)}")
 
@@ -3710,13 +3829,12 @@ async def upload_photo(
         except ValueError:
             raise HTTPException(400, "client_upload_id must be a UUID")
 
-    creds = get_flickr_credentials()
-    if not creds:
-        raise HTTPException(500, "Flickr OAuth not configured — ask your household admin to connect Flickr")
-
     filename = photo.filename or "upload.jpg"
     if not title:
         title = os.path.splitext(filename)[0]
+    creds = get_flickr_credentials()
+    if not creds and not (PHOTO_STORAGE_ROOT and (privacy == "family" or Path(filename).suffix.lower() in VIDEO_EXTENSIONS)):
+        raise HTTPException(503, "Connect the household Flickr account to use this upload mode")
 
     # Spool the upload to a tempfile in chunks, enforcing the size limit as we go.
     # This keeps memory bounded even for 1GB videos — UploadFile would otherwise
@@ -3743,7 +3861,8 @@ async def upload_photo(
         if total == 0:
             raise HTTPException(400, "Empty file")
 
-        nas_copy = _store_nas_original(
+        nas_copy = await asyncio.to_thread(
+            _store_nas_original,
             tmp_path, filename, _content_type_for_filename(filename), title,
             description, taken_at_unix, latitude, longitude,
             client_upload_id,
@@ -3766,6 +3885,22 @@ async def upload_photo(
                         flickr_status='available' if photo_id else 'pending',
                         deduplicated=nas_copy['deduplicated'],
                         album_id=str(album['id']) if album else None, album=album_result)
+        if nas_copy and privacy == "family":
+            kindred_id = nas_copy["kindred_photo_id"]
+            flickr_id = _existing_flickr_copy(kindred_id)
+            album_result = None
+            if album:
+                album_result = await _add_photo_to_album_everywhere(
+                    album, kindred_id, flickr_id, filename, creds or {}, user.get("user_id"),
+                )
+            if not flickr_id:
+                _queue_phone_photo_mirror(kindred_id)
+            return dict(
+                photo_id=flickr_id, kindred_photo_id=kindred_id, status="ok",
+                nas_status="available", flickr_status="available" if flickr_id else "pending",
+                deduplicated=nas_copy["deduplicated"],
+                album_id=str(album["id"]) if album else None, album=album_result,
+            )
         replication_job_id = None
         photo_id = None
         if nas_copy:
@@ -3870,28 +4005,56 @@ def get_photo_backup_status(
     user=Depends(get_current_user),
 ):
     """Verify durable provider copies before a client offers local deletion."""
-    photo_ids = list(dict.fromkeys(body.flickr_photo_ids))
-    if len(photo_ids) > 500:
+    flickr_ids = list(dict.fromkeys(body.flickr_photo_ids))
+    kindred_ids = list(dict.fromkeys(str(photo_id) for photo_id in body.kindred_photo_ids))
+    if len(flickr_ids) + len(kindred_ids) > 500:
         raise HTTPException(400, "Maximum 500 photo IDs per status request")
-    if not photo_ids:
+    if not flickr_ids and not kindred_ids:
         return {"items": []}
+
+    creds = get_flickr_credentials()
 
     rows = db_query(
         """
+        WITH requested AS (
+            SELECT id AS photo_id FROM photos WHERE id = ANY(%s::uuid[])
+            UNION
+            SELECT photo_id FROM photo_copies
+            WHERE provider = 'flickr' AND provider_key = ANY(%s)
+        )
         SELECT flickr.provider_key AS flickr_photo_id,
-               p.id AS kindred_photo_id,
-               flickr.status AS flickr_status,
-               nas.status AS nas_status
-        FROM photo_copies flickr
-        JOIN photos p ON p.id = flickr.photo_id
+               p.photo_id AS kindred_photo_id,
+               COALESCE(flickr.status, job.status) AS flickr_status,
+               nas.status AS nas_status,
+               nas.provider_key AS nas_provider_key,
+               nas.byte_size AS nas_byte_size
+        FROM requested p
+        LEFT JOIN photo_copies flickr
+          ON flickr.photo_id = p.photo_id AND flickr.provider = 'flickr'
+          AND flickr.provider_owner_id = %s
         LEFT JOIN photo_copies nas
-          ON nas.photo_id = p.id AND nas.provider = 'nas'
-        WHERE flickr.provider = 'flickr'
-          AND flickr.provider_key = ANY(%s)
+          ON nas.photo_id = p.photo_id AND nas.provider = 'nas'
+        LEFT JOIN LATERAL (
+            SELECT status FROM replication_jobs
+            WHERE photo_id = p.photo_id AND target_provider = 'flickr'
+            ORDER BY id DESC LIMIT 1
+        ) job ON flickr.provider_key IS NULL
         """,
-        (photo_ids,),
+        (kindred_ids, flickr_ids, creds["user_id"] if creds else None),
     )
-    return {"items": build_backup_status_items(photo_ids, rows)}
+    provider = LocalStorageProvider(PHOTO_STORAGE_ROOT) if PHOTO_STORAGE_ROOT else None
+    for row in rows:
+        if row["nas_status"] != "available":
+            continue
+        key = row["nas_provider_key"]
+        try:
+            path = provider.resolve_local_path(key) if provider and key else None
+            size = row["nas_byte_size"]
+            if path is None or not size or path.stat().st_size != size:
+                row["nas_status"] = "missing"
+        except OSError:
+            row["nas_status"] = "missing"
+    return {"items": build_backup_status_items(flickr_ids, rows, kindred_ids=kindred_ids)}
 
 
 @app.post("/photos/{photo_id}/metadata")
@@ -4140,7 +4303,9 @@ async def search_photos(
     smart: bool = Query(False, description="Let the local model infer facets from the query"),
     limit: int = Query(60, ge=1, le=200),
     mode: Literal["full", "quick", "visual"] = "full",
+    junk: JunkMode = "default",
     request: FastAPIRequest = None,
+    user=Depends(get_current_user),
 ):
     """Return direct matches first, with optional CLIP visual matches."""
     import search_api
@@ -4165,6 +4330,7 @@ async def search_photos(
     facets = search_api.Facets(
         media=media, date_from=date_from, date_to=date_to, date_field=date_field,
         cluster_id=cluster_id, category=category, album_id=album_id,
+        junk="all" if album_id and junk == "default" else junk, viewer_id=user.get("user_id"),
     )
 
     results = []
@@ -4201,7 +4367,7 @@ def _direct_search_matches(query, facets, sort, limit):
                 media=facets.media, date_from=facets.date_from, date_to=facets.date_to,
                 date_field=facets.date_field,
                 cluster_id=match["cluster_id"], category=match["category"],
-                album_id=facets.album_id,
+                album_id=facets.album_id, junk=facets.junk, viewer_id=facets.viewer_id,
             )
             people = search_api.browse(db_query, person_facets, sort=sort, limit=limit)
             for row in people:
@@ -6372,7 +6538,7 @@ def get_pipelines(request: FastAPIRequest, user=Depends(get_current_user)):
     import pipelines
     from library_progress import progress
     snapshot = progress()
-    counts = get_library_counts(user)
+    counts = get_library_counts(user=user)
     source_counts = get_cached('nas_pipeline_counts', ttl_seconds=30)
     if source_counts is None:
         source_counts = db_query('''SELECT count(*) AS registered,
@@ -6393,34 +6559,67 @@ def get_pipelines(request: FastAPIRequest, user=Depends(get_current_user)):
     return {'pipelines': result}
 
 
+@app.get("/admin/indexing-progress")
+def get_admin_indexing_progress(request: FastAPIRequest, admin=Depends(require_admin)):
+    """Expose live NAS worker progress to signed-in household admins."""
+    return get_pipelines(request, user=admin)
+
+
 class FlickrIntegrationRequest(BaseModel):
     oauth_token: str
     oauth_secret: str
-    user_id: str
+    user_id: str = Field(pattern=r"^[A-Za-z0-9@_-]{1,128}$")
+
+
+async def _verify_flickr_identity(creds: dict) -> bool:
+    try:
+        verified = await asyncio.wait_for(flickr_api({"method": "flickr.test.login"}, creds=creds), timeout=30)
+        return verified.get("user", {}).get("id") == creds["user_id"]
+    except (HTTPException, TimeoutError):
+        return False
+
+
+async def _verify_household_flickr_destination(creds: dict) -> None:
+    from household_flickr import connect
+
+    selected = get_flickr_credentials()
+    if not selected or any(selected[key] != creds.get(key) for key in ("user_id", "oauth_token", "oauth_secret")):
+        raise HTTPException(409, "The household Flickr connection changed. Retry this backup.")
+    if selected.get("verified"):
+        return
+    if not HOUSEHOLD_FLICKR_USER_ID:
+        raise HTTPException(503, "Connect the approved household Flickr account before uploading.")
+    if not await _verify_flickr_identity(selected):
+        raise HTTPException(503, "Reconnect the approved household Flickr account before uploading.")
+    if not connect(db_query, selected, HOUSEHOLD_FLICKR_USER_ID):
+        raise HTTPException(409, "The household Flickr connection changed. Retry this backup.")
 
 
 @app.get("/integrations/flickr")
-def flickr_integration_status(admin=Depends(require_admin)):
+def flickr_integration_status(user=Depends(get_current_user)):
     creds = get_flickr_credentials()
-    return {"configured": bool(FLICKR_API_KEY and FLICKR_SECRET),
-            "connected": bool(creds), "user_id": creds.get("user_id") if creds else None}
+    status = {"configured": bool(FLICKR_API_KEY and FLICKR_SECRET),
+              "connected": bool(creds), "verified": bool(creds and creds.get("verified"))}
+    if user["role"] == "admin":
+        status["user_id"] = creds.get("user_id") if creds else None
+    return status
 
 
 @app.post("/integrations/flickr")
 async def connect_flickr_integration(body: FlickrIntegrationRequest, admin=Depends(require_admin)):
+    from household_flickr import connect
+
     if not admin.get("user_id"):
         raise HTTPException(403, "Sign in to your owner account first")
     if not FLICKR_API_KEY or not FLICKR_SECRET:
         raise HTTPException(503, "Configure your installation's Flickr API key first")
     creds = body.model_dump()
-    try:
-        verified = await asyncio.wait_for(flickr_api({"method": "flickr.test.login"}, creds=creds), timeout=30)
-        if verified.get("user", {}).get("id") != body.user_id:
-            raise ValueError("Flickr account mismatch")
-    except Exception:
+    if HOUSEHOLD_FLICKR_USER_ID and body.user_id != HOUSEHOLD_FLICKR_USER_ID:
+        raise HTTPException(409, "Sign in to the configured household Flickr account.")
+    if not await _verify_flickr_identity(creds):
         raise HTTPException(400, "Flickr authorization could not be verified")
-    db_query("UPDATE users SET flickr_user_id=%s, flickr_oauth_token=%s, flickr_oauth_secret=%s, updated_at=now() WHERE id=%s",
-             (body.user_id, body.oauth_token, body.oauth_secret, admin["user_id"]), fetch=False)
+    if not connect(db_query, creds, HOUSEHOLD_FLICKR_USER_ID):
+        raise HTTPException(409, "Reconnect the existing household Flickr account.")
     return {"connected": True, "user_id": body.user_id}
 
 
@@ -6469,8 +6668,10 @@ _library_counts_lock = threading.Lock()
 
 
 @app.get("/library/counts")
-def get_library_counts(user=Depends(get_current_user)):
-    from library_api import counts
+def get_library_counts(view: Literal["storage", "library", "junk"] = "storage", user=Depends(get_current_user)):
+    from library_api import counts, visible_counts
+    if view != "storage":
+        return visible_counts(db_query, "only" if view == "junk" else "default", user.get("user_id"))
     cached = get_cached("library_counts", ttl_seconds=60)
     if cached is not None:
         return cached
@@ -6498,7 +6699,7 @@ def get_library_photos(sort: str = "newest",
                        date_from: str | None = Query(None, description="ISO date, inclusive"),
                        date_to: str | None = Query(None, description="ISO date, inclusive"),
                        min_duration: float | None = Query(None, ge=0, description="Seconds; videos only"),
-                       album_id: str | None = Query(None),
+                       album_id: str | None = Query(None), junk: JunkMode = "default",
                        limit: int = Query(48, ge=1, le=100), user=Depends(get_current_user)):
     from library_api import gallery
     if album_id:
@@ -6507,7 +6708,43 @@ def get_library_photos(sort: str = "newest",
         except ValueError:
             raise HTTPException(400, "Invalid album ID")
     return gallery(db_query, sort, limit, media=media, cursor=cursor,
-                   date_from=date_from, date_to=date_to, min_duration=min_duration, album_id=album_id)
+                   date_from=date_from, date_to=date_to, min_duration=min_duration, album_id=album_id,
+                   junk="all" if album_id and junk == "default" else junk, viewer_id=user.get("user_id"))
+
+
+class JunkSettingsPatch(BaseModel):
+    hide_junk: bool | None = None
+    auto_mark: bool | None = None
+
+
+@app.get("/library/junk-settings")
+def get_junk_settings(user=Depends(get_current_user)):
+    from library_junk import preferences
+    return preferences(db_query, user.get("user_id"))
+
+
+@app.patch("/library/junk-settings")
+def patch_junk_settings(body: JunkSettingsPatch, user=Depends(get_current_user)):
+    from library_junk import set_preferences
+    if body.auto_mark is not None and user["role"] != "admin":
+        raise HTTPException(403, "Only a household owner can change the scanner setting")
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(403, "A household account is required")
+    if body.hide_junk is None and body.auto_mark is None:
+        raise HTTPException(400, "Supply a library preference to update")
+    preferences = set_preferences(db_query, user_id, body.hide_junk, body.auto_mark)
+    if preferences is None:
+        raise HTTPException(404, "Account not found")
+    return preferences
+
+
+@app.put("/photos/{photo_id}/keep-in-library")
+def keep_library_photo(photo_id: uuid.UUID, user=Depends(require_admin)):
+    from library_junk import keep
+    if not keep(db_query, str(photo_id)):
+        raise HTTPException(404, "Marked photo not found")
+    return {"kept": True}
 
 
 @app.get("/favorites")
@@ -6536,6 +6773,22 @@ def get_favorites_count(user=Depends(get_current_user)):
         "SELECT count(*) AS n FROM photo_favorites WHERE user_id = %s", (user_id,)
     )
     return {"count": int(rows[0]["n"])}
+
+
+@app.get("/photos/{photo_id}/favorite")
+def get_favorite(photo_id: str, response: Response, user=Depends(get_current_user)):
+    """Whether the signed-in member has favorited this photo."""
+    from library_api import is_favorite
+
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(403, "A household account is required for favourites")
+    try:
+        photo_id = str(uuid.UUID(photo_id))
+    except ValueError:
+        raise HTTPException(400, "Invalid photo id")
+    response.headers["Cache-Control"] = "private, no-store"
+    return {"photo_id": photo_id, "favorited": is_favorite(db_query, photo_id, user_id)}
 
 
 @app.put("/photos/{photo_id}/favorite")
@@ -6631,17 +6884,20 @@ def remove_favorite(photo_id: str, user=Depends(get_current_user)):
 
 @app.get("/library/years")
 def get_library_years(media: str = Query("all", description="all, photo, or video"),
-                      user=Depends(get_current_user)):
+                      junk: JunkMode = "default", user=Depends(get_current_user)):
     """Every year the library covers, for the year scrubber.
 
     Returned whole rather than derived from the pages fetched so far, so the
     scrubber can show the full span before anything has been scrolled.
     """
     from library_api import years
-    key='library_years_'+media
-    cached=get_cached(key, ttl_seconds=60)
+    from library_junk import preferences
+    if junk == "default" and not preferences(db_query, user.get("user_id"))["hide_junk"]:
+        junk = "all"
+    key = f"library_years_{media}_{junk}"
+    cached = get_cached(key, ttl_seconds=60)
     if cached is None:
-        cached={'years':years(db_query,media=media)}
+        cached = {"years": years(db_query, media=media, junk=junk)}
         set_cached(key,cached)
     return cached
 

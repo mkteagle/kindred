@@ -203,7 +203,8 @@ struct SearchHit: Codable, Identifiable, Hashable, Sendable {
         LibraryPhoto(
             photo_id: photo_id, photo_title: photo_title, date_taken: date_taken,
             media_kind: media_kind, duration_seconds: duration_seconds,
-            flickr_url: flickr_url, thumb_url: nil
+            flickr_url: flickr_url,
+            thumb_url: flickr_url?.hasPrefix("demo://") == true ? flickr_url : nil
         )
     }
 }
@@ -222,6 +223,7 @@ struct SearchResponse: Codable, Sendable {
     let results: [SearchHit]
     let query: String?
     let facets: SearchFacetSummary?
+    let visual_pending: Bool?
 }
 
 // MARK: - Named clusters

@@ -11,8 +11,9 @@ import React, {
   useState,
 } from "react";
 import { useSearchParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useUser } from "@/lib/use-user";
+import { JUNK_LABELS, refreshLibraryVisibility, type JunkReason } from "@/lib/library-junk";
 import { BACKEND, fmt } from "@/lib/constants";
 import { useFavorites } from "@/components/kx/favorites";
 import { OptimizedPhoto } from "@/components/optimized-photo";
@@ -31,6 +32,7 @@ export interface LightboxPhoto {
   /** "video" swaps the still image for a real player. */
   media_kind?: "photo" | "video";
   duration_seconds?: number | null;
+  junk_reason?: JunkReason | null;
 }
 
 interface LightboxState {
@@ -223,6 +225,17 @@ function PhotoLightboxOverlay({
   const shareRef = useRef<HTMLDivElement>(null);
 
   const currentPhoto = photos[index] || null;
+  const queryClient = useQueryClient();
+  const keepPhoto = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`${BACKEND}/photos/${encodeURIComponent(id)}/keep-in-library`, { method: "PUT" });
+      if (!response.ok) throw new Error("Couldn’t keep this photo. Try again.");
+    },
+    onSuccess: () => {
+      refreshLibraryVisibility(queryClient);
+      onClose();
+    },
+  });
   const total = photos.length;
   const hasPrev = index > 0;
   const hasNext = index < total - 1;
@@ -610,12 +623,14 @@ function PhotoLightboxOverlay({
                     Open in Flickr
                   </a>
                 )}
-                {isAdmin && (
-                  <>
-                    <div className="lb-popover-divider" />
-                    <span className="lb-popover-admin-label">ADMIN</span>
-                  </>
-                )}
+                {currentPhoto?.junk_reason && <>
+                  <span className="lb-popover-admin-label">Marked as {JUNK_LABELS[currentPhoto.junk_reason].toLowerCase()}</span>
+                  {isAdmin && <button className="lb-popover-row" disabled={keepPhoto.isPending}
+                    onClick={() => keepPhoto.mutate(photoId)}>
+                    {keepPhoto.isPending ? "Keeping…" : "Keep in Library"}
+                  </button>}
+                  {keepPhoto.isError && keepPhoto.variables === photoId && <p className="lb-popover-row" role="alert">{keepPhoto.error.message}</p>}
+                </>}
               </div>
             )}
           </div>

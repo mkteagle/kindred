@@ -34,12 +34,6 @@ function defaultSettings(): AllSettings {
   return s;
 }
 
-/** Settings left nav items */
-const SETTINGS_NAV = [
-  { href: "/settings", label: "Profile" },
-  { href: "/settings/notifications", label: "Notifications" },
-];
-
 function ChannelPip({ channel, on }: { channel: ChannelId; on: boolean }) {
   const color = CHANNEL_COLORS[channel];
   return (
@@ -112,20 +106,6 @@ export default function NotificationSettingsPage() {
   return (
     <div className="ns-layout">
       {/* Left rail */}
-      <aside className="ns-side">
-        <h4 className="ns-side-head">Settings</h4>
-        {SETTINGS_NAV.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`ns-side-link ${item.href === "/settings/notifications" ? "ns-side-active" : ""}`}
-          >
-            {item.label}
-          </Link>
-        ))}
-      </aside>
-
-      {/* Main */}
       <main className="ns-main">
         <h2 className="ns-h2">Notifications</h2>
         <p className="ns-lede">
@@ -154,7 +134,7 @@ export default function NotificationSettingsPage() {
 
         {/* Quiet hours section */}
         <div className="ns-section">
-          <div className="ns-eyebrow">Quiet hours</div>
+          <h2 className="ns-section-title">Quiet hours</h2>
           <div className="ns-card">
             <div className="ns-quiet-row">
               <div className="ns-cat-info">
@@ -174,8 +154,8 @@ export default function NotificationSettingsPage() {
 
           return (
             <div className="ns-section" key={section.id}>
-              <div className="ns-eyebrow-row">
-                <span className="ns-eyebrow">{section.label}</span>
+              <div className="ns-section-heading">
+                <h2 className="ns-section-title">{section.label}</h2>
                 {section.adminOnly && <span className="ns-admin-pill">ADMIN</span>}
               </div>
               <div className="ns-card">

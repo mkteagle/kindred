@@ -182,7 +182,7 @@ struct NotificationsSettingsView: View {
                     .padding(.top, 4)
 
                 // Quiet hours
-                sectionEyebrow("Quiet hours")
+                sectionLabel("Quiet hours")
                 quietHoursCard
                     .padding(.horizontal, 16)
 
@@ -190,7 +190,7 @@ struct NotificationsSettingsView: View {
                 ForEach(NotificationGroup.allCases, id: \.rawValue) { group in
                     let groupTypes = notifState.typesFor(group: group)
                     if !groupTypes.isEmpty {
-                        sectionEyebrowWithAdmin(group)
+                        sectionLabel(group == .admin ? "Account · admin" : group.rawValue)
                         groupCard(types: groupTypes)
                             .padding(.horizontal, 16)
                     }
@@ -276,32 +276,13 @@ struct NotificationsSettingsView: View {
         .kindredGroupedCard()
     }
 
-    // MARK: - Section Eyebrow
+    // MARK: - Section Label
 
-    private func sectionEyebrow(_ text: String) -> some View {
-        KindredEyebrow(text: text, color: KindredTheme.pine)
+    private func sectionLabel(_ text: String) -> some View {
+        KindredSectionLabel(text: text, color: KindredTheme.pine)
             .padding(.horizontal, 20)
             .padding(.top, 18)
             .padding(.bottom, 6)
-    }
-
-    private func sectionEyebrowWithAdmin(_ group: NotificationGroup) -> some View {
-        HStack(spacing: 8) {
-            KindredEyebrow(text: group == .admin ? "Account \u{00b7} admin" : group.rawValue, color: KindredTheme.pine)
-            if group == .admin {
-                Text("ADMIN")
-                    .font(.mono(8, weight: .semibold))
-                    .tracking(1.2)
-                    .foregroundStyle(KindredTheme.ember)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(KindredTheme.ember.opacity(0.16))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 18)
-        .padding(.bottom, 6)
     }
 
     // MARK: - Group Card
@@ -386,12 +367,12 @@ struct NotificationTypeDetailView: View {
                     .padding(.top, 4)
 
                 // Send via
-                sectionEyebrow("Send via")
+                sectionLabel("Send via")
                 sendViaCard
                     .padding(.horizontal, 16)
 
                 // How often
-                sectionEyebrow("How often")
+                sectionLabel("How often")
                 frequencyGrid
                     .padding(.horizontal, 16)
 
@@ -412,10 +393,7 @@ struct NotificationTypeDetailView: View {
 
     private var previewCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("WHAT YOU\u{2019}LL SEE")
-                .font(.kindredEyebrow)
-                .tracking(1.8)
-                .foregroundStyle(KindredTheme.ember)
+            KindredSectionLabel(text: "Example notification")
 
             // Mini push notification
             HStack(alignment: .top, spacing: 10) {
@@ -607,10 +585,10 @@ struct NotificationTypeDetailView: View {
         )
     }
 
-    // MARK: - Section Eyebrow
+    // MARK: - Section Label
 
-    private func sectionEyebrow(_ text: String) -> some View {
-        KindredEyebrow(text: text, color: KindredTheme.pine)
+    private func sectionLabel(_ text: String) -> some View {
+        KindredSectionLabel(text: text, color: KindredTheme.pine)
             .padding(.horizontal, 20)
             .padding(.top, 18)
             .padding(.bottom, 6)
@@ -771,7 +749,7 @@ final class InboxViewModel {
     }
 
     /// Convert sync logs into inbox items grouped by date
-    func groups(readState: NotificationReadState) -> [(eyebrow: String, items: [InboxItem])] {
+    func groups(readState: NotificationReadState) -> [(title: String, items: [InboxItem])] {
         let calendar = Calendar.current
         let items = allItems(readState: readState)
 
@@ -794,7 +772,7 @@ final class InboxViewModel {
             }
         }
 
-        var result: [(eyebrow: String, items: [InboxItem])] = []
+        var result: [(title: String, items: [InboxItem])] = []
         if !todayItems.isEmpty { result.append(("Today", todayItems)) }
         if !yesterdayItems.isEmpty { result.append(("Yesterday", yesterdayItems)) }
         if !earlierItems.isEmpty { result.append(("Earlier", earlierItems)) }
@@ -845,28 +823,28 @@ struct NotificationInboxView: View {
     /// Callback to push AdminScanView in settings
     var onNavigateToAdminScan: (() -> Void)? = nil
 
-    private var groups: [(eyebrow: String, items: [InboxItem])] {
+    private var groups: [(title: String, items: [InboxItem])] {
         viewModel.groups(readState: readState)
     }
 
-    private var filteredGroups: [(eyebrow: String, items: [InboxItem])] {
+    private var filteredGroups: [(title: String, items: [InboxItem])] {
         switch filter {
         case .all:
             return groups
         case .photos:
             return groups.compactMap { group in
                 let filtered = group.items.filter { [.memory, .together, .sync].contains($0.kind) }
-                return filtered.isEmpty ? nil : (group.eyebrow, filtered)
+                return filtered.isEmpty ? nil : (group.title, filtered)
             }
         case .household:
             return groups.compactMap { group in
                 let filtered = group.items.filter { [.household, .cover].contains($0.kind) }
-                return filtered.isEmpty ? nil : (group.eyebrow, filtered)
+                return filtered.isEmpty ? nil : (group.title, filtered)
             }
         case .admin:
             return groups.compactMap { group in
                 let filtered = group.items.filter { $0.isAdmin }
-                return filtered.isEmpty ? nil : (group.eyebrow, filtered)
+                return filtered.isEmpty ? nil : (group.title, filtered)
             }
         }
     }
@@ -912,13 +890,15 @@ struct NotificationInboxView: View {
                 // Header
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("INBOX \u{00b7} \(unreadCount) NEW")
-                            .font(.kindredEyebrow)
-                            .tracking(1.8)
-                            .foregroundStyle(KindredTheme.ember)
                         Text("Notifications")
                             .font(.display(24, weight: .bold))
                             .foregroundStyle(KindredTheme.ash)
+                            .accessibilityAddTraits(.isHeader)
+                        if unreadCount > 0 {
+                            Text("\(unreadCount) unread")
+                                .font(.kindredCaption)
+                                .foregroundStyle(KindredTheme.inkSecondary)
+                        }
                     }
                     Spacer()
 
@@ -1010,8 +990,8 @@ struct NotificationInboxView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.top, 60)
                         } else {
-                            ForEach(Array(filteredGroups.enumerated()), id: \.element.eyebrow) { _, group in
-                                KindredEyebrow(text: group.eyebrow, color: KindredTheme.pine)
+                            ForEach(Array(filteredGroups.enumerated()), id: \.element.title) { _, group in
+                                KindredSectionLabel(text: group.title, color: KindredTheme.pine)
                                     .padding(.horizontal, 20)
                                     .padding(.top, 10)
                                     .padding(.bottom, 6)

@@ -85,17 +85,11 @@ struct TogetherPickerView: View {
 
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            KindredEyebrow(text: "Find photos with\u{2026}")
-                .padding(.horizontal, 20)
-                .padding(.top, 14)
-
             Text("Pick the people\nin the picture.")
                 .font(.display(28, weight: .bold))
                 .foregroundStyle(KindredTheme.ash)
-                .lineSpacing(-4)
-                .tracking(-0.28)
                 .padding(.horizontal, 20)
-                .padding(.top, 6)
+                .padding(.top, 14)
 
             Text("Choose two or more \u{2014} Kindred will surface every photo where they all appear together.")
                 .font(.kindredCaption)
@@ -204,7 +198,7 @@ struct TogetherPickerView: View {
 
     private var peopleGrid: some View {
         VStack(alignment: .leading, spacing: 0) {
-            KindredEyebrow(text: "Household \u{00b7} \(viewModel.peopleClusters.count) named", color: KindredTheme.pine)
+            KindredSectionLabel(text: "Household \u{00b7} \(viewModel.peopleClusters.count) named", color: KindredTheme.pine)
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
 
@@ -299,7 +293,7 @@ struct TogetherPickerView: View {
     private var recentPairings: some View {
         VStack(alignment: .leading, spacing: 0) {
             if viewModel.peopleClusters.count >= 2 {
-                KindredEyebrow(text: "Recent pairings", color: KindredTheme.pine)
+                KindredSectionLabel(text: "Recent pairings", color: KindredTheme.pine)
                     .padding(.horizontal, 16)
                     .padding(.top, 22)
 
@@ -739,7 +733,7 @@ struct TogetherResultsView: View {
 
     private var suggestedAlternatives: some View {
         VStack(alignment: .leading, spacing: 0) {
-            KindredEyebrow(text: "Try one of these instead", color: KindredTheme.pine)
+            KindredSectionLabel(text: "Try one of these instead", color: KindredTheme.pine)
                 .padding(.horizontal, 20)
                 .padding(.top, 24)
 

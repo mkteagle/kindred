@@ -5,6 +5,9 @@ import { catalogRequest, isR2ThumbnailRedirect } from "../lib/backend-url";
 test("catalog routing sends account, library, and quick search requests to Vercel", () => {
   assert.equal(catalogRequest("POST", "auth/social/exchange", new URLSearchParams()), true);
   assert.equal(catalogRequest("GET", "library/photos", new URLSearchParams()), true);
+  assert.equal(catalogRequest("GET", "library/junk-settings", new URLSearchParams()), true);
+  assert.equal(catalogRequest("PATCH", "library/junk-settings", new URLSearchParams()), true);
+  assert.equal(catalogRequest("PUT", "photos/321/keep-in-library", new URLSearchParams()), true);
   assert.equal(catalogRequest("GET", "search", new URLSearchParams("q=bees&mode=quick")), true);
   assert.equal(catalogRequest("GET", "search", new URLSearchParams("q=bees&mode=visual")), false);
 });

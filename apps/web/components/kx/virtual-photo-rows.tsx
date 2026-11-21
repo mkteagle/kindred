@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { JUNK_LABELS } from "@/lib/library-junk";
 import { OptimizedPhoto } from "@/components/optimized-photo";
 import { KxDayHeader } from "./day-header";
 import { PlayIcon } from "./icons";
@@ -13,12 +14,12 @@ interface PhotoRow {
   key: string;
   section: DaySection;
   header: boolean;
-  tiles: { photo: LibraryPhoto; span: number }[];
+  tiles: LibraryPhoto[];
 }
 
 /** Virtualize rows rather than entire days: a single day can contain 50,000 items. */
 export function VirtualPhotoRows({ sections, selected, selecting, onSelectDay, onTileClick, registerTile,
-  dayLabels, hasNextPage, fetching, error, fetchNextPage, onActiveYear,
+  dayLabels, hasNextPage, fetching, error, fetchNextPage,
 }: {
   sections: DaySection[];
   selected: ReadonlySet<string>;
@@ -31,7 +32,6 @@ export function VirtualPhotoRows({ sections, selected, selecting, onSelectDay, o
   fetching: boolean;
   error: boolean;
   fetchNextPage: () => void;
-  onActiveYear: (year: number | null) => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const { tile } = useKxUi();
@@ -57,23 +57,14 @@ export function VirtualPhotoRows({ sections, selected, selecting, onSelectDay, o
   }, []);
 
   const columns = Math.max(2, Math.floor((box.width + 8) / (tile + 8)));
-  const height = Math.max(110, Math.min(270, (box.width - (columns - 1) * 8) / columns * 1.12));
+  const height = Math.max(110, Math.min(270, (box.width - (columns - 1) * 8) / columns));
   const rows = useMemo(() => {
     const result: PhotoRow[] = [];
     for (const section of sections) {
       result.push({ key: `header-${section.key}`, section, header: true, tiles: [] });
-      let tiles: PhotoRow["tiles"] = [];
-      let used = 0;
-      for (let index = 0; index < section.photos.length; index++) {
-        const photo = section.photos[index];
-        const span = columns >= 4 && (index === 0 || index % 7 === 6) && used <= columns - 2 ? 2 : 1;
-        tiles.push({ photo, span });
-        used += span;
-        if (used === columns || index === section.photos.length - 1) {
-          result.push({ key: `photos-${tiles[0].photo.photo_id}`, section, header: false, tiles });
-          tiles = [];
-          used = 0;
-        }
+      for (let index = 0; index < section.photos.length; index += columns) {
+        const tiles = section.photos.slice(index, index + columns);
+        result.push({ key: `photos-${tiles[0].photo_id}`, section, header: false, tiles });
       }
     }
     return result;
@@ -82,7 +73,7 @@ export function VirtualPhotoRows({ sections, selected, selecting, onSelectDay, o
   const virtualizer = useVirtualizer({
     getScrollElement: () => container.current?.closest<HTMLElement>(".kx-content") ?? null,
     count: rows.length,
-    estimateSize: index => rows[index].header ? 72 : height + 8,
+    estimateSize: index => rows[index].header ? 54 : height + 8,
     getItemKey: index => rows[index].key,
     overscan: 4,
     scrollMargin: box.top,
@@ -93,9 +84,6 @@ export function VirtualPhotoRows({ sections, selected, selecting, onSelectDay, o
   useEffect(() => {
     if (last >= rows.length - 5 && hasNextPage && !fetching && !error) fetchNextPage();
   }, [last, rows.length, hasNextPage, fetching, error, fetchNextPage]);
-  const firstVisible = items.find(item => item.end > (virtualizer.scrollOffset ?? 0));
-  const visibleYear = firstVisible ? rows[firstVisible.index]?.section.year || null : null;
-  useEffect(() => { onActiveYear(visibleYear); }, [visibleYear, onActiveYear]);
 
   return <div ref={container} className="kx-virtual-photos" data-virtual-rows={rows.length}
     style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
@@ -108,15 +96,16 @@ export function VirtualPhotoRows({ sections, selected, selecting, onSelectDay, o
           onSelectDay={() => onSelectDay(row.section.photos.map(photo => photo.photo_id))}
           headerRef={() => {}} loadedOnly /> :
           <div className="kx-virtual-photo-grid" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, height }}>
-            {row.tiles.map(({ photo, span }) => <button key={photo.photo_id}
+            {row.tiles.map((photo) => <button key={photo.photo_id}
               ref={node => registerTile(photo.photo_id, node)} data-photo-id={photo.photo_id}
               className={`kx-tile ${selected.has(photo.photo_id) ? "is-selected" : ""}`}
-              style={{ gridColumn: `span ${span}` }}
+
               aria-pressed={selecting ? selected.has(photo.photo_id) : undefined}
               aria-label={photo.photo_title || (photo.media_kind === "video" ? "Open video" : "Open photo")}
               onClick={() => onTileClick(photo)}>
               <OptimizedPhoto photoId={photo.photo_id} video={photo.media_kind === "video"} />
               {selected.has(photo.photo_id) && <span className="kx-selected-mark" aria-hidden="true">✓</span>}
+              {photo.junk_reason && <span className="kx-tile-video">{JUNK_LABELS[photo.junk_reason]}</span>}
               {photo.media_kind === "video" && <span className="kx-tile-video"><PlayIcon size={9} />{formatDuration(photo.duration_seconds) ?? "Video"}</span>}
             </button>)}
           </div>}

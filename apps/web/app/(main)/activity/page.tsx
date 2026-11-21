@@ -42,7 +42,6 @@ export default function ActivityPage() {
 
   return (
     <main className={`kx-page ${styles.page}`}>
-      <span className="kx-eyebrow">Operations</span>
       <h1 className="kx-title" style={{ fontSize: 40 }}>Library activity</h1>
       <p className="kx-lede">A file-by-file record of what reached your library and what finished indexing.</p>
       <Link href="/pipelines" className={styles.progress}>View overall processing progress →</Link>

@@ -90,8 +90,12 @@ def render(template, source, data, revision):
 
 
 def compose(config, runtime, *args, capture=False):
+    env_files = ['--env-file', runtime / '.env']
+    railway_env = runtime / '.env.railway'
+    if railway_env.is_file():
+        env_files.extend(('--env-file', railway_env))
     return run('docker', 'compose', '--project-name', 'kindred', '--project-directory', runtime,
-               '--env-file', runtime / '.env', '-f', config, *args, capture=capture)
+               *env_files, '-f', config, *args, capture=capture)
 
 
 def inspect_container(name):

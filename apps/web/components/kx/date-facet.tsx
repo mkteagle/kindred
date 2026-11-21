@@ -85,7 +85,7 @@ export function KxDateFacet({
 
       {open && (
         <div className="kx-datepop">
-          <span className="kx-eyebrow quiet">Which date</span>
+          <span className="kx-field-label">Which date</span>
 
           <div className="kx-segmented" role="radiogroup" aria-label="Which date">
             {(["taken", "added"] as DateField[]).map((field) => (
@@ -108,7 +108,7 @@ export function KxDateFacet({
 
           <div className="kx-datepop-fields">
             <label>
-              <span className="kx-eyebrow quiet">From</span>
+              <span className="kx-field-label">From</span>
               <input
                 type="date"
                 value={draft.from}
@@ -117,7 +117,7 @@ export function KxDateFacet({
               />
             </label>
             <label>
-              <span className="kx-eyebrow quiet">To</span>
+              <span className="kx-field-label">To</span>
               <input
                 type="date"
                 value={draft.to}

@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { passkeyError, signInWithPasskey, usePasskeySupport } from "@/lib/passkeys";
 
 const ERRORS: Record<string, string> = {
-  account_not_linked: "This account is not linked yet. Sign in with your existing password or legacy Flickr login, then connect Google or Apple in Integrations. New members need an invitation.",
+  account_not_linked: "Use the sign-in method that already opens your library, then connect this provider in Settings → Integrations. New members need an invitation.",
   oauth_cancelled: "Sign-in was cancelled. You can try again whenever you’re ready.",
   provider_unavailable: "This sign-in provider has not been configured on this Kindred server.",
   oauth_expired: "That sign-in request expired. Please try again.",
@@ -62,13 +62,13 @@ function LoginForm() {
   }
   return <div className="kr-login-layout">
     <aside className="kr-login-story"><Link href="/" aria-label="Kindred home"><img src="/brand/kindred-wordmark-dark.svg" width="171" height="46" alt="Kindred" /></Link>
-      <div className="kr-login-story-copy"><span className="kr-overline">THE GOOD STUFF, TOGETHER.</span><h1>Life happens.<br/>Keep it close.</h1><p>A home for the moments you never want to lose.</p></div>
+      <div className="kr-login-story-copy"><h1>Life happens.<br/>Keep it close.</h1><p>A home for the moments you never want to lose.</p></div>
       <div className="kr-login-photo"><img src="/demo/photos/family-campfire-1.jpg" alt="A family together around a campfire" /><span>Big adventures. Little everyday things.</span></div>
       <p className="kr-login-privacy">Your server. Your people. Your memories.</p>
     </aside>
     <main className="kr-login-main"><Link className="kr-back" href="/">← Back to Kindred</Link><div className="kr-login-form">
       <img className="kr-login-mark" src="/brand/kindred-mark.svg" width="46" height="46" alt="" />
-      <h2>{rawReturn ? "Welcome back." : "Your people. Your place."}</h2><p>Sign in to your Kindred library.</p>
+      <h2>{rawReturn ? "Welcome back." : "Your people. Your place."}</h2><p>{returnPath === "/settings/integrations" ? "Use the sign-in method that already opens your library to manage connections." : "Sign in to your Kindred library."}</p>
       {message && <div className="kr-auth-error" role="alert">{message}</div>}
       {(supportsPasskeys || providers.data?.google || providers.data?.apple) && <><div className="kr-social-buttons">
         {supportsPasskeys && <button type="button" disabled={passkeyBusy || busy} onClick={() => void signInWithDevice()}>{passkeyBusy ? "Waiting for passkey…" : "Sign in with a passkey"}</button>}

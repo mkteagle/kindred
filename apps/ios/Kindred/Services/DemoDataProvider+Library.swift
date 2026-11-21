@@ -29,6 +29,32 @@ extension DemoDataProvider {
         return LibraryPage(photos: filtered, next_cursor: nil)
     }
 
+    private var demoAlbumPhotos: [String: [String]] {
+        ["demo-camping": ["demo_tp01", "demo_tp07", "demo_tp08", "demo_tp11"],
+         "demo-at-home": ["demo_tp03", "demo_tp05", "demo_tp06", "demo_tp10"]]
+    }
+
+    var homeAlbums: [Album] {
+        [("demo-camping", "Camping"), ("demo-at-home", "At home")].map { id, name in
+            Album(id: id, name: name, slug: nil, description: nil,
+                  photo_count: demoAlbumPhotos[id, default: []].count, source: "demo")
+        }
+    }
+
+    func albumPage(id: String, media: MediaFilter = .all) -> LibraryPage {
+        let ids = Set(demoAlbumPhotos[id, default: []])
+        return LibraryPage(photos: libraryPage(media: media).photos.filter { ids.contains($0.id) }, next_cursor: nil)
+    }
+
+    func favoritesPage(media: MediaFilter = .all) -> LibraryPage {
+        let choices = ["demo_tp05", "demo_tp06", "demo_tp02", "demo_tp07"]
+        let photos = libraryPage(media: media).photos
+        let featured = choices.compactMap { id in photos.first { $0.id == id } }
+        let otherFavorites = photos.filter { !choices.contains($0.id) && favoriteOverrides[$0.id] == true }
+        return LibraryPage(photos: featured.filter { favoriteOverrides[$0.id] != false } + otherFavorites,
+                           next_cursor: nil)
+    }
+
     func searchHits(query: String) -> [SearchHit] {
         search(query: query).map { result in
             SearchHit(

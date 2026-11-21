@@ -10,6 +10,7 @@ import time
 import index_nas_library as indexer
 from discover_nas_library import save_status
 from library_progress import progress
+from junk_scanner import scan_batch
 
 
 async def watch_locked():
@@ -21,6 +22,8 @@ async def watch_locked():
         status.update(batch_position=position, batch_completed=completed, batch_failed=failed)
         save_status(state,status)
     args.on_progress = on_progress
+    junk_cursor = None
+    next_junk_scan = 0
     while True:
         if os.environ.get('KINDRED_PREVIEWS_FIRST','1') == '1':
             discovery = progress().get('discovery') or {}
@@ -30,6 +33,16 @@ async def watch_locked():
                 save_status(state,status)
                 await asyncio.sleep(10)
                 continue
+        if time.monotonic() >= next_junk_scan:
+            try:
+                junk_cursor = await asyncio.to_thread(
+                    scan_batch, indexer.main.db_query, indexer.main.clip_embed_text, junk_cursor,
+                )
+                next_junk_scan = time.monotonic() + (5 if junk_cursor else 300)
+            except Exception as exc:
+                print(f"[junk] Classification paused after an error: {exc}", flush=True)
+                next_junk_scan = time.monotonic() + 60
+
         status['phase']='recognition'
         if not indexer.pending(1,library_only=True):
             status['waiting']=True;save_status(state,status);await asyncio.sleep(10);continue

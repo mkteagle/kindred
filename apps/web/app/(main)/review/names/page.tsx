@@ -92,7 +92,6 @@ export default function NameReviewPage() {
 
   return (
     <main className="kx-page" style={{ maxWidth: 880 }}>
-      <span className="kx-eyebrow">Review</span>
       <h1 className="kx-title" style={{ fontSize: 40 }}>
         Names Google already knew.
       </h1>

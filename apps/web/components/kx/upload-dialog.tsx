@@ -226,7 +226,6 @@ export function KxUploadDialog({ onClose }: { onClose: () => void }) {
       <div className="kx-dialog upload">
         <div className="kx-dialog-head">
           <div>
-            <span className="kx-eyebrow">Upload</span>
             <h2>Add to the library</h2>
             <p>Originals are saved to your NAS, mirrored to Flickr, then analyzed on your server.</p>
           </div>
@@ -236,7 +235,7 @@ export function KxUploadDialog({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="kx-albumrow">
-          <span className="kx-eyebrow quiet">Album</span>
+          <span className="kx-field-label">Album</span>
           {namingAlbum ? (
             <>
               <input
@@ -311,7 +310,7 @@ export function KxUploadDialog({ onClose }: { onClose: () => void }) {
         {queue.length > 0 && (
           <>
             <div className="kx-queuehead">
-              <span className="kx-eyebrow quiet">
+              <span className="kx-field-label">
                 {fmt.format(queue.length)} file{queue.length === 1 ? "" : "s"} in queue
               </span>
               <span className="kx-mono" style={{ marginLeft: "auto" }}>

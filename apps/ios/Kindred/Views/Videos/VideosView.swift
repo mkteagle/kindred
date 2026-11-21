@@ -24,8 +24,8 @@ struct VideosView<Header: View>: View {
                 Color.clear.frame(height: 0).readsScrollOffset(in: "videos")
 
                 CollapsingTitleHeader(
-                    eyebrow: clipCount.map { "\($0.formatted()) clips" } ?? "Clips",
                     title: "Videos",
+                    subtitle: clipCount.map { "\($0.formatted()) clips" },
                     offset: scrollOffset
                 )
                 header

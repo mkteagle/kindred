@@ -1,4 +1,5 @@
 import { photoImageUrl } from "@/lib/image-delivery";
+import type { JunkReason } from "@/lib/library-junk";
 import { BACKEND } from "@/lib/constants";
 
 /** One row of `/library/photos`. */
@@ -10,6 +11,7 @@ export interface LibraryPhoto {
   media_kind: "photo" | "video";
   duration_seconds: number | null;
   flickr_url?: string;
+  junk_reason?: JunkReason | null;
 }
 
 /**

@@ -86,8 +86,10 @@ async function handleRequest(
 
     if (["POST", "PUT", "PATCH"].includes(req.method)) {
       const reqContentType = req.headers.get("content-type") || "";
-      if (reqContentType.includes("multipart/form-data")) {
-        // Forward multipart body as-is (browser sets boundary in content-type)
+      const uploadChunk = req.method === "PUT" && /^uploads\/resumable\/[^/]+$/.test(pathStr)
+        && reqContentType === "application/octet-stream";
+      if (reqContentType.includes("multipart/form-data") || uploadChunk) {
+        // Preserve upload bytes and the browser's multipart boundary.
         headers["Content-Type"] = reqContentType;
         opts.body = await req.arrayBuffer();
       } else {

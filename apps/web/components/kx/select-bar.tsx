@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BACKEND, fmt } from "@/lib/constants";
+import { downloadSelection } from "@/lib/download-selection";
 import { useFavorites } from "./favorites";
 import { HeartIcon } from "./icons";
 import { useKxUi } from "./ui-state";
@@ -25,6 +26,11 @@ export function KxSelectBar() {
   const [albumsOpen, setAlbumsOpen] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const albumsRef = useRef<HTMLDivElement>(null);
+  const exportController = useRef<AbortController | null>(null);
+  useEffect(() => () => exportController.current?.abort(), []);
+  useEffect(() => {
+    if (selected.size === 0) exportController.current?.abort();
+  }, [selected.size]);
 
   const ids = Array.from(selected);
 
@@ -59,6 +65,18 @@ export function KxSelectBar() {
       exitSelect();
     },
     onError: (error: Error) => setNote(error.message),
+  });
+
+  const download = useMutation({
+    mutationFn: (photoIds: string[]) => {
+      const controller = new AbortController();
+      exportController.current = controller;
+      return downloadSelection(photoIds, controller.signal);
+    },
+    onSettled: () => { exportController.current = null; },
+    onError: (error: Error) => {
+      if (error.name !== "AbortError") setNote(error.message);
+    },
   });
 
   // A confirmation that clears itself; nothing here is worth a dismissible
@@ -112,11 +130,11 @@ export function KxSelectBar() {
         {fmt.format(selected.size)} {selected.size === 1 ? "photo" : "photos"} selected
       </span>
 
-      {/* TODO: POST /shares takes one photo or one album, never a list, so a
-          selection cannot be shared in a single link yet. */}
-      <button className="kx-barbutton" disabled title="Sharing a selection is not wired up yet">
-        Share
-      </button>
+      {download.isPending ? (
+        <button className="kx-barbutton" onClick={() => exportController.current?.abort()}>Cancel ZIP</button>
+      ) : (
+        <button className="kx-barbutton" onClick={() => download.mutate(ids)}>Download ZIP</button>
+      )}
 
       <div className="kx-menu-anchor" ref={albumsRef}>
         <button
@@ -130,7 +148,7 @@ export function KxSelectBar() {
         </button>
         {albumsOpen && (
           <div className="kx-menu above" role="menu">
-            <span className="kx-eyebrow quiet" style={{ padding: "8px 10px 6px" }}>
+            <span className="kx-field-label" style={{ padding: "8px 10px 6px" }}>
               Add to
             </span>
             {(albums ?? []).length === 0 && (

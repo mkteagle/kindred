@@ -1,32 +1,30 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { BACKEND, fmt, toBackendCategory } from "@/lib/constants";
 import type { ClusterSummary, ClustersSummaryResponse } from "@/types";
+import { LIBRARY_ICON_PATHS, NavIcon, SearchIcon } from "./icons";
 import { KxEmpty, KxErrorBanner, KxSkeletonCards } from "./states";
 
 const PAGE_SIZE = 60;
 
 /** Heading copy per category. The people wording is the handoff's own. */
-const COPY: Record<string, { eyebrow: string; title: string; lede: string; singular: string; plural: string }> = {
+const COPY: Record<string, { title: string; lede: string; singular: string; plural: string }> = {
   people: {
-    eyebrow: "People first",
-    title: "Everyone in the house.",
-    lede: "Name someone once and every photo of them, past and future, comes with it.",
+    title: "People",
+    lede: "",
     singular: "person",
     plural: "people",
   },
   animals: {
-    eyebrow: "Animals",
     title: "The other members.",
     lede: "Pets get their own profiles — name one and every photo of them follows.",
     singular: "animal",
     plural: "animals",
   },
   vehicles: {
-    eyebrow: "Vehicles",
     title: "Everything with wheels.",
     lede: "The van, the truck, the car that lasted nine summers.",
     singular: "vehicle",
@@ -36,7 +34,8 @@ const COPY: Record<string, { eyebrow: string; title: string; lede: string; singu
 
 /** A data URI is a detection chip, not a real cover photo. */
 function coverFor(cluster: ClusterSummary): { src: string; round: boolean } | null {
-  const cover = cluster.photo_url || cluster.thumb_url;
+  if (cluster.avatar && !cluster.cover_crop) return { src: cluster.avatar, round: true };
+  const cover = cluster.thumb_url || cluster.photo_url;
   if (cover && !cover.startsWith("data:")) return { src: cover, round: true };
   if (cluster.avatar) return { src: cluster.avatar, round: true };
   return null;
@@ -59,15 +58,25 @@ export function KxClusterBrowse({
   const sentinel = useRef<HTMLDivElement>(null);
   // People are faces; animals and vehicles are shapes a circle would crop away.
   const round = category === "people";
+  const [tab, setTab] = useState<"named" | "unnamed">("named");
+  const [input, setInput] = useState("");
+  const [name, setName] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setName(input.trim()), 220);
+    return () => clearTimeout(timer);
+  }, [input]);
+  const nameState = round ? tab : null;
 
   const { data, error, isPending, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } =
     useInfiniteQuery<ClustersSummaryResponse>({
-      queryKey: ["kx-cluster-browse", backendCat],
+      queryKey: ["kx-cluster-browse", backendCat, nameState, name],
       initialPageParam: 0,
       staleTime: 30_000,
       retry: false,
       queryFn: async ({ pageParam, signal }) => {
         const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(pageParam), compact: "true" });
+        if (nameState) params.set("name_state", nameState);
+        if (nameState === "named" && name) params.set("q", name);
         const requestSignal = typeof AbortSignal.any === "function"
           ? AbortSignal.any([signal, AbortSignal.timeout(15_000)])
           : signal;
@@ -103,57 +112,53 @@ export function KxClusterBrowse({
   }, [hasNextPage, isFetchingNextPage, fetchNextPage, error, clusters.length]);
 
   return (
-    <main className="kx-page">
+    <main className={`kx-page${round ? " kx-people-page" : ""}`}>
       <div className="kx-pagehead">
         <div className="kx-pagehead-copy">
-          <span className="kx-eyebrow">{copy.eyebrow}</span>
           <h1 className="kx-title">{copy.title}</h1>
-          <p className="kx-lede">{copy.lede}</p>
+          {copy.lede && <p className="kx-lede">{copy.lede}</p>}
         </div>
         <div className="kx-pagehead-pills">
           <button className="kx-button" onClick={onManage}>
             Manage
           </button>
+          {round && <label className="kx-people-search">
+            <SearchIcon size={20} />
+            <input value={input} maxLength={120} onChange={event => {
+              setInput(event.target.value);
+              setTab("named");
+            }} placeholder="Find a person" aria-label="Find a person" />
+            {input && <button type="button" className="kx-iconbutton" aria-label="Clear name" onClick={() => { setInput(""); setName(""); }}>×</button>}
+          </label>}
         </div>
       </div>
 
-      {/* Naming people is a first-class job with its own screen, not a button
-          filed under settings — so the work outstanding is stated here, on the
-          screen where it is felt. */}
-      {unnamed > 0 && (
+      {(round || unnamed > 0) && (
         <div className="kx-reviewbanner">
+          <NavIcon d={LIBRARY_ICON_PATHS.people} size={24} />
           <span className="kx-reviewbanner-copy">
-            <strong>
-              {fmt.format(unnamed)} {unnamed === 1 ? copy.singular : copy.plural} still
-              need{unnamed === 1 ? "s" : ""} a name
-            </strong>
-            {/* TODO: the design's "12 look like someone you already named" needs
-                candidate pairs with a similarity score, which nothing produces
-                — see use-review.ts. It is left out rather than invented. */}
-            <span className="kx-mono">{fmt.format(named)} named so far</span>
+            <strong>{round ? "People to review" : `${fmt.format(unnamed)} ${copy.plural} to review`}</strong>
+            {round && unnamed > 0 && <span>{fmt.format(unnamed)} need a name</span>}
           </span>
-          <Link className="kx-button primary" href={`/review?category=${category}`}>
-            Start review
-          </Link>
-          {/* People only: the suggestions come from Google's photo tags, which
-              name people and nothing else. */}
-          {category === "people" && (
-            <Link className="kx-button" href="/review/names" prefetch={false}>
-              Suggested names
-            </Link>
-          )}
-          <button className="kx-button" onClick={onManage}>
-            Merge duplicates
-          </button>
+          <Link className="kx-button primary" href={`/review?category=${category}`}>Review</Link>
         </div>
       )}
+
+      {round && <div className="kx-chiprow kx-people-tabs" role="group" aria-label="People by name">
+        <button className={`kx-chip ${tab === "named" ? "is-active" : ""}`} aria-pressed={tab === "named"} onClick={() => setTab("named")}>Named</button>
+        <button className={`kx-chip ${tab === "unnamed" ? "is-active" : ""}`} aria-pressed={tab === "unnamed"} onClick={() => {
+          setInput("");
+          setName("");
+          setTab("unnamed");
+        }}>Needs a name</button>
+      </div>}
 
       {isPending && <KxSkeletonCards count={12} minWidth={round ? 150 : 240} height={220} round={round} />}
       {error && <KxErrorBanner detail={(error as Error).message} onRetry={() => void refetch()} />}
       {!isPending && !error && clusters.length === 0 && (
         <KxEmpty
-          title="Nothing here yet."
-          body="Nothing has been grouped yet. Run a scan and they will appear here."
+          title={round ? input ? "No matching people" : tab === "named" ? "No named people yet" : "Everyone has a name" : "No groups yet"}
+          body={round ? input ? "Try another name." : tab === "named" ? "Open Needs a name or start a review to name someone." : "New faces will appear here when they are grouped." : "Run a scan to find groups."}
         />
       )}
 

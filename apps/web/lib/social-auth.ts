@@ -9,6 +9,45 @@ const googleKeys = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2
 const appleKeys = createRemoteJWKSet(new URL("https://appleid.apple.com/auth/keys"));
 const APPLE_CALLBACK = "/api/auth/apple/callback";
 const APPLE_HANDOFF = "kindred_apple_handoff";
+const MOBILE_CODE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+function mobileCallback(state: string, result: { proof: string } | { error: string }) {
+  const url = new URL("kindred://social-auth/complete");
+  url.search = new URLSearchParams({ state, ...result }).toString();
+  return NextResponse.redirect(url, { status: 303 });
+}
+
+export async function finishMobileSocialAuth(req: NextRequest) {
+  const reply = (data: unknown, status: number) => NextResponse.json(data, {
+    status, headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" },
+  });
+  try {
+    const { proof, verifier } = await req.json();
+    if (typeof proof !== "string" || proof.length > 12_000 || !proof.startsWith("v2:") ||
+        typeof verifier !== "string" || !MOBILE_CODE_PATTERN.test(verifier) || !process.env.API_KEY) {
+      return reply({ detail: "invalid_mobile_proof" }, 400);
+    }
+    const handoff = decryptToken(proof);
+    const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
+    if (!handoff || handoff.audience !== "kindred-ios" || !(Number(handoff.expires) > Date.now()) ||
+        typeof handoff.assertion !== "string" || typeof handoff.challenge !== "string" ||
+        !MOBILE_CODE_PATTERN.test(handoff.challenge) ||
+        !crypto.timingSafeEqual(Buffer.from(challenge), Buffer.from(handoff.challenge))) {
+      return reply({ detail: "invalid_mobile_proof" }, 401);
+    }
+    // The backend consumes the assertion's one-time identifier when it creates the session.
+    const result = await fetch(`${ACCOUNT_BACKEND_URL}/auth/social/exchange`, {
+      method: "POST", headers: { "Content-Type": "application/json", "X-API-Key": process.env.API_KEY },
+      body: JSON.stringify({ assertion: handoff.assertion }), cache: "no-store", signal: AbortSignal.timeout(15_000),
+    });
+    if (result.status >= 500 || result.status === 404) return reply({ detail: "oauth_backend" }, 502);
+    const account = await result.json();
+    if (!result.ok) return reply({ detail: account.detail === "account_not_linked" ? "account_not_linked" : "account_access" }, 403);
+    return reply({ user: account.user, session: account.session }, 200);
+  } catch {
+    return reply({ detail: "oauth_backend" }, 502);
+  }
+}
 
 export function providerEnabled(provider: SocialProvider) {
   const common = Boolean(process.env.COOKIE_SECRET && process.env.API_KEY);
@@ -25,6 +64,18 @@ function cookieName(provider: SocialProvider) { return `kindred_oauth_${provider
 
 export async function beginSocialAuth(req: NextRequest, provider: SocialProvider) {
   const origin = authOrigin(req);
+  const mobileState = req.nextUrl.searchParams.get("mobile_state");
+  const mobileChallenge = req.nextUrl.searchParams.get("mobile_challenge");
+  const mobile = mobileState !== null || mobileChallenge !== null;
+  if (mobile && (!mobileState || !MOBILE_CODE_PATTERN.test(mobileState) || !mobileChallenge ||
+      !MOBILE_CODE_PATTERN.test(mobileChallenge) || !origin.startsWith("https://"))) {
+    return NextResponse.json({ detail: "Invalid mobile sign-in request" }, { status: 400 });
+  }
+  if (mobileState && !providerEnabled(provider)) {
+    const response = mobileCallback(mobileState, { error: "provider_unavailable" });
+    response.headers.set("Cache-Control", "no-store");
+    return response;
+  }
   if (!providerEnabled(provider)) return NextResponse.redirect(new URL("/login?error=provider_unavailable", origin));
   const url = new URL(origin);
   if (provider === "apple" && (url.protocol !== "https:" || url.hostname === "localhost" || !url.hostname.includes("."))) {
@@ -40,11 +91,12 @@ export async function beginSocialAuth(req: NextRequest, provider: SocialProvider
   const nonce = crypto.randomBytes(32).toString("base64url");
   const verifier = crypto.randomBytes(48).toString("base64url");
   const session = getSessionFromRequest(req);
-  const link = req.nextUrl.searchParams.get("link") === "1";
+  const link = !mobile && req.nextUrl.searchParams.get("link") === "1";
   if (link && !session) return NextResponse.redirect(new URL("/login", origin));
   const flow = { state, nonce, verifier, redirectUri, origin, expires: Date.now() + 600_000,
     returnPath: link ? "/settings/integrations" : safeReturnPath(req.nextUrl.searchParams.get("return")),
-    invite_code: req.nextUrl.searchParams.get("invite") || undefined,
+    invite_code: mobile ? undefined : req.nextUrl.searchParams.get("invite") || undefined,
+    mobile_state: mobileState || undefined, mobile_challenge: mobileChallenge || undefined,
     link_user_id: link ? session?.user_id : undefined,
     link_session_token: link ? session?.session_token : undefined };
   const params = new URLSearchParams({ client_id: provider === "google" ? process.env.GOOGLE_CLIENT_ID! : process.env.APPLE_CLIENT_ID!,
@@ -102,6 +154,7 @@ export async function finishSocialAuth(req: NextRequest, provider: SocialProvide
     return response;
   };
   const fail = (code: string) => {
+    if (flow?.mobile_state) return clearFlow(mobileCallback(flow.mobile_state, { error: code }));
     const target = flow?.link_user_id ? `/settings/integrations?error=${encodeURIComponent(code)}` : `/login?error=${encodeURIComponent(code)}`;
     const response = NextResponse.redirect(new URL(target, origin), { status: 303 });
     return clearFlow(response);
@@ -144,6 +197,11 @@ export async function finishSocialAuth(req: NextRequest, provider: SocialProvide
       .setProtectedHeader({ alg: "HS256" }).setIssuer("kindred-web").setAudience("kindred-backend")
       .setSubject(payload.sub).setJti(crypto.randomUUID()).setIssuedAt().setExpirationTime("60s")
       .sign(new TextEncoder().encode(process.env.API_KEY!));
+    if (flow.mobile_state && flow.mobile_challenge) {
+      const proof = encryptToken({ audience: "kindred-ios", challenge: flow.mobile_challenge, assertion,
+        expires: Date.now() + 55_000 });
+      return clearFlow(mobileCallback(flow.mobile_state, { proof }));
+    }
     const headers: Record<string, string> = { "Content-Type": "application/json", "X-API-Key": process.env.API_KEY! };
     if (flow.link_session_token) headers["X-Session-Token"] = flow.link_session_token;
     let result: Response;

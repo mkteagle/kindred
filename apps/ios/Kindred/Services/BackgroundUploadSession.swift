@@ -1,22 +1,27 @@
 import Foundation
 
 struct UploadReceipt: Codable, Sendable {
-    let photo_id: String
+    let photo_id: String?
     let status: String
     let kindred_photo_id: String?
     let nas_status: String?
     let flickr_status: String?
     let deduplicated: Bool?
+
+    var hasNASOriginal: Bool { status == "ok" && nas_status == "available" && kindred_photo_id != nil }
 }
 
 enum BackgroundUploadError: LocalizedError, Sendable {
     case invalidResponse
+    case nasOriginalUnconfirmed
     case http(status: Int, message: String)
 
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
             return "Kindred returned an unreadable upload response."
+        case .nasOriginalUnconfirmed:
+            return "The NAS did not confirm a saved original."
         case let .http(status, message):
             if status == 401 { return "Your session expired. Please sign in again." }
             if status == 413 { return "This item is larger than the server allows." }
@@ -28,6 +33,8 @@ enum BackgroundUploadError: LocalizedError, Sendable {
         switch self {
         case .invalidResponse:
             return true
+        case .nasOriginalUnconfirmed:
+            return false
         case let .http(status, _):
             return status == 408 || status == 429 || status >= 500
         }
@@ -56,6 +63,8 @@ final class BackgroundUploadSession: NSObject, @unchecked Sendable {
         config.sessionSendsLaunchEvents = true
         config.httpMaximumConnectionsPerHost = 1
         config.waitsForConnectivity = true
+        config.timeoutIntervalForRequest = 120
+        config.timeoutIntervalForResource = 600
 
         let delegateQueue = OperationQueue()
         delegateQueue.name = "com.kindlingsignal.kindred.upload.delegate"
@@ -72,6 +81,7 @@ final class BackgroundUploadSession: NSObject, @unchecked Sendable {
         let filename: String
         let bodyFilePath: String
         let accountID: String
+        let attemptID: UUID?
     }
 
     override private init() {
@@ -85,7 +95,8 @@ final class BackgroundUploadSession: NSObject, @unchecked Sendable {
         bodyFileURL: URL,
         localIdentifier: String,
         filename: String,
-        accountID: String
+        accountID: String,
+        attemptID: UUID
     ) async throws -> UploadReceipt {
         let task = session.uploadTask(with: request, fromFile: bodyFileURL)
         return try await withTaskCancellationHandler {
@@ -94,7 +105,8 @@ final class BackgroundUploadSession: NSObject, @unchecked Sendable {
                     localIdentifier: localIdentifier,
                     filename: filename,
                     bodyFilePath: bodyFileURL.path,
-                    accountID: accountID
+                    accountID: accountID,
+                    attemptID: attemptID
                 )
                 lock.withLock {
                     continuations[task.taskIdentifier] = continuation
@@ -143,14 +155,15 @@ final class BackgroundUploadSession: NSObject, @unchecked Sendable {
         return String(data: data.prefix(500), encoding: .utf8) ?? ""
     }
 
-    private func persistFailure(_ meta: TaskMeta?, error: String) {
+    private func persistFailure(_ meta: TaskMeta?, error: Error) {
         guard let meta else { return }
+        Analytics.backupDiagnostic(.multipart, failure: .init(error), attemptID: meta.attemptID ?? UUID())
         completionWork.enter()
         Task {
             await UploadQueueStore.shared.markFailed(
                 meta.localIdentifier,
                 accountID: meta.accountID,
-                error: error
+                error: error.localizedDescription
             )
             completionWork.leave()
         }
@@ -211,14 +224,14 @@ extension BackgroundUploadSession: URLSessionTaskDelegate {
         }
 
         if let error {
-            if result.2 == nil { persistFailure(result.1, error: error.localizedDescription) }
+            if result.2 == nil { persistFailure(result.1, error: error) }
             result.2?.resume(throwing: error)
             return
         }
 
         guard let http = task.response as? HTTPURLResponse else {
             if result.2 == nil {
-                persistFailure(result.1, error: BackgroundUploadError.invalidResponse.localizedDescription)
+                persistFailure(result.1, error: BackgroundUploadError.invalidResponse)
             }
             result.2?.resume(throwing: BackgroundUploadError.invalidResponse)
             return
@@ -229,19 +242,25 @@ extension BackgroundUploadSession: URLSessionTaskDelegate {
                 status: http.statusCode,
                 message: Self.serverMessage(from: result.0)
             )
-            if http.statusCode == 401 {
-                NotificationCenter.default.post(name: .kindredSessionUnauthorized, object: nil)
+            if http.statusCode == 401, let request = task.originalRequest {
+                Task { await APIClient.shared.invalidateSession(for: request) }
             }
-            if result.2 == nil { persistFailure(result.1, error: uploadError.localizedDescription) }
+            if result.2 == nil { persistFailure(result.1, error: uploadError) }
             result.2?.resume(throwing: uploadError)
             return
         }
 
         guard let receipt = try? JSONDecoder().decode(UploadReceipt.self, from: result.0) else {
             if result.2 == nil {
-                persistFailure(result.1, error: BackgroundUploadError.invalidResponse.localizedDescription)
+                persistFailure(result.1, error: BackgroundUploadError.invalidResponse)
             }
             result.2?.resume(throwing: BackgroundUploadError.invalidResponse)
+            return
+        }
+        guard receipt.hasNASOriginal else {
+            let error = BackgroundUploadError.nasOriginalUnconfirmed
+            if result.2 == nil { persistFailure(result.1, error: error) }
+            result.2?.resume(throwing: error)
             return
         }
 

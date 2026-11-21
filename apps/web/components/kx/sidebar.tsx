@@ -5,37 +5,23 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { User } from "@/types";
 import { KxUserMenu, displayNameOf } from "./user-menu";
-import { StorageCard } from "./storage-card";
 import { useStorageStatus } from "./use-library";
-import { fmt } from "@/lib/constants";
+import { BrandMark, BrandWordmark } from "@/components/brand-mark";
 import { LIBRARY_ICON_PATHS, NavIcon, SidebarIcon } from "./icons";
-import { useFavorites } from "./favorites";
 import { useKxUi } from "./ui-state";
-import { useLibraryCounts, usePipelines, useShareCount, useStats } from "./use-library";
 
-/**
- * LIBRARY group — label, route, glyph, and where its count comes from.
- *
- * The handoff spec gives these rows a label and a mono count and no icon. They
- * carry one now because the rail collapses to 64px, and with the label gone the
- * glyph is the only thing left to identify the row by.
- */
 const LIBRARY_ROWS = [
-  { href: "/gallery", label: "Library", icon: LIBRARY_ICON_PATHS.allPhotos, count: "photos" as const },
+  { href: "/gallery", label: "Library", icon: LIBRARY_ICON_PATHS.allPhotos },
   { href: "/search", label: "Search", icon: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" },
-  { href: "/people", label: "People", icon: LIBRARY_ICON_PATHS.people, count: "people" as const },
+  { href: "/people", label: "People", icon: LIBRARY_ICON_PATHS.people },
   { href: "/albums", label: "Albums", icon: "M3 7h7l2 2h9v11H3z M3 7V4h7l2 3" },
-  { href: "/favorites", label: "Favorites", icon: LIBRARY_ICON_PATHS.favorites, count: "favorites" as const },
-  { href: "/videos", label: "Videos", icon: LIBRARY_ICON_PATHS.videos, count: "videos" as const },
-  { href: "/timeline", label: "Timeline", icon: LIBRARY_ICON_PATHS.timeline },
+  { href: "/favorites", label: "Favorites", icon: LIBRARY_ICON_PATHS.favorites },
+  { href: "/videos", label: "Videos", icon: LIBRARY_ICON_PATHS.videos },
+  { href: "/settings", label: "Settings", icon: "M4 6h16M4 12h16M4 18h16 M9 4v4m6 2v4m-6 2v4" },
 ];
 
-/**
- * WAYS IN group. The icon paths are the repo's own 24×24 outlines, lifted from
- * the previous topbar's MORE_EVERYONE / MORE_ADMIN lists so the two navs stay
- * in step.
- */
 const WAYS_IN_ROWS = [
+  { href: "/timeline", label: "Timeline", icon: LIBRARY_ICON_PATHS.timeline },
   { href: "/animals", label: "Animals", icon: LIBRARY_ICON_PATHS.animals },
   { href: "/vehicles", label: "Vehicles", icon: LIBRARY_ICON_PATHS.vehicles },
   { href: "/locations", label: "Locations", icon: LIBRARY_ICON_PATHS.locations },
@@ -56,31 +42,15 @@ interface RailTip {
   left: number;
 }
 
-/**
- * The mark sits in a fixed square of its own rather than loose in the lockup,
- * because the collapse control is laid over exactly that square: the two need
- * the same footprint to trade places cleanly.
- */
 function BrandLockup() {
   return (
     <Link href="/gallery" className="kx-brand" aria-label="Kindred, home" prefetch={false}>
-      <span className="kx-brand-mark"><img src="/brand/kindred-mark.svg" alt="" className="kx-mark" /></span>
-      <span className="kx-brand-word"><img src="/brand/kindred-wordmark-dark.svg" alt="Kindred" className="kx-wordmark" /></span>
+      <span className="kx-brand-mark"><BrandMark size={36} className="kx-mark" /></span>
+      <span className="kx-brand-word"><BrandWordmark className="kx-wordmark" alt="" /></span>
     </Link>
   );
 }
 
-/**
- * Collapse and expand are the same control in the same place — over the mark,
- * which is the one thing the rail keeps in either state. Hovering the mark
- * cross-fades it into the affordance; moving away fades it back. It stays out
- * of the way until then with `opacity` alone, never `visibility`, so the button
- * keeps its place in the tab order and shows itself the moment it is focused.
- *
- * In the expanded rail the swap is scoped to the mark and not the whole lockup:
- * the wordmark stays a plain link home, and the control lives in the same
- * square whether the rail is 232px or 64px wide.
- */
 function RailToggle() {
   const { railCollapsed, toggleRail } = useKxUi();
   const label = railCollapsed ? "Expand sidebar" : "Collapse sidebar";
@@ -93,22 +63,20 @@ function RailToggle() {
       aria-expanded={!railCollapsed}
       aria-controls="kx-sidebar"
     >
-      <SidebarIcon direction={railCollapsed ? "right" : "left"} />
+      <span className="kx-railtoggle-brand" aria-hidden="true">
+        <BrandMark size={36} className="kx-mark" />
+      </span>
+      <span className="kx-railtoggle-glyph" aria-hidden="true">
+        <SidebarIcon direction={railCollapsed ? "right" : "left"} />
+      </span>
     </button>
   );
 }
 
-/**
- * One nav row, used by both groups. Expanded it is icon + label + count;
- * collapsed the label and count go and the icon centres in the rail, so the row
- * carries its own `aria-label` — the visible name is gone and the tooltip is
- * decoration, never the accessible name.
- */
 function NavRow({
   href,
   label,
   icon,
-  count,
   active,
   wide,
   collapsed,
@@ -119,7 +87,6 @@ function NavRow({
   href: string;
   label: string;
   icon: string;
-  count?: number | null;
   active: boolean;
   /** WAYS IN rows sit a shade lighter than LIBRARY rows, per the handoff. */
   wide: boolean;
@@ -164,60 +131,19 @@ function NavRow({
     >
       <NavIcon d={icon} />
       <span className="kx-navlabel">{label}</span>
-      {count !== null && count !== undefined && count > 0 && (
-        <span className="kx-navcount">{fmt.format(count)}</span>
-      )}
+
     </Link>
   );
 }
 
-function SyncCard() {
-  const { data, error, isPending } = usePipelines(15000);
-  const pipelines = data?.pipelines ?? [];
-  const active = pipelines.some(pipeline => pipeline.running && pipeline.phase !== "waiting_for_capacity");
-  const headline = isPending ? "Checking indexing…" : error ? "Status unavailable" : active ? "Indexing your library" : pipelines.length ? "Indexing is waiting" : "No indexing workers connected";
-  const names: Record<string,string> = { discovery: "File catalog", previews: "Thumbnails", index: "Recognition" };
-  return <section className="kx-index-status" aria-label="Kindred indexing status">
-    <Link href="/pipelines" aria-label="View indexing progress" className="kx-index-status-heading" prefetch={false}>
-      <span className={`kx-index-dot ${active ? "is-active" : ""}`} aria-hidden="true" />
-      <strong>{headline}</strong><span aria-hidden="true">↗</span>
-    </Link>
-    <div className="kx-index-status-rows">
-      {pipelines.map(pipeline => <div key={pipeline.key}>
-        <span>{names[pipeline.key] || pipeline.label}</span>
-        <strong>{pipeline.complete ? "Complete" : pipeline.phase === "waiting_for_discovery" ? "After discovery" : pipeline.phase === "waiting_for_previews" ? "After thumbnails" : pipeline.phase === "waiting_for_capacity" ? "Waiting for NAS" : pipeline.stale ? "Update delayed" : !pipeline.running ? "No recent progress" : fmt.format(pipeline.done)}</strong>
-      </div>)}
-    </div>
-    <Link href="/pipelines" className="kx-index-status-link" prefetch={false}>View indexing progress</Link>
-  </section>;
-}
-
 export function KxSidebar({ user, open, onNavigate }: { user: User | null; open: boolean; onNavigate: () => void }) {
-  const { data: storage } = useStorageStatus();
+  const { data: storage } = useStorageStatus(false);
   const pathname = usePathname();
   const { railCollapsed } = useKxUi();
-  const { data: counts } = useLibraryCounts();
-  const { data: stats } = useStats();
-  const { data: shares } = useShareCount();
-  const { count: favorites } = useFavorites();
   const [tip, setTip] = useState<RailTip | null>(null);
 
-  const countFor = (key: (typeof LIBRARY_ROWS)[number]["count"]): number | null => {
-    switch (key) {
-      case "photos":
-        return counts?.total_files ?? null;
-      case "videos":
-        return counts?.videos ?? null;
-      case "favorites":
-        return favorites;
-      case "people":
-        return stats?.[key]?.groups ?? null;
-      default:
-        return null;
-    }
-  };
-
-  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`) ||
+    (href === "/settings" && pathname === "/storage");
 
   const hideTip = useCallback(() => setTip(null), []);
 
@@ -240,8 +166,6 @@ export function KxSidebar({ user, open, onNavigate }: { user: User | null; open:
       id="kx-sidebar"
       onScroll={hideTip}
     >
-      {/* The mark and the collapse control share this square; everything below
-          keeps its icon when the rail collapses and loses only its words. */}
       <div className="kx-brandbar">
         <BrandLockup />
         <RailToggle />
@@ -249,14 +173,12 @@ export function KxSidebar({ user, open, onNavigate }: { user: User | null; open:
 
       <div className="kx-sidebar-scroll">
       <nav className="kx-navgroup" aria-label="Library">
-        <span className="kx-eyebrow">Library</span>
         {LIBRARY_ROWS.map((row) => (
           <NavRow
             key={row.href}
             href={row.href}
             label={row.label}
             icon={row.icon}
-            count={countFor(row.count)}
             active={isActive(row.href)}
             wide={false}
             collapsed={railCollapsed}
@@ -287,17 +209,11 @@ export function KxSidebar({ user, open, onNavigate }: { user: User | null; open:
       </nav>
 
       </details>
-      <StorageCard />
       </div>
       <div className="kx-sidebar-account">
-        <SyncCard />
-        {user?.role === "admin" && <Link href="/storage" className="kx-sidebar-settings" onClick={onNavigate}>Browse NAS folders</Link>}
-        <Link href="/settings" className="kx-sidebar-settings" onClick={onNavigate}>Settings</Link>
-        <Link href="/settings/integrations" className="kx-sidebar-settings" onClick={onNavigate}>Integrations</Link>
         <div className="kx-account-row"><KxUserMenu user={user} placement="sidebar" />
-          <div className="kx-account-copy"><strong>{displayNameOf(user)}</strong>
-            <span>{[storage?.household_name, user?.role === "admin" ? "Owner" : user?.role === "member" ? "Member" : null].filter(Boolean).join(" · ")}</span>
-            <small>{storage?.configured ? `${storage.name} · ${storage.available ? "Connected" : "Offline"}` : "Your library, your home"}</small>
+          <div className="kx-account-copy"><strong>{storage?.household_name || "Household"}</strong>
+            {user && <span>{displayNameOf(user)}</span>}
           </div>
         </div>
       </div>

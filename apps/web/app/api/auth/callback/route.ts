@@ -62,7 +62,8 @@ export async function GET(req: NextRequest) {
         method: "POST", headers: { "Content-Type": "application/json", "X-Session-Token": session.session_token },
         body: JSON.stringify({ oauth_token: accessToken, oauth_secret: accessTokenSecret, user_id: userId }),
       });
-      const response = NextResponse.redirect(new URL(`/settings/integrations?${linked.ok ? "connected=flickr" : "error=flickr_connect"}`, req.url));
+      const result = linked.ok ? "connected=flickr" : linked.status === 409 ? "error=flickr_destination" : "error=flickr_connect";
+      const response = NextResponse.redirect(new URL(`/settings/integrations?${result}`, req.url));
       response.cookies.delete("flickr_req");
       return response;
     }

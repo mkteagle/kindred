@@ -1,4 +1,5 @@
 import SwiftUI
+import AuthenticationServices
 
 struct LoginView: View {
     @State private var session = SessionManager.shared
@@ -8,6 +9,8 @@ struct LoginView: View {
     @State private var authError: String?
     @State private var isLoggingIn = false
     @State private var isFlickrLoggingIn = false
+    @State private var hostedSocialAvailable = false
+    @State private var signingInWith: HostedSocialSignIn.Provider?
     @State private var showJoin = false
     @State private var isDemoLoading = false
     @State private var demoError: String?
@@ -20,15 +23,17 @@ struct LoginView: View {
 
             ScrollView {
                 VStack(spacing: 0) {
-                    Spacer().frame(height: 60)
+                    Spacer().frame(height: 36)
 
                     // App icon
                     Image("KindredLogo")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: 74, height: 74)
-                        .clipShape(RoundedRectangle(cornerRadius: 18))
-                        .shadow(color: KindredTheme.cardShadow, radius: 15, x: 0, y: 18)
+                        .frame(width: 62, height: 62)
+                        .padding(10)
+                        .background(KindredTheme.sheet, in: RoundedRectangle(cornerRadius: 19))
+                        .overlay(RoundedRectangle(cornerRadius: 19).strokeBorder(KindredTheme.line))
+                        .accessibilityHidden(true)
 
                     // Welcome text
                     Text("Welcome back.")
@@ -40,6 +45,19 @@ struct LoginView: View {
                         .font(.kindredBody)
                         .foregroundStyle(KindredTheme.pine)
                         .padding(.top, 6)
+
+                    if hostedSocialAvailable {
+                        VStack(spacing: 10) {
+                            providerButton(.google, title: "Continue with Google", icon: "g.circle.fill")
+                            providerButton(.apple, title: "Sign in with Apple", icon: "apple.logo")
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.top, 25)
+                        Text("Or sign in with a password")
+                            .font(.kindredCaption)
+                            .foregroundStyle(KindredTheme.mist)
+                            .padding(.top, 20)
+                    }
 
                     // Form
                     VStack(spacing: 12) {
@@ -53,7 +71,7 @@ struct LoginView: View {
                         kindredSecureInput(label: "PASSWORD", text: $password)
                     }
                     .padding(.horizontal, 24)
-                    .padding(.top, 28)
+                    .padding(.top, hostedSocialAvailable ? 14 : 28)
 
                     // Sign in button
                     KindredButton(
@@ -64,7 +82,7 @@ struct LoginView: View {
                     ) {
                         login()
                     }
-                    .disabled(isLoggingIn || username.isEmpty || password.isEmpty)
+                    .disabled(isLoggingIn || signingInWith != nil || username.isEmpty || password.isEmpty)
                     .padding(.horizontal, 24)
                     .padding(.top, 20)
 
@@ -133,7 +151,7 @@ struct LoginView: View {
                                 .stroke(KindredTheme.lineDark, lineWidth: 1)
                         )
                     }
-                    .disabled(isFlickrLoggingIn)
+                    .disabled(isFlickrLoggingIn || signingInWith != nil)
                     .padding(.horizontal, 24)
 
                     // Join link
@@ -180,11 +198,55 @@ struct LoginView: View {
 
                     Spacer().frame(height: 40)
                 }
+                .frame(maxWidth: 460)
+                .frame(maxWidth: .infinity)
             }
             .scrollBounceBehavior(.basedOnSize)
         }
         .sheet(isPresented: $showJoin) {
             JoinView()
+        }
+        .task {
+            hostedSocialAvailable = HostedSocialSignIn.supports(server: await APIClient.shared.currentBaseURL())
+        }
+    }
+
+    private func providerButton(_ provider: HostedSocialSignIn.Provider, title: String, icon: String) -> some View {
+        Button {
+            signIn(with: provider)
+        } label: {
+            HStack(spacing: 10) {
+                if signingInWith == provider {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundStyle(provider == .google ? KindredTheme.accent : KindredTheme.ink)
+                        .accessibilityHidden(true)
+                }
+                Text(title).font(.kindredButton)
+            }
+            .foregroundStyle(KindredTheme.ink)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(KindredTheme.sheet, in: RoundedRectangle(cornerRadius: KindredTheme.buttonRadius))
+            .overlay(RoundedRectangle(cornerRadius: KindredTheme.buttonRadius).strokeBorder(KindredTheme.lineDark))
+        }
+        .buttonStyle(.plain)
+        .disabled(signingInWith != nil || isLoggingIn || isFlickrLoggingIn)
+    }
+
+    private func signIn(with provider: HostedSocialSignIn.Provider) {
+        signingInWith = provider
+        authError = nil
+        Task {
+            defer { signingInWith = nil }
+            do {
+                try await session.login(with: provider)
+            } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+                // The user dismissed the provider sheet.
+            } catch {
+                authError = error.localizedDescription
+            }
         }
     }
 
@@ -253,7 +315,7 @@ struct LoginView: View {
         let demo = DemoDataProvider.shared
         demo.isActive = true
         let fakeUser = demo.getMe()
-        session.restoreSession(token: "demo", user: fakeUser)
+        Task { await session.restoreSession(token: "demo", user: fakeUser) }
     }
 
     private func flickrLogin() {
@@ -268,14 +330,11 @@ struct LoginView: View {
                     "flickr_oauth_secret": flickrAuth.oauthTokenSecret,
                 ]
                 let response: AuthResponse = try await APIClient.shared.postPublic("/auth/flickr-login", body: body)
-                await MainActor.run {
-                    session.restoreSession(
-                        token: response.session.token,
-                        user: response.user,
-                        expiresAt: response.session.expires_at
-                    )
-                }
-                await APIClient.shared.setSessionToken(response.session.token)
+                await session.restoreSession(
+                    token: response.session.token,
+                    user: response.user,
+                    expiresAt: response.session.expires_at
+                )
             } catch {
                 authError = "Flickr login failed: \(error.localizedDescription)"
             }

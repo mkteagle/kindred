@@ -244,7 +244,6 @@ struct ReviewNamingView: View {
     private var doneState: some View {
         VStack(spacing: 12) {
             Spacer()
-            KindredEyebrow(text: "All caught up", color: KindredTheme.sageText)
             Text("Everyone has a name.")
                 .font(.kindredH2)
                 .foregroundStyle(KindredTheme.ink)

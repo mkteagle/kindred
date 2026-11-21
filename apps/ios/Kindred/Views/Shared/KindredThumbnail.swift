@@ -62,7 +62,9 @@ struct KindredThumbnail: View {
     var variant: APIClient.MediaVariant = .thumb
     var cornerRadius: CGFloat = 0
     var contentMode: ContentMode = .fill
+    var placeholder: Color = KindredTheme.tile
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var loaded: UIImage?
     @State private var loadedURL: URL?
 
@@ -81,21 +83,27 @@ struct KindredThumbnail: View {
                 ? APIClient.mediaURL(photoID: photo.photo_id, variant: variant)
                 : APIClient.optimizedImageURL(photoID: photo.photo_id, pixels: pixels)
             ZStack {
-                KindredTheme.tile
+                placeholder
                 if let demo = photo.thumb_url, DemoDataProvider.isDemoURL(demo) {
-                    DemoThumbnailView(urlString: demo, cornerRadius: cornerRadius)
+                    DemoThumbnailView(urlString: demo, cornerRadius: cornerRadius, contentMode: contentMode)
                 } else if let image = (loadedURL == url ? loaded : nil) ?? PhotoImageDelivery.shared.thumbnail(for: photo.photo_id) {
                     Image(uiImage: image).resizable().aspectRatio(contentMode: contentMode)
+                        .clipShape(.rect(cornerRadius: cornerRadius))
                         .frame(width: geo.size.width, height: geo.size.height)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .task(id: "\(url?.absoluteString ?? ""):\(near):\(visible)") {
                 guard near, let url, !DemoDataProvider.isDemoURL(photo.thumb_url ?? "") else { return }
-                let image = await PhotoImageDelivery.shared.image(url, speculative: !visible)
+                let delivery = PhotoImageDelivery.shared
+                var image = await delivery.image(url, speculative: !visible)
+                if image == nil, visible, !photo.isVideo, !Task.isCancelled,
+                   let fallback = APIClient.mediaURL(photoID: photo.photo_id) {
+                    image = await delivery.image(fallback)
+                }
                 guard !Task.isCancelled, let image else { return }
-                withAnimation(KindredTheme.ease(0.2)) { loaded = image; loadedURL = url }
-                if variant == .thumb { PhotoImageDelivery.shared.remember(image, photoID: photo.photo_id) }
+                withAnimation(reduceMotion ? nil : KindredTheme.ease(0.2)) { loaded = image; loadedURL = url }
+                if variant == .thumb { delivery.remember(image, photoID: photo.photo_id) }
             }
         }
         .if(contentMode == .fill) { $0.clipped() }
@@ -180,6 +188,7 @@ struct SquarePhotoTile: View {
     var isSelected: Bool = false
     var isSelecting: Bool = false
     var matchPercent: Int? = nil
+    var cornerRadius: CGFloat = KindredTheme.radiusTile
 
     var body: some View {
         Color.clear
@@ -189,7 +198,8 @@ struct SquarePhotoTile: View {
                     photo: photo,
                     isSelected: isSelected,
                     isSelecting: isSelecting,
-                    matchPercent: matchPercent
+                    matchPercent: matchPercent,
+                    cornerRadius: cornerRadius
                 )
             }
             .clipped()

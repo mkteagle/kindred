@@ -8,6 +8,7 @@ final class DemoDataProvider {
 
     /// Whether demo mode is currently active
     var isActive = false
+    var favoriteOverrides: [String: Bool] = [:]
 
     /// Predefined color palette for demo thumbnail placeholders (Kindred warm tones)
     static let palette: [(Color, Color)] = [
@@ -213,6 +214,7 @@ final class DemoDataProvider {
 
     func deactivate() {
         isActive = false
+        favoriteOverrides.removeAll()
     }
 }
 
@@ -257,7 +259,7 @@ struct DemoThumbnailView: View {
         "shadow-puppets",       // 28
     ]
 
-    private var image: UIImage? {
+    static func fileURL(for urlString: String) -> URL? {
         let filename: String
         // Support both demo://file_FILENAME and demo://thumb_NN patterns
         if urlString.hasPrefix("demo://file_") {
@@ -266,22 +268,13 @@ struct DemoThumbnailView: View {
             let idx = DemoDataProvider.paletteIndex(for: urlString)
             filename = Self.photoFiles[idx % Self.photoFiles.count]
         }
-        // Try flat bundle (Xcode copies resources flat by default)
-        if let path = Bundle.main.path(forResource: filename, ofType: "jpg"),
-           let img = UIImage(contentsOfFile: path) {
-            return img
-        }
-        // Try with subdirectory
-        if let path = Bundle.main.path(forResource: filename, ofType: "jpg", inDirectory: "DemoData/Photos"),
-           let img = UIImage(contentsOfFile: path) {
-            return img
-        }
-        return nil
+        return Bundle.main.url(forResource: filename, withExtension: "jpg")
+            ?? Bundle.main.url(forResource: filename, withExtension: "jpg", subdirectory: "DemoData/Photos")
     }
 
     var body: some View {
         Group {
-            if let uiImage = image {
+            if let url = Self.fileURL(for: urlString), let uiImage = UIImage(contentsOfFile: url.path) {
                 Image(uiImage: uiImage)
                     .renderingMode(.original)
                     .resizable()

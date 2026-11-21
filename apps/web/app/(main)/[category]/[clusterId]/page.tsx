@@ -56,24 +56,21 @@ const FACE_PAGE = 48;
 
 const COPY: Record<
   string,
-  { eyebrow: string; singular: string; plural: string; detections: string; faces: string }
+  { singular: string; plural: string; detections: string; faces: string }
 > = {
   people: {
-    eyebrow: "Person",
     singular: "person",
     plural: "people",
     detections: "faces",
     faces: "Faces in this group · click one for its options",
   },
   animals: {
-    eyebrow: "Animal",
     singular: "animal",
     plural: "animals",
     detections: "detections",
     faces: "Detections in this group · click one for its options",
   },
   vehicles: {
-    eyebrow: "Vehicle",
     singular: "vehicle",
     plural: "vehicles",
     detections: "detections",
@@ -450,7 +447,6 @@ export default function ClusterDetailPage() {
           <Link className="kx-backlink" href={`/${category}`}>
             ← All {copy.plural}
           </Link>
-          <span className="kx-eyebrow">{copy.eyebrow}</span>
           {/* Until the group has actually loaded the heading says nothing about
               it: "Unnamed person" on a request that failed is a claim, not a
               placeholder. */}
@@ -571,7 +567,7 @@ export default function ClusterDetailPage() {
         </div>
 
         <div className="kx-row">
-          <span className="kx-eyebrow quiet">Name</span>
+          <span className="kx-field-label">Name</span>
           <form
             className="kx-nameform"
             onSubmit={(event) => {
@@ -597,7 +593,7 @@ export default function ClusterDetailPage() {
           </form>
           {reuseNames.length > 0 && (
             <div className="kx-namerow">
-              <span className="kx-eyebrow quiet">Or reuse</span>
+              <span className="kx-field-label">Or reuse</span>
               {reuseNames.map((person) => (
                 <button
                   key={person.id}
@@ -628,7 +624,7 @@ export default function ClusterDetailPage() {
           aria-controls="cluster-detections"
           onClick={() => setFacesOpen((current) => !current)}
         >
-          <span className="kx-eyebrow quiet">{copy.faces}</span>
+          <span className="kx-field-label">{copy.faces}</span>
           <span className="kx-mono">{fmt.format(items.length)}</span>
         </button>
         {facesOpen && (
@@ -672,7 +668,7 @@ export default function ClusterDetailPage() {
       {/* ── Photographs ─────────────────────────────────────────────────── */}
       <section className="kx-clusterphotos" hidden={!loaded}>
         <div className="kx-sectionhead">
-          <span className="kx-eyebrow quiet">
+          <span className="kx-field-label">
             {coverPickMode ? "Pick the picture that represents them" : "Where they show up"}
           </span>
           <span className="kx-mono">{fmt.format(photos.length)} photos</span>

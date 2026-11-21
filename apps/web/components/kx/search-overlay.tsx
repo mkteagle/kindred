@@ -24,7 +24,7 @@ const SUGGESTIONS = [
 const RECENT_KEY = "kindred-recent-searches";
 const RECENT_LIMIT = 4;
 
-function readRecent(): string[] {
+export function readRecent(): string[] {
   try {
     const raw = localStorage.getItem(RECENT_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : [];
@@ -174,7 +174,7 @@ export function KxSearchOverlay({ open, onClose }: { open: boolean; onClose: () 
           {!live && (
             <>
               <div className="kx-suggestgroup">
-                <span className="kx-eyebrow quiet">Try</span>
+                <span className="kx-field-label">Try</span>
                 <div className="kx-suggestgroup-row">
                   {SUGGESTIONS.map((suggestion) => (
                     <button key={suggestion} className="kx-chip" onClick={() => setQuery(suggestion)}>
@@ -185,7 +185,7 @@ export function KxSearchOverlay({ open, onClose }: { open: boolean; onClose: () 
               </div>
               {recent.length > 0 && (
                 <div className="kx-suggestgroup">
-                  <span className="kx-eyebrow quiet">Recent</span>
+                  <span className="kx-field-label">Recent</span>
                   <div className="kx-suggestgroup-row">
                     {recent.map((item) => (
                       <button key={item} className="kx-chip" onClick={() => setQuery(item)}>

@@ -30,9 +30,6 @@ struct KindredApp: App {
         Analytics.configure()
         SyncManager.shared.configure()
         Task {
-            // A paired device must talk to its own household's server, so this
-            // has to happen before anything else makes a request.
-            await PairingService.restoreServerURL()
             let server = await APIClient.shared.currentBaseURL()
             await OAuthHelper.loadConfig(from: server)
         }
@@ -41,7 +38,6 @@ struct KindredApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                .preferredColorScheme(.dark)
                 .tint(KindredTheme.accent)
                 .onOpenURL { url in
                     guard url.scheme?.lowercased() == "kindred" else { return }
@@ -50,15 +46,16 @@ struct KindredApp: App {
                         // scheme, so dispatch on the host rather than handing
                         // every kindred:// URL to Flickr.
                         if PairingCoordinator.shared.handle(url: url) { return }
-                        FlickrAuth.shared.handleCallback(url: url)
+                        if url.host?.lowercased() == "oauth-callback" {
+                            FlickrAuth.shared.handleCallback(url: url)
+                        }
                     }
                 }
         }
     }
 
     private func configureAppearance() {
-        // Dark first, everywhere. The redesign has no light theme on mobile,
-        // so the whole UIKit layer is pinned rather than following the system.
+        // UIKit chrome uses the same adaptive palette as the SwiftUI views.
         let ground = UIColor(KindredTheme.bg)
 
         let tabAppearance = UITabBarAppearance()
@@ -75,21 +72,20 @@ struct KindredApp: App {
         navAppearance.configureWithTransparentBackground()
         navAppearance.backgroundColor = .clear
         navAppearance.shadowColor = .clear
-        if let large = UIFont(name: "SpaceGrotesk-Bold", size: 30) {
+        if let large = UIFont(name: "InstrumentSans-Bold", size: 30) {
             navAppearance.largeTitleTextAttributes = [
-                .font: large,
+                .font: UIFontMetrics(forTextStyle: .largeTitle).scaledFont(for: large),
                 .foregroundColor: UIColor(KindredTheme.ink),
-                .kern: -0.3,
             ]
         }
-        if let inline = UIFont(name: "SpaceGrotesk-SemiBold", size: 17) {
+        if let inline = UIFont(name: "InstrumentSans-SemiBold", size: 17) {
             navAppearance.titleTextAttributes = [
-                .font: inline,
+                .font: UIFontMetrics(forTextStyle: .headline).scaledFont(for: inline),
                 .foregroundColor: UIColor(KindredTheme.ink),
             ]
         }
 
-        let scrolled = navAppearance.copy() as! UINavigationBarAppearance
+        let scrolled = navAppearance.copy()
         scrolled.configureWithDefaultBackground()
         scrolled.backgroundColor = UIColor(KindredTheme.chrome)
         scrolled.shadowColor = UIColor(KindredTheme.hairline)
@@ -135,12 +131,8 @@ struct RootView: View {
     private var sessionContent: some View {
         if session.isAuthenticated {
             ContentView()
+                .id(session.currentUser?.id)
                 .task {
-                    // If a stale demo token survived an app restart, clear it
-                    if session.sessionToken == "demo" && !DemoDataProvider.shared.isActive {
-                        session.logout()
-                        return
-                    }
                     // Skip network refresh in demo mode
                     guard !DemoDataProvider.shared.isActive else { return }
                     await session.refreshUser()

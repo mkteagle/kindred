@@ -1,5 +1,8 @@
 import Foundation
 import CryptoKit
+import AuthenticationServices
+import Security
+import UIKit
 
 extension Notification.Name {
     static let kindredSessionUnauthorized = Notification.Name("kindred.session.unauthorized")
@@ -83,6 +86,11 @@ final class SessionManager {
     private func loadStoredSession() {
         guard let token = KeychainHelper.loadString(forKey: tokenKey) else { return }
 
+        if token == "demo" {
+            clearStoredSession()
+            return
+        }
+
         if let expiryString = KeychainHelper.loadString(forKey: expiryKey),
            let expiry = Self.parseServerDate(expiryString),
            expiry <= Date() {
@@ -138,8 +146,7 @@ final class SessionManager {
                 display_name: "App Review",
                 role: "member"
             )
-            storeSession(token: "demo", user: reviewUser, expiresAt: nil)
-            await APIClient.shared.setSessionToken(nil)
+            await restoreSession(token: "demo", user: reviewUser)
             return
         }
 
@@ -148,22 +155,16 @@ final class SessionManager {
 
         if response.review_demo == true {
             DemoDataProvider.shared.isActive = true
-            storeSession(token: "demo", user: response.user, expiresAt: nil)
-            await APIClient.shared.setSessionToken(nil)
+            await restoreSession(token: "demo", user: response.user)
             return
         }
 
         DemoDataProvider.shared.deactivate()
-        storeSession(
+        await restoreSession(
             token: response.session.token,
             user: response.user,
             expiresAt: response.session.expires_at
         )
-        await APIClient.shared.setSessionToken(response.session.token)
-        Analytics.identify(userId: response.user.id, properties: [
-            "username": response.user.username,
-            "role": response.user.role,
-        ])
     }
 
     private static func matchesAppReviewCredentials(username: String, password: String) -> Bool {
@@ -184,21 +185,20 @@ final class SessionManager {
             "password": password,
         ]
         let response: AuthResponse = try await APIClient.shared.postPublic("/auth/register", body: body)
-        storeSession(
+        await restoreSession(
             token: response.session.token,
             user: response.user,
             expiresAt: response.session.expires_at
         )
-        await APIClient.shared.setSessionToken(response.session.token)
     }
 
     // MARK: - Refresh (sync latest user data from server)
 
     func refreshUser() async {
-        guard isAuthenticated, sessionToken != nil else { return }
+        guard isAuthenticated, let token = sessionToken else { return }
         do {
             let me: MeResponse = try await APIClient.shared.get("/auth/me")
-            guard me.loggedIn else { return }
+            guard me.loggedIn, token == sessionToken else { return }
             let updated = UserInfo(
                 id: me.userId ?? currentUser?.id ?? "",
                 username: me.username ?? currentUser?.username ?? "",
@@ -208,17 +208,24 @@ final class SessionManager {
             )
             self.currentUser = updated
             KeychainHelper.saveCodable(updated, forKey: userKey)
-        } catch APIClient.APIError.unauthorized {
-            invalidateSession()
         } catch {
             // Offline/server failures leave the last known user available.
         }
     }
 
-    // MARK: - Restore (used by Flickr OAuth login flow)
+    // MARK: - Apply a signed-in session
 
-    func restoreSession(token: String, user: UserInfo, expiresAt: String? = nil) {
+    func restoreSession(token: String, user: UserInfo, expiresAt: String? = nil, serverURL: String? = nil) async {
+        // Mounting the signed-in UI immediately starts authenticated requests.
+        await APIClient.shared.setSessionToken(token == "demo" ? nil : token, serverURL: serverURL)
+        if let serverURL { PairingService.rememberServerURL(serverURL) }
         storeSession(token: token, user: user, expiresAt: expiresAt)
+    }
+
+    func login(with provider: HostedSocialSignIn.Provider) async throws {
+        let account = try await HostedSocialSignIn.shared.signIn(with: provider)
+        DemoDataProvider.shared.deactivate()
+        await restoreSession(token: account.session.token, user: account.user, expiresAt: account.session.expires_at)
     }
 
     /// Update stored user info without changing the session token (e.g. after avatar change)
@@ -230,8 +237,8 @@ final class SessionManager {
     // MARK: - Logout
 
     func logout() {
+        FlickrUploader.shared.pauseBackup()
         clearStoredSession()
-        Analytics.reset()
         Task {
             await APIClient.shared.setSessionToken(nil)
         }
@@ -242,5 +249,130 @@ final class SessionManager {
     func invalidateSession() {
         guard isAuthenticated else { return }
         logout()
+    }
+}
+
+/// The hosted OAuth flow verifies Google's or Apple's identity on the web server.
+@MainActor
+final class HostedSocialSignIn: NSObject, ASWebAuthenticationPresentationContextProviding {
+    enum Provider: String {
+        case google, apple
+    }
+
+    static let shared = HostedSocialSignIn()
+    private static let origin = URL(string: "https://www.kindredphotos.app")!
+    static let integrationsURL = origin.appendingPathComponent("settings/integrations")
+    private var session: ASWebAuthenticationSession?
+
+    static func supports(server: String) -> Bool {
+        guard let url = URL(string: server), url.scheme == "https", url.port == nil,
+              let host = url.host else { return false }
+        return ["api.kindredphotos.app", "nas-api.kindredphotos.app"].contains(host)
+    }
+
+    func signIn(with provider: Provider) async throws -> AuthResponse {
+        guard session == nil, Self.supports(server: await APIClient.shared.currentBaseURL()) else {
+            throw SignInError.unavailable
+        }
+        let verifier = try Self.makeCode()
+        let state = try Self.makeCode()
+        let challenge = Self.base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
+        guard var start = URLComponents(
+            url: Self.origin.appending(path: "api/auth/\(provider.rawValue)"),
+            resolvingAgainstBaseURL: false
+        ) else { throw SignInError.invalidCallback }
+        start.queryItems = [
+            URLQueryItem(name: "mobile_state", value: state),
+            URLQueryItem(name: "mobile_challenge", value: challenge)
+        ]
+        guard let url = start.url else { throw SignInError.invalidCallback }
+
+        let callback = try await authorize(url)
+        guard let result = URLComponents(url: callback, resolvingAgainstBaseURL: false),
+              result.scheme == "kindred", result.host == "social-auth", result.path == "/complete",
+              let values = result.queryItems,
+              values.filter({ $0.name == "state" }).map(\.value) == [state] else {
+            throw SignInError.invalidCallback
+        }
+        if let code = values.first(where: { $0.name == "error" })?.value {
+            throw SignInError.provider(code)
+        }
+        guard let proof = values.first(where: { $0.name == "proof" })?.value,
+              proof.hasPrefix("v2:"), proof.count <= 12_000 else { throw SignInError.invalidCallback }
+
+        var request = URLRequest(url: Self.origin.appending(path: "api/auth/mobile"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 25
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["proof": proof, "verifier": verifier])
+        let (body, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw SignInError.invalidCallback }
+        guard http.statusCode == 200 else {
+            struct Failure: Decodable { let detail: String }
+            let code = (try? JSONDecoder().decode(Failure.self, from: body))?.detail ?? "oauth_backend"
+            throw SignInError.provider(code)
+        }
+        return try JSONDecoder().decode(AuthResponse.self, from: body)
+    }
+
+    private func authorize(_ url: URL) async throws -> URL {
+        defer { session = nil }
+        return try await withCheckedThrowingContinuation { continuation in
+            let browser = ASWebAuthenticationSession(url: url, callbackURLScheme: "kindred") { callback, error in
+                if let callback {
+                    continuation.resume(returning: callback)
+                } else {
+                    continuation.resume(throwing: error ?? SignInError.invalidCallback)
+                }
+            }
+            browser.presentationContextProvider = self
+            session = browser
+            if !browser.start() {
+                continuation.resume(throwing: SignInError.unavailable)
+            }
+        }
+    }
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first(where: { $0.activationState == .foregroundActive })?
+            .keyWindow ?? ASPresentationAnchor()
+    }
+
+    private static func makeCode() throws -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
+            throw SignInError.unavailable
+        }
+        return base64URL(Data(bytes))
+    }
+
+    private static func base64URL(_ data: Data) -> String {
+        data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    enum SignInError: LocalizedError {
+        case unavailable, invalidCallback, provider(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .unavailable:
+                return "Sign-in is unavailable for this server."
+            case .invalidCallback:
+                return "Kindred could not verify this sign-in. Please try again."
+            case .provider("account_not_linked"):
+                return "Link this sign-in to your household account in Kindred on the web, then try again."
+            case .provider("provider_unavailable"):
+                return "This sign-in provider is unavailable. Try another option or scan a pairing code."
+            case .provider("oauth_backend"):
+                return "Kindred could not reach your household account. Please try again."
+            case .provider:
+                return "Sign-in could not be completed. Please try again."
+            }
+        }
     }
 }

@@ -162,12 +162,9 @@ enum PairingService {
         let claim = try JSONDecoder().decode(ClaimResponse.self, from: data)
         let resolved = normaliseServer(claim.server_url) ?? server
 
-        // Point the client at this household before storing the session, so no
-        // request can be made against the old server with the new token.
-        await APIClient.shared.setBaseURL(resolved)
-        rememberServerURL(resolved)
-
-        SessionManager.shared.restoreSession(
+        // Switch the server and token together before updating the signed-in UI.
+        FlickrUploader.shared.pauseBackup()
+        await SessionManager.shared.restoreSession(
             token: claim.session.token,
             user: UserInfo(
                 id: claim.user.id,
@@ -175,7 +172,8 @@ enum PairingService {
                 display_name: claim.user.username ?? "",
                 role: claim.user.role ?? "member"
             ),
-            expiresAt: claim.session.expires_at
+            expiresAt: claim.session.expires_at,
+            serverURL: resolved
         )
     }
 
@@ -191,14 +189,6 @@ enum PairingService {
 
     static func forgetServerURL() {
         UserDefaults.standard.removeObject(forKey: serverURLKey)
-    }
-
-    /// Restore the paired server on launch. Without this the app would pair
-    /// once and then talk to the default host on next start.
-    static func restoreServerURL() async {
-        if let stored = storedServerURL() {
-            await APIClient.shared.setBaseURL(stored)
-        }
     }
 
     static func defaultDeviceName() -> String {

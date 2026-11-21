@@ -14,7 +14,7 @@ struct AdminScanView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                KindredPageHeader(eyebrow: "Admin", title: "Scan & maintenance.")
+                KindredPageHeader(title: "Scan & maintenance")
 
                 // Active job card
                 activeJobSection
@@ -43,7 +43,7 @@ struct AdminScanView: View {
 
     private var activeJobSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            KindredEyebrow(text: "Current scan", color: KindredTheme.pine)
+            KindredSectionLabel(text: "Current scan", color: KindredTheme.pine)
                 .padding(.horizontal, 20)
                 .padding(.top, 18)
                 .padding(.bottom, 6)
@@ -65,9 +65,8 @@ struct AdminScanView: View {
                 Circle()
                     .fill(job.status == "running" ? KindredTheme.forest : KindredTheme.mist)
                     .frame(width: 8, height: 8)
-                Text(job.status.uppercased())
-                    .font(.kindredEyebrow)
-                    .tracking(1.4)
+                Text(job.status.capitalized)
+                    .font(.kindredLabel)
                     .foregroundStyle(job.status == "running" ? KindredTheme.forest : KindredTheme.mist)
                 Spacer()
                 if job.status == "running" {
@@ -192,7 +191,7 @@ struct AdminScanView: View {
 
     private var syncHistorySection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            KindredEyebrow(text: "Scan history", color: KindredTheme.pine)
+            KindredSectionLabel(text: "Scan history", color: KindredTheme.pine)
                 .padding(.horizontal, 20)
                 .padding(.top, 24)
                 .padding(.bottom, 6)

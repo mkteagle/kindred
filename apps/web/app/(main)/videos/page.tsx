@@ -169,7 +169,6 @@ export default function VideosPage() {
 
   return (
     <main className="kx-page">
-      <span className="kx-eyebrow">Videos</span>
       <h1 className="kx-title">The ones that move.</h1>
       <p className="kx-lede">
         {total > 0 ? `${fmt.format(total)} clips, newest first.` : "Newest first."} Posters come off

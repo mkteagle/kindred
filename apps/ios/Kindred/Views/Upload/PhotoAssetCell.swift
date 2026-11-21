@@ -6,6 +6,7 @@ import SwiftUI
 struct PhotoAssetCell: View {
     let asset: PHAsset
     let isSelected: Bool
+    var allowsNetworkAccess = true
     @State private var image: Image?
 
     var body: some View {
@@ -69,7 +70,7 @@ struct PhotoAssetCell: View {
         let manager = PHImageManager.default()
         let options = PHImageRequestOptions()
         options.deliveryMode = .highQualityFormat
-        options.isNetworkAccessAllowed = true
+        options.isNetworkAccessAllowed = allowsNetworkAccess
         options.resizeMode = .fast
 
         let size = CGSize(width: 200, height: 200)

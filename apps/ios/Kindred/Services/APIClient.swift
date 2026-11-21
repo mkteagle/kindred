@@ -4,7 +4,7 @@ import Foundation
 actor APIClient {
     static let shared = APIClient()
 
-    private var baseURL = "https://api.kindredphotos.app"
+    private var baseURL: String
     /// Session token for authenticated requests
     private var sessionToken: String?
     private let session = URLSession.shared
@@ -14,15 +14,20 @@ actor APIClient {
     }()
 
     private init() {
+        baseURL = PairingService.storedServerURL() ?? "https://api.kindredphotos.app"
         Self.publicBaseURL = baseURL
         // Load session token from Keychain on init
-        if let token = KeychainHelper.loadString(forKey: "kindred_session_token") {
+        if let token = KeychainHelper.loadString(forKey: "kindred_session_token"), token != "demo" {
             self.sessionToken = token
             Self.publicSessionToken = token
         }
     }
 
-    func setSessionToken(_ token: String?) {
+    func setSessionToken(_ token: String?, serverURL: String? = nil) {
+        if let serverURL {
+            self.baseURL = serverURL
+            Self.publicBaseURL = serverURL
+        }
         self.sessionToken = token
         Self.publicSessionToken = token
     }
@@ -38,21 +43,25 @@ actor APIClient {
     /// carry the token as a query item instead.
     nonisolated(unsafe) static var publicSessionToken: String?
 
-    func setBaseURL(_ url: String) {
-        self.baseURL = url
-        Self.publicBaseURL = url
-    }
-
     // MARK: - Generic Request (authenticated)
 
-    private func request<T: Decodable>(_ path: String, method: String = "GET", body: Data? = nil) async throws -> T {
+    func invalidateSession(for request: URLRequest) {
+        guard let requestToken = request.value(forHTTPHeaderField: "X-Session-Token"),
+              requestToken == sessionToken,
+              let url = request.url, let current = URL(string: baseURL),
+              url.host == current.host, url.port == current.port, url.scheme == current.scheme else { return }
+        NotificationCenter.default.post(name: .kindredSessionUnauthorized, object: nil)
+    }
+
+    private func request<T: Decodable>(_ path: String, method: String = "GET", body: Data? = nil,
+                                       timeout: TimeInterval = 30) async throws -> T {
         guard let url = URL(string: "\(baseURL)\(path)") else {
             throw APIError.invalidURL
         }
 
         var req = URLRequest(url: url)
         req.httpMethod = method
-        req.timeoutInterval = 30
+        req.timeoutInterval = timeout
 
         if let token = sessionToken {
             req.setValue(token, forHTTPHeaderField: "X-Session-Token")
@@ -70,7 +79,7 @@ actor APIClient {
         }
 
         if httpResponse.statusCode == 401 {
-            NotificationCenter.default.post(name: .kindredSessionUnauthorized, object: nil)
+            invalidateSession(for: req)
             throw APIError.unauthorized
         }
 
@@ -128,7 +137,7 @@ actor APIClient {
             throw APIError.invalidResponse
         }
         if httpResponse.statusCode == 401 {
-            NotificationCenter.default.post(name: .kindredSessionUnauthorized, object: nil)
+            invalidateSession(for: req)
             throw APIError.unauthorized
         }
         guard (200...299).contains(httpResponse.statusCode) else {
@@ -140,6 +149,14 @@ actor APIClient {
 
     func get<T: Decodable>(_ path: String) async throws -> T {
         try await request(path)
+    }
+
+    func backupUploadCapacity() async throws -> Int {
+        struct Capacity: Decodable {
+            let upload_limit: Int
+        }
+        let capacity: Capacity = try await request("/health/backup", timeout: 4)
+        return max(1, min(4, capacity.upload_limit))
     }
 
     // MARK: - Health
@@ -373,11 +390,16 @@ actor APIClient {
     }
 
     struct BackupStatus: Codable, Sendable {
-        let flickr_photo_id: String
+        let flickr_photo_id: String?
         let kindred_photo_id: String?
         let nas_status: String
         let flickr_status: String
         let cleanup_safe: Bool
+    }
+
+    private struct BackupStatusRequest: Encodable {
+        let flickr_photo_ids: [String]
+        let kindred_photo_ids: [String]
     }
 
     struct BackupStatusResponse: Codable, Sendable {
@@ -403,10 +425,10 @@ actor APIClient {
         let receipt: UploadReceipt?
     }
 
-    func verifyBackupStatus(flickrPhotoIDs: [String]) async throws -> BackupStatusResponse {
+    func verifyBackupStatus(flickrPhotoIDs: [String], kindredPhotoIDs: [String]) async throws -> BackupStatusResponse {
         try await postJSON(
             "/photos/backup-status",
-            body: ["flickr_photo_ids": flickrPhotoIDs]
+            body: BackupStatusRequest(flickr_photo_ids: flickrPhotoIDs, kindred_photo_ids: kindredPhotoIDs)
         )
     }
 
@@ -463,7 +485,7 @@ actor APIClient {
             throw APIError.invalidResponse
         }
         if httpResponse.statusCode == 401 {
-            NotificationCenter.default.post(name: .kindredSessionUnauthorized, object: nil)
+            invalidateSession(for: request)
             throw APIError.unauthorized
         }
         guard (200...299).contains(httpResponse.statusCode) else {
@@ -516,7 +538,7 @@ actor APIClient {
             throw APIError.invalidResponse
         }
         if httpResponse.statusCode == 401 {
-            NotificationCenter.default.post(name: .kindredSessionUnauthorized, object: nil)
+            invalidateSession(for: req)
             throw APIError.unauthorized
         }
         guard (200...299).contains(httpResponse.statusCode) else {

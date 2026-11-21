@@ -25,14 +25,10 @@ extension View {
     }
 }
 
-/// A large title that collapses into the nav bar, the way the platform's own
-/// does — but drawn in Space Grotesk under a mono eyebrow, which the system
-/// large title cannot do. IOS.md makes the brand's eyebrow rule beat the
-/// platform habit here, so the collapse is rebuilt rather than inherited.
+/// Matches the large title's fade with the inline navigation title.
 struct CollapsingTitleHeader: View {
-    let eyebrow: String
     let title: String
-    var eyebrowColor: Color = KindredTheme.accent
+    var subtitle: String? = nil
     let offset: CGFloat
 
     /// Fades out over the same distance UIKit uses before swapping in the
@@ -42,7 +38,7 @@ struct CollapsingTitleHeader: View {
     }
 
     var body: some View {
-        KindredPageHeader(eyebrow: eyebrow, title: title, eyebrowColor: eyebrowColor)
+        KindredPageHeader(title: title, subtitle: subtitle)
             .opacity(1 - progress)
     }
 }

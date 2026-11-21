@@ -16,25 +16,29 @@ final class PhotoLibraryManager {
     private(set) var estimatedSavingsBytes: Int64 = 0
     private(set) var isLoading = false
 
-    var cleanupEligibleCount: Int {
-        let accountID = currentAccountID
-        return lock.withLock {
-            uploadedMap.values.filter {
-                $0.accountID == accountID && $0.isSafeForCleanup
-            }.count
-        }
+    var nasSavedCount: Int { visibleBackupRecords.filter { $0.nasStatus == "available" }.count }
+    var flickrSavedCount: Int { visibleBackupRecords.filter { $0.flickrStatus == "available" }.count }
+    var verifiedOnBothCount: Int { visibleBackupRecords.filter(\.isSafeForCleanup).count }
+    var flickrPendingCount: Int {
+        visibleBackupRecords.filter { $0.nasStatus == "available" && ["pending", "running", "retry"].contains($0.flickrStatus ?? "") }.count
     }
+
+    var cleanupEligibleCount: Int {
+        getUploadedAssets().count
+    }
+
+    private var visibleBackupRecords: [BackupRecord] { backupRecords(for: allPhotos) }
 
     struct BackupRecord: Codable, Sendable {
         let accountID: String
         let localIdentifier: String
-        let flickrPhotoID: String
-        let kindredPhotoID: String?
+        var flickrPhotoID: String?
+        var kindredPhotoID: String?
         var nasStatus: String?
         var flickrStatus: String?
 
         var isSafeForCleanup: Bool {
-            nasStatus == "available" && flickrStatus == "available"
+            nasStatus == "available" && flickrStatus == "available" && flickrPhotoID != nil
         }
     }
 
@@ -55,11 +59,13 @@ final class PhotoLibraryManager {
     // MARK: - Authorization
 
     func requestAuthorization() async {
-        let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
-        await MainActor.run {
-            self.authorizationStatus = status
-        }
-        if status == .authorized || status == .limited {
+        _ = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        await refreshAuthorizedPhotos()
+    }
+
+    func refreshAuthorizedPhotos() async {
+        authorizationStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        if authorizationStatus == .authorized || authorizationStatus == .limited {
             await fetchPhotos()
         }
     }
@@ -89,7 +95,7 @@ final class PhotoLibraryManager {
         let (mapKeys, newUploadedCount) = lock.withLock { () -> (Set<String>, Int) in
             let accountRecords = uploadedMap.values.filter { $0.accountID == accountID }
             let staleKeys = accountRecords
-                .filter { !currentIDs.contains($0.localIdentifier) }
+                .filter { authorizationStatus == .authorized && !currentIDs.contains($0.localIdentifier) }
                 .map(\.localIdentifier)
             if !staleKeys.isEmpty {
                 for localIdentifier in staleKeys {
@@ -97,7 +103,7 @@ final class PhotoLibraryManager {
                 }
                 saveUploadedMap()
             }
-            let remaining = uploadedMap.values.filter { $0.accountID == accountID }
+            let remaining = uploadedMap.values.filter { $0.accountID == accountID && currentIDs.contains($0.localIdentifier) }
             return (Set(remaining.map(\.localIdentifier)), remaining.count)
         }
 
@@ -114,7 +120,7 @@ final class PhotoLibraryManager {
 
     func markAsUploaded(
         localIdentifier: String,
-        flickrPhotoId: String,
+        flickrPhotoId: String?,
         kindredPhotoId: String? = nil,
         nasStatus: String? = nil,
         flickrStatus: String? = "available",
@@ -129,7 +135,7 @@ final class PhotoLibraryManager {
             flickrPhotoID: flickrPhotoId,
             kindredPhotoID: kindredPhotoId,
             nasStatus: nasStatus,
-            flickrStatus: flickrStatus ?? "available"
+            flickrStatus: flickrStatus ?? (flickrPhotoId == nil ? "pending" : "available")
         )
         saveUploadedMap()
         let newCount = uploadedMap.values.filter { $0.accountID == resolvedAccountID }.count
@@ -182,7 +188,7 @@ final class PhotoLibraryManager {
 
     // MARK: - Delete Local Copies
 
-    /// Delete local copies of photos that have been uploaded to Flickr.
+    /// Delete only the assets verified by the caller against both providers.
     /// Returns the number of photos deleted.
     func freeUpSpace(assets: [PHAsset]) async throws -> Int {
         try await withCheckedThrowingContinuation { continuation in
@@ -207,7 +213,13 @@ final class PhotoLibraryManager {
                 : nil
         })
         lock.unlock()
-        return allPhotos.filter { mapKeys.contains($0.localIdentifier) }
+        return allPhotos.filter { mapKeys.contains($0.localIdentifier) && Self.supportsCleanup($0) }
+    }
+
+    /// The original upload flow sends one resource. Paired Live Photo, RAW,
+    /// and edit resources can still be needed even when the main file is backed up.
+    static func supportsCleanup(_ asset: PHAsset) -> Bool {
+        PHAssetResource.assetResources(for: asset).count == 1
     }
 
     func getTrackedAssets() -> [PHAsset] {
@@ -230,14 +242,28 @@ final class PhotoLibraryManager {
         }
     }
 
+    func backupRecord(for identifier: String) -> BackupRecord? {
+        let key = recordKey(identifier, accountID: currentAccountID)
+        return lock.withLock { uploadedMap[key] }
+    }
+
     func reconcileBackupStatuses(_ statuses: [APIClient.BackupStatus]) {
         let accountID = currentAccountID
-        let byFlickrID = Dictionary(uniqueKeysWithValues: statuses.map { ($0.flickr_photo_id, $0) })
+        let byFlickrID = Dictionary(statuses.compactMap { status in
+            status.flickr_photo_id.map { ($0, status) }
+        }, uniquingKeysWith: { _, latest in latest })
+        let byKindredID = Dictionary(statuses.compactMap { status in
+            status.kindred_photo_id.map { ($0.lowercased(), status) }
+        }, uniquingKeysWith: { _, latest in latest })
         lock.withLock {
             let keys = uploadedMap.keys.filter { uploadedMap[$0]?.accountID == accountID }
             for key in keys {
                 guard var record = uploadedMap[key] else { continue }
-                guard let status = byFlickrID[record.flickrPhotoID] else { continue }
+                let status = record.kindredPhotoID.flatMap { byKindredID[$0.lowercased()] }
+                    ?? record.flickrPhotoID.flatMap { byFlickrID[$0] }
+                guard let status else { continue }
+                record.kindredPhotoID = status.kindred_photo_id ?? record.kindredPhotoID
+                record.flickrPhotoID = status.flickr_photo_id ?? record.flickrPhotoID
                 record.nasStatus = status.nas_status
                 record.flickrStatus = status.flickr_status
                 uploadedMap[key] = record

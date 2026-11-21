@@ -284,3 +284,24 @@ struct MeResponse: Codable {
     let role: String?
     let avatar_url: String?
 }
+
+enum HouseholdFlickrConnection: String {
+    case checking = "Checking…"
+    case connected = "Connected"
+    case needsVerification = "Needs verification"
+    case unavailable = "Unavailable"
+
+    private struct Response: Decodable {
+        let configured: Bool
+        let connected: Bool
+        let verified: Bool?
+    }
+
+    @MainActor
+    static func load() async -> Self {
+        if DemoDataProvider.shared.isActive { return .connected }
+        guard let response: Response = try? await APIClient.shared.get("/integrations/flickr"),
+              response.configured, response.connected else { return .unavailable }
+        return response.verified == true ? .connected : .needsVerification
+    }
+}

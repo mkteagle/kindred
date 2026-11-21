@@ -43,7 +43,9 @@ function ShellFrame({ user, children }: { user: User | null; children: React.Rea
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setSearchOpen(true);
+        const field = pathname === "/search" && document.querySelector<HTMLInputElement>("#kx-library-search");
+        if (field && !searchOpen) field.focus();
+        else setSearchOpen(true);
         return;
       }
       if (e.key === "Escape") {
@@ -53,11 +55,12 @@ function ShellFrame({ user, children }: { user: User | null; children: React.Rea
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [setSearchOpen, exitSelect]);
+  }, [pathname, searchOpen, setSearchOpen, exitSelect]);
 
   useEffect(() => {
     setDrawerOpen(false);
-  }, [pathname]);
+    exitSelect();
+  }, [pathname, exitSelect]);
 
   useEffect(() => {
     const mobile = window.matchMedia("(width <= 640px)");
@@ -94,7 +97,7 @@ export function KxAppShell({ children }: { children: React.ReactNode }) {
   if (isBareRoute(pathname)) return <>{children}</>;
 
   return (
-    <KxUiProvider isLibrary={pathname === LIBRARY_PATH || pathname === "/timeline"}>
+    <KxUiProvider isLibrary={pathname === LIBRARY_PATH || pathname.startsWith(`${LIBRARY_PATH}/`) || pathname === "/timeline"}>
       <KxSearchProvider>
         <ShellFrame user={user?.loggedIn ? user : null}>{children}</ShellFrame>
       </KxSearchProvider>

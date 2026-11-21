@@ -1,6 +1,8 @@
 import BackgroundTasks
 import Foundation
+import OSLog
 import Photos
+import UIKit
 
 /// Schedules automatic backup while delegating every transfer to the same
 /// durable uploader used by the manual Backup screen.
@@ -15,6 +17,8 @@ struct FavoriteSyncResponse: Decodable, Sendable {
 final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
     static let shared = SyncManager()
     static let backgroundTaskId = "com.kindlingsignal.kindred.sync"
+    private static let continuedBackupID = "com.kindlingsignal.kindred.backup"
+    private static let logger = Logger(subsystem: "com.kindlingsignal.kindred", category: "Backup")
 
     var isSyncing: Bool { FlickrUploader.shared.isUploading }
     var syncProgress: Float { FlickrUploader.shared.totalProgress }
@@ -30,21 +34,31 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
     /// "Only on Wi-Fi" from Settings. Defaults on: a household library is
     /// mostly originals, and uploading those over cellular unasked is rude.
     private(set) var wifiOnly = true
+    private(set) var uploadLimit = 2
 
     private let lastSyncKey = "kindred_last_successful_sync_date"
     private let autoSyncKey = "kindred_auto_sync_enabled"
     private let wifiOnlyKey = "kindred_wifi_only_uploads"
+    private let uploadLimitKey = "kindred_max_parallel_uploads"
+    @ObservationIgnored private var continuedBackupRequested = false
+    @ObservationIgnored private var continuedBackup: BGTask?
 
     override private init() {
         super.init()
         lastSyncDate = UserDefaults.standard.object(forKey: lastSyncKey) as? Date
         autoSyncEnabled = UserDefaults.standard.bool(forKey: autoSyncKey)
         wifiOnly = UserDefaults.standard.object(forKey: wifiOnlyKey) as? Bool ?? true
+        uploadLimit = max(1, min(4, UserDefaults.standard.object(forKey: uploadLimitKey) as? Int ?? 2))
     }
 
     func setWiFiOnly(_ enabled: Bool) {
         wifiOnly = enabled
         UserDefaults.standard.set(enabled, forKey: wifiOnlyKey)
+    }
+
+    func setUploadLimit(_ value: Int) {
+        uploadLimit = max(1, min(4, value))
+        UserDefaults.standard.set(uploadLimit, forKey: uploadLimitKey)
     }
 
     /// Checked before a transfer starts rather than being baked into the
@@ -63,6 +77,18 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
                 return
             }
             Task { @MainActor in self.handleBackgroundTask(processingTask) }
+        }
+        if #available(iOS 26.0, *) {
+            BGTaskScheduler.shared.register(
+                forTaskWithIdentifier: Self.continuedBackupID,
+                using: .main
+            ) { task in
+                guard let backup = task as? BGContinuedProcessingTask else {
+                    task.setTaskCompleted(success: false)
+                    return
+                }
+                Task { @MainActor in self.attachContinuedBackup(backup) }
+            }
         }
 
         if autoSyncEnabled {
@@ -112,7 +138,60 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
         }
     }
 
-    private func scheduleBackgroundSync() {
+    func beginContinuedBackup() {
+        guard #available(iOS 26.0, *),
+              UIApplication.shared.applicationState == .active else { return }
+        let request = BGContinuedProcessingTaskRequest(
+            identifier: Self.continuedBackupID,
+            title: "Backing up to Kindred",
+            subtitle: "Uploading the items you selected"
+        )
+        request.strategy = .fail
+        continuedBackupRequested = true
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            // The foreground run and the scheduled queue remain available.
+            continuedBackupRequested = false
+            Analytics.backupDiagnostic(.background, failure: .init(.backgroundUnavailable, retryable: true))
+        }
+    }
+
+    @available(iOS 26.0, *)
+    private func attachContinuedBackup(_ task: BGContinuedProcessingTask) {
+        guard continuedBackupRequested else {
+            task.setTaskCompleted(success: false)
+            return
+        }
+        continuedBackup = task
+        Self.logger.notice("iOS attached continued processing to the manual backup")
+        task.progress.totalUnitCount = 1_000
+        updateContinuedBackupProgress(FlickrUploader.shared.totalProgress)
+        task.expirationHandler = {
+            Task { @MainActor in FlickrUploader.shared.suspendBackup() }
+        }
+    }
+
+    func updateContinuedBackupProgress(_ fraction: Float) {
+        guard #available(iOS 26.0, *),
+              let task = continuedBackup as? BGContinuedProcessingTask else { return }
+        let completed = Int64((min(max(fraction, 0), 1) * 1_000).rounded())
+        task.progress.completedUnitCount = max(task.progress.completedUnitCount, completed)
+    }
+
+    func finishContinuedBackup(success: Bool) {
+        guard continuedBackupRequested else { return }
+        continuedBackupRequested = false
+        if let task = continuedBackup {
+            task.setTaskCompleted(success: success)
+            Self.logger.notice("Continued backup finished successfully=\(success, privacy: .public)")
+        } else {
+            BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.continuedBackupID)
+        }
+        continuedBackup = nil
+    }
+
+    func scheduleBackgroundSync() {
         let request = BGProcessingTaskRequest(identifier: Self.backgroundTaskId)
         request.requiresNetworkConnectivity = true
         request.requiresExternalPower = false
@@ -126,10 +205,19 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
     }
 
     private func handleBackgroundTask(_ task: BGProcessingTask) {
-        scheduleBackgroundSync()
         let syncTask = Task { @MainActor in
-            await syncNewPhotos()
-            return lastRunSucceeded
+            if FlickrUploader.shared.isPaused { return true }
+            if autoSyncEnabled {
+                scheduleBackgroundSync()
+                await syncNewPhotos()
+                return lastRunSucceeded
+            }
+            let summary = await FlickrUploader.shared.resumeQueuedUploads()
+            if summary.wasCancelled || summary.wasSkipped || !summary.failedIdentifiers.isEmpty {
+                scheduleBackgroundSync()
+                return false
+            }
+            return true
         }
         task.expirationHandler = { syncTask.cancel() }
         Task {
@@ -139,7 +227,7 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
     }
 
     func syncNewPhotos() async {
-        guard !FlickrUploader.shared.isUploading else { return }
+        guard !FlickrUploader.shared.isUploading, !FlickrUploader.shared.isPaused else { return }
         guard SessionManager.shared.isAuthenticated else {
             lastRunSucceeded = false
             return
@@ -160,7 +248,7 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
         // Wi-Fi, a run already going, a signed-out session -- and reading that
         // as success is what made the app claim it had just backed up when it
         // had not.
-        guard !summary.wasSkipped else {
+        guard !summary.wasSkipped, !summary.wasCancelled else {
             lastRunSucceeded = false
             return
         }

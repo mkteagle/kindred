@@ -94,12 +94,11 @@ function TogetherScreen() {
 
   return (
     <>
-      <span className="kx-eyebrow">Together</span>
       <h1 className="kx-title">Two people, one pile.</h1>
       <p className="kx-lede">Pick anyone and see only the photos where they all appear.</p>
 
       <div className="kx-togetherbar">
-        <span className="kx-eyebrow quiet" style={{ width: "auto" }}>
+        <span className="kx-field-label" style={{ width: "auto" }}>
           Showing
         </span>
 

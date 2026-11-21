@@ -180,6 +180,7 @@ struct MosaicGrid: View {
     var isSelecting: Bool = false
     var selection: Set<String> = []
     var matchPercent: (LibraryPhoto) -> Int? = { _ in nil }
+    var squareTileRadius: CGFloat? = nil
     var onTap: (LibraryPhoto) -> Void
     var onLongPress: (LibraryPhoto) -> Void = { _ in }
     var onSweep: (Set<String>) -> Void = { _ in }
@@ -190,22 +191,36 @@ struct MosaicGrid: View {
     @State private var sweptIDs: Set<String> = []
 
     var body: some View {
-        MosaicLayout(columns: columns, rowHeight: rowHeight, spacing: spacing) {
-            ForEach(photos) { photo in
-                PhotoTile(
-                    photo: photo,
-                    isSelected: selection.contains(photo.photo_id),
-                    isSelecting: isSelecting,
-                    matchPercent: matchPercent(photo)
-                )
-                .reportsTileFrame(id: photo.photo_id, in: .named(space))
-                .onTapGesture { onTap(photo) }
-                .onLongPressGesture(minimumDuration: 0.35) { onLongPress(photo) }
+        Group {
+            if squareTileRadius != nil {
+                let tracks = Array(repeating: GridItem(.flexible(), spacing: spacing), count: columns)
+                LazyVGrid(columns: tracks, spacing: spacing) { tiles }
+            } else {
+                MosaicLayout(columns: columns, rowHeight: rowHeight, spacing: spacing) { tiles }
             }
         }
         .coordinateSpace(name: space)
         .onPreferenceChange(TileFrameKey.self) { frames = $0 }
         .simultaneousGesture(sweepGesture, isEnabled: isSelecting)
+    }
+
+    private var tiles: some View {
+        ForEach(photos) { photo in
+            let isSelected = selection.contains(photo.id)
+            Group {
+                if let squareTileRadius {
+                    SquarePhotoTile(photo: photo, isSelected: isSelected, isSelecting: isSelecting,
+                                    matchPercent: matchPercent(photo), cornerRadius: squareTileRadius)
+                } else {
+                    PhotoTile(photo: photo, isSelected: isSelected, isSelecting: isSelecting,
+                              matchPercent: matchPercent(photo))
+                }
+            }
+            .onTapGesture { onTap(photo) }
+            .onLongPressGesture(minimumDuration: 0.35) { onLongPress(photo) }
+            .accessibilityAction { onTap(photo) }
+            .reportsTileFrame(id: photo.id, in: .named(space))
+        }
     }
 
     /// Press and drag across tiles to sweep. Only armed in select mode, so an

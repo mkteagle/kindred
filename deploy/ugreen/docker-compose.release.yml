@@ -30,7 +30,7 @@ services:
       database:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-kindred}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-kindred}
+      DATABASE_URL: ${RAILWAY_DATABASE_URL:-postgresql://${POSTGRES_USER:-kindred}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-kindred}}
       PYTHONUNBUFFERED: "1"
       XDG_CACHE_HOME: /app/cache
       # Evictable transforms survive application container replacements.
@@ -46,6 +46,8 @@ services:
       FLICKR_OAUTH_TOKEN: ${FLICKR_OAUTH_TOKEN:-}
       FLICKR_OAUTH_SECRET: ${FLICKR_OAUTH_SECRET:-}
       FLICKR_USER_ID: ${FLICKR_USER_ID:-}
+      KINDRED_HOUSEHOLD_FLICKR_USER_ID: ${KINDRED_HOUSEHOLD_FLICKR_USER_ID:-}
+      KINDRED_NAS_UPLOAD_LIMIT: ${KINDRED_NAS_UPLOAD_LIMIT:-4}
       APP_REVIEW_USERNAME: ${APP_REVIEW_USERNAME:-}
       APP_REVIEW_PASSWORD: ${APP_REVIEW_PASSWORD:-}
     volumes:
@@ -79,7 +81,7 @@ services:
       api:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-kindred}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-kindred}
+      DATABASE_URL: ${RAILWAY_DATABASE_URL:-postgresql://${POSTGRES_USER:-kindred}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-kindred}}
       PYTHONUNBUFFERED: "1"
       XDG_CACHE_HOME: /app/cache
       PHOTO_STORAGE_ROOT: /data/photos/originals
@@ -91,6 +93,7 @@ services:
       FLICKR_OAUTH_TOKEN: ${FLICKR_OAUTH_TOKEN:-}
       FLICKR_OAUTH_SECRET: ${FLICKR_OAUTH_SECRET:-}
       FLICKR_USER_ID: ${FLICKR_USER_ID:-}
+      KINDRED_HOUSEHOLD_FLICKR_USER_ID: ${KINDRED_HOUSEHOLD_FLICKR_USER_ID:-}
       APP_REVIEW_USERNAME: ${APP_REVIEW_USERNAME:-}
       APP_REVIEW_PASSWORD: ${APP_REVIEW_PASSWORD:-}
       PYTHONPATH: /app
@@ -115,7 +118,7 @@ services:
       api:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-kindred}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-kindred}
+      DATABASE_URL: ${RAILWAY_DATABASE_URL:-postgresql://${POSTGRES_USER:-kindred}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-kindred}}
       PYTHONUNBUFFERED: "1"
       XDG_CACHE_HOME: /app/cache
       # Evictable transforms survive application container replacements.
@@ -129,6 +132,7 @@ services:
       FLICKR_OAUTH_TOKEN: ${FLICKR_OAUTH_TOKEN:-}
       FLICKR_OAUTH_SECRET: ${FLICKR_OAUTH_SECRET:-}
       FLICKR_USER_ID: ${FLICKR_USER_ID:-}
+      KINDRED_HOUSEHOLD_FLICKR_USER_ID: ${KINDRED_HOUSEHOLD_FLICKR_USER_ID:-}
       APP_REVIEW_USERNAME: ${APP_REVIEW_USERNAME:-}
       APP_REVIEW_PASSWORD: ${APP_REVIEW_PASSWORD:-}
       PYTHONPATH: /app

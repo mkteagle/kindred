@@ -1,9 +1,10 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import type { User } from "@/types";
-import { MenuIcon, MoonIcon, SearchIcon, SunIcon, ZoomInIcon, ZoomOutIcon } from "./icons";
+import { MenuIcon, MoonIcon, SearchIcon, SunIcon } from "./icons";
 import { useTheme } from "./theme";
-import { useKxUi, TILE_MAX, TILE_MIN } from "./ui-state";
+import { useKxUi } from "./ui-state";
 import { KxUserMenu } from "./user-menu";
 import { useKxSearch } from "./search-state";
 
@@ -33,12 +34,15 @@ export function KxTopbar({
   drawerOpen: boolean;
   onOpenDrawer: () => void;
 }) {
-  const { tile, zoomIn, zoomOut, selecting, setSelecting, isLibrary, setSearchOpen, setUploadOpen } = useKxUi();
+  const pathname = usePathname();
+  const { setSearchOpen, setUploadOpen } = useKxUi();
+  const pageOwnsHeader = ["/gallery", "/gallery/junk", "/people", "/search", "/timeline", "/settings"].includes(pathname)
+    || pathname.startsWith("/settings/") || pathname.startsWith("/albums/");
   const { query } = useKxSearch();
   const term = query.trim();
 
   return (
-    <header className="kx-topbar">
+    <header className={`kx-topbar${pageOwnsHeader ? " kx-drawer-bar" : ""}`}>
       <button
         className="kx-iconbutton kx-drawer-toggle"
         onClick={onOpenDrawer}
@@ -49,7 +53,7 @@ export function KxTopbar({
         <MenuIcon />
       </button>
 
-      <button className={`kx-searchtrigger${term ? " has-query" : ""}`} onClick={() => setSearchOpen(true)} aria-label={term ? `Search photos for ${term}` : "Search photos"}>
+      {!pageOwnsHeader && <><button className={`kx-searchtrigger${term ? " has-query" : ""}`} onClick={() => setSearchOpen(true)} aria-label={term ? `Search photos for ${term}` : "Search photos"}>
         <SearchIcon size={17} />
         <span>{term || "Search people, places, moments…"}</span>
         <kbd className="kx-kbd">⌘K</kbd>
@@ -58,42 +62,12 @@ export function KxTopbar({
       <div className="kx-topbar-actions">
         <ThemeToggle />
 
-        {isLibrary && (
-          <>
-            <button
-              className="kx-iconbutton"
-              onClick={zoomOut}
-              disabled={tile <= TILE_MIN}
-              title="Smaller tiles"
-              aria-label="Smaller tiles"
-            >
-              <ZoomOutIcon />
-            </button>
-            <button
-              className="kx-iconbutton"
-              onClick={zoomIn}
-              disabled={tile >= TILE_MAX}
-              title="Bigger tiles"
-              aria-label="Bigger tiles"
-            >
-              <ZoomInIcon />
-            </button>
-            <button
-              className="kx-button"
-              onClick={() => setSelecting(!selecting)}
-              aria-pressed={selecting}
-            >
-              {selecting ? "Cancel" : "Select"}
-            </button>
-          </>
-        )}
-
         <button className="kx-button primary" onClick={() => setUploadOpen(true)}>
           Add photos
         </button>
 
-        <span className="kx-mobile-account"><KxUserMenu user={user} /></span>
-      </div>
+      </div></>}
+      <span className="kx-mobile-account"><KxUserMenu user={user} /></span>
     </header>
   );
 }

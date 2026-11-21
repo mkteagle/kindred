@@ -156,11 +156,6 @@ struct PersonDetailView: View {
 
     private var nameBlock: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let since = sinceLabel {
-                KindredEyebrow(text: since, color: KindredTheme.amber)
-                    .padding(.bottom, 8)
-            }
-
             Text(displayName)
                 .font(.display(34, weight: .bold, relativeTo: .largeTitle))
                 .tracking(-0.34)
@@ -169,8 +164,8 @@ struct PersonDetailView: View {
                 .accessibilityAddTraits(.isHeader)
                 .padding(.bottom, 6)
 
-            Text(metaLine)
-                .font(.mono(11))
+            Text([sinceLabel, metaLine].compactMap { $0 }.joined(separator: " · "))
+                .font(.kindredCaption)
                 .foregroundStyle(KindredTheme.inkSecondary)
 
             HStack(spacing: 8) {
