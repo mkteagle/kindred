@@ -31,9 +31,11 @@ def managed_originals(root):
 class LocalStorageProvider(StorageProvider):
     name = "nas"
 
-    def __init__(self, root: str | Path):
+    def __init__(self, root: str | Path, library_root: str | Path | None = None):
         self.root = Path(root).expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True)
+        configured = library_root or os.environ.get("PHOTO_LIBRARY_ROOT") or os.environ.get("KINDRED_BROWSE_ROOT")
+        self.library_root = Path(configured).expanduser().resolve() if configured else None
 
     @staticmethod
     def _safe_suffix(filename: str) -> str:
@@ -78,14 +80,22 @@ class LocalStorageProvider(StorageProvider):
         key = PurePosixPath(provider_key)
         if key.is_absolute() or ".." in key.parts:
             return None
-        candidate = (self.root / Path(*key.parts)).resolve()
+        if key.parts and key.parts[0] == "library":
+            if self.library_root is None:
+                return None
+            base, parts = self.library_root, key.parts[1:]
+        else:
+            base, parts = self.root, key.parts
+        candidate = (base / Path(*parts)).resolve()
         try:
-            candidate.relative_to(self.root)
+            candidate.relative_to(base)
         except ValueError:
             return None
         return candidate if candidate.is_file() else None
 
     def delete(self, provider_key: str) -> None:
+        if PurePosixPath(provider_key).parts[:1] == ("library",):
+            raise PermissionError("Linked library originals are read-only")
         path = self.resolve_local_path(provider_key)
         if path is None:
             return
@@ -115,6 +125,8 @@ class LocalStorageProvider(StorageProvider):
         original is missing. Idempotent: an existing link to the same target is
         reused, and a name already taken by a different photo gets a suffix.
         """
+        if PurePosixPath(provider_key).parts[:1] == ("library",):
+            return None  # Albums remain database links; do not modify source folders.
         target = self.resolve_local_path(provider_key)
         if target is None:
             return None

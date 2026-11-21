@@ -1,8 +1,7 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { BACKEND, fmt } from "@/lib/constants";
 import type { SearchResult } from "@/types";
 import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
@@ -12,13 +11,9 @@ import { KxEmptyResults, KxSkeletonCards } from "@/components/kx/states";
 import { KxDateFacet, type DateField, type DateRange } from "@/components/kx/date-facet";
 import { useNamedPeople } from "@/components/kx/use-people";
 import { photoThumb } from "@/lib/photo-url";
+import { SEARCH_DELAY, useSearchResults } from "@/lib/use-search-results";
 
 type Media = "all" | "photo" | "video";
-
-interface SearchResponse {
-  results: SearchResult[];
-  query: string;
-}
 
 const MEDIA_CHIPS: { value: Media; label: string }[] = [
   { value: "all", label: "Everything" },
@@ -38,11 +33,12 @@ function thumbFor(result: SearchResult & { media_kind?: string }): string {
 
 function SearchContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const { openLightbox } = useLightbox();
 
-  const [input, setInput] = useState(searchParams.get("q") || "");
-  const [debouncedQ, setDebouncedQ] = useState(searchParams.get("q") || "");
+  const urlQuery = searchParams.get("q") || "";
+  const lastUrlQuery = useRef(urlQuery);
+  const [input, setInput] = useState(urlQuery);
+  const [debouncedQ, setDebouncedQ] = useState(urlQuery.trim());
   const [media, setMedia] = useState<Media>((searchParams.get("media") as Media) || "all");
   const [dates, setDates] = useState<DateRange>({
     field: (searchParams.get("date_field") as DateField) || "taken",
@@ -50,11 +46,20 @@ function SearchContent() {
     to: searchParams.get("date_to") || "",
   });
   const [person, setPerson] = useState(searchParams.get("cluster_id") || "");
+  const initialCategory = searchParams.get("category");
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQ(input.trim()), 300);
+    if (lastUrlQuery.current === urlQuery) return;
+    lastUrlQuery.current = urlQuery;
+    setInput(urlQuery);
+    setDebouncedQ(urlQuery.trim());
+  }, [urlQuery]);
+
+  const trimmed = input.trim();
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQ(trimmed), SEARCH_DELAY);
     return () => clearTimeout(timer);
-  }, [input]);
+  }, [trimmed]);
 
   useEffect(() => {
     rememberSearch(debouncedQ);
@@ -77,18 +82,25 @@ function SearchContent() {
     // Only worth sending when it is not the default, and only meaningful
     // alongside a range.
     if (dates.field === "added" && (dates.from || dates.to)) next.set("date_field", "added");
-    if (person && selectedPerson) {
+    if (person) {
       next.set("cluster_id", person);
-      next.set("category", selectedPerson.category);
+      next.set("category", selectedPerson?.category || initialCategory || "people");
     }
     return next;
-  }, [debouncedQ, media, dates, person, selectedPerson]);
+  }, [debouncedQ, media, dates, person, selectedPerson, initialCategory]);
 
-  // Keep the URL shareable and reloadable.
+  // Update the address without re-running the route or removing a lightbox link.
   useEffect(() => {
-    const qs = params.toString();
-    router.replace(qs ? `/search?${qs}` : "/search", { scroll: false });
-  }, [params, router]);
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("q") !== null && url.searchParams.get("q") !== lastUrlQuery.current) return;
+    for (const name of ["q", "media", "date_from", "date_to", "date_field", "cluster_id", "category"]) {
+      const value = params.get(name);
+      if (value) url.searchParams.set(name, value);
+      else url.searchParams.delete(name);
+    }
+    lastUrlQuery.current = params.get("q") || "";
+    if (url.href !== window.location.href) window.history.replaceState(null, "", url);
+  }, [params]);
 
   const clearFilters = () => {
     setMedia("all");
@@ -99,19 +111,11 @@ function SearchContent() {
   const hasFacets = media !== "all" || Boolean(dates.from || dates.to || person);
   // Free text needs a few characters to be meaningful; facets stand on their
   // own, so a filter-only search runs immediately.
-  const enabled = debouncedQ.length > 2 || hasFacets;
-
-  const { data, isLoading } = useQuery<SearchResponse>({
-    queryKey: ["kx-search-page", params.toString()],
-    queryFn: async () => {
-      const response = await fetch(`${BACKEND}/search?${params.toString()}&limit=100`);
-      if (!response.ok) throw new Error("Search failed");
-      return response.json();
-    },
-    enabled,
-  });
-
-  const results = useMemo(() => data?.results ?? [], [data]);
+  const enabled = trimmed.length >= 2 || hasFacets;
+  const settling = trimmed !== debouncedQ;
+  const { results, loading, error, retry } = useSearchResults(params.toString(), 100, enabled && !settling, true);
+  const searching = enabled && (settling || loading);
+  const showResults = enabled && !settling && results.length > 0;
 
   const lightboxPhotos = useMemo<LightboxPhoto[]>(
     () =>
@@ -120,7 +124,9 @@ function SearchContent() {
         thumb_url: thumbFor(result),
         photo_title: result.photo_title,
         flickr_url: result.flickr_url,
-        photo_url: result.photo_url,
+        media_kind: result.media_kind,
+        date_taken: result.date_taken,
+        duration_seconds: result.duration_seconds,
       })),
     [results],
   );
@@ -140,11 +146,14 @@ function SearchContent() {
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.nativeEvent.isComposing) setDebouncedQ(trimmed);
+            }}
             placeholder="Describe what you are looking for…"
             aria-label="Search your library"
             autoFocus
           />
-          {enabled && !isLoading && (
+          {showResults && (
             <span className="kx-mono">
               {fmt.format(results.length)} result{results.length === 1 ? "" : "s"}
             </span>
@@ -184,13 +193,20 @@ function SearchContent() {
         </div>
       </div>
 
-      {enabled && isLoading && (
+      {searching && !showResults && (
         <div style={{ marginTop: 34 }}>
           <KxSkeletonCards count={8} minWidth={210} height={158} />
         </div>
       )}
 
-      {enabled && !isLoading && results.length === 0 && (
+      {enabled && !settling && error && (
+        <p className="kx-status" role="alert">
+          {showResults ? "Visual matches are unavailable." : "Search is unavailable."}{" "}
+          <button className="kx-chip" onClick={() => void retry()}>Retry</button>
+        </p>
+      )}
+
+      {enabled && !searching && !error && !showResults && (
         <div style={{ marginTop: 34 }}>
           <KxEmptyResults onClear={clearFilters} />
         </div>
@@ -203,10 +219,9 @@ function SearchContent() {
         </p>
       )}
 
-      {results.length > 0 && (
+      {showResults && (
         <div className="kx-resultgrid">
           {results.map((result) => {
-            const visual = result.match_type === "visual" && typeof result.distance === "number";
             return (
               <button
                 key={result.photo_id}
@@ -214,10 +229,7 @@ function SearchContent() {
                 onClick={() => openLightbox(result.photo_id, lightboxPhotos)}
                 aria-label={result.photo_title || "Open photo"}
               >
-                <img src={thumbFor(result)} alt="" loading="lazy" />
-                {visual && (
-                  <span className="kx-matchbadge">{Math.round((1 - result.distance) * 100)}% match</span>
-                )}
+                <img src={thumbFor(result)} alt="" loading="lazy" decoding="async" />
                 {result.match_type === "person" && result.match_name && (
                   <span className="kx-matchbadge">{result.match_name}</span>
                 )}

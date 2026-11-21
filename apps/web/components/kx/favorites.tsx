@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useUser } from "@/lib/use-user";
 import { BACKEND } from "@/lib/constants";
 
 /**
@@ -42,10 +43,12 @@ export function useFavorites(): FavoritesValue {
 
 export function KxFavoritesProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
+  const { isLoggedIn } = useUser();
   const [ids, setIds] = useState<Set<string>>(() => new Set());
 
   const { data: countData } = useQuery<{ count: number }>({
     queryKey: ["favorites-count"],
+    enabled: isLoggedIn,
     queryFn: async () => {
       const response = await fetch(`${BACKEND}/favorites/count`);
       if (!response.ok) return { count: 0 };

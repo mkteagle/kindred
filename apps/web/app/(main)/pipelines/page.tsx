@@ -17,6 +17,8 @@ interface Pipeline {
   rate_per_minute: number | null;
   eta: string;
   measured_at: string | null;
+  phase?: string;
+  stale?: boolean;
 }
 
 const fmt = new Intl.NumberFormat("en-GB");
@@ -36,7 +38,7 @@ function Bar({ pipeline }: { pipeline: Pipeline }) {
   const unknown = percent === null;
 
   // Three states worth telling apart, because they mean different things:
-  // finished, moving, and stopped. A stalled pipeline that looks like a
+  // finished, moving, and awaiting a fresh report. A stalled pipeline that looks like a
   // half-full bar is exactly how the iCloud download went unnoticed.
   const finished = total !== null && done >= total && total > 0;
   const state = finished ? "done" : running ? "live" : "idle";
@@ -68,8 +70,16 @@ function Bar({ pipeline }: { pipeline: Pipeline }) {
         <span>
           {finished
             ? "complete"
+            : pipeline.phase === "waiting_for_discovery"
+              ? "waiting for discovery"
+            : pipeline.phase === "waiting_for_previews"
+              ? "waiting for thumbnails"
+            : pipeline.phase === "waiting_for_capacity"
+              ? "waiting for NAS capacity"
+            : pipeline.stale
+              ? "progress update delayed"
             : state === "idle"
-              ? "not running"
+              ? "no recent progress"
               : [
                   percent !== null && `${percent}%`,
                   rate ? `${rate.toFixed(0)}/min` : null,
@@ -81,7 +91,7 @@ function Bar({ pipeline }: { pipeline: Pipeline }) {
       </div>
       {pipeline.measured_at && (
         <p className="kx-pipeline-stamp kx-mono">
-          Total counted from disk {ago(pipeline.measured_at)}
+          Worker last reported {ago(pipeline.measured_at)}
         </p>
       )}
     </li>
@@ -98,7 +108,7 @@ export default function PipelinesPage() {
     },
     // The rate is derived from the gap between two readings, so a steady poll
     // is what makes the per-minute figure and the ETA meaningful.
-    refetchInterval: 5000,
+    refetchInterval: 15000,
   });
 
   return (
@@ -108,16 +118,15 @@ export default function PipelinesPage() {
         What the server is doing.
       </h1>
       <p className="kx-lede">
-        Five jobs run for days at a time. This is where they are — refreshed every
-        few seconds, so a stalled one shows as stopped rather than as a bar that
-        happens not to move.
+        Current Kindred discovery, previews, and recognition work. Status comes
+        from worker heartbeats; retired imports are not shown.
       </p>
 
       <p style={{ margin: "16px 0 24px" }}><Link href="/activity">View filenames and processing timestamps →</Link></p>
       {error && <KxErrorBanner detail={(error as Error).message} onRetry={() => void refetch()} />}
 
       {isPending ? (
-        <KxSkeletonRows count={5} height={74} />
+        <KxSkeletonRows count={3} height={74} />
       ) : (
         <ul className="kx-pipelines">
           {(data?.pipelines ?? []).map((pipeline) => (

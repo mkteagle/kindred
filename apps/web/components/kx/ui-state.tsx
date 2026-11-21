@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { SIDEBAR_COLLAPSED, SIDEBAR_EXPANDED, SIDEBAR_KEY } from "./sidebar-script";
 
 /** Grid zoom bounds from the spec: 105–360px in 45px steps. */
@@ -9,6 +9,15 @@ export const TILE_MAX = 360;
 export const TILE_STEP = 45;
 export const TILE_DEFAULT = 190;
 const TILE_KEY = "kindred-tile";
+const COMPACT_RAIL = "(640px < width <= 900px)";
+
+function subscribeToRailWidth(onChange: () => void) {
+  const media = window.matchMedia(COMPACT_RAIL);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+const isCompactWidth = () => window.matchMedia(COMPACT_RAIL).matches;
+const serverCompactWidth = () => false;
 
 export interface KxUiValue {
   /** Mosaic tile size in px, written to the shell as `--tile`. */
@@ -30,11 +39,7 @@ export interface KxUiValue {
   setSearchOpen: (open: boolean) => void;
   uploadOpen: boolean;
   setUploadOpen: (open: boolean) => void;
-  /**
-   * Desktop only: the rail is collapsed to its logo. Mirrored on
-   * <html data-sidebar>, which is what the CSS keys off — below 900px the
-   * sidebar is a drawer and this is ignored.
-   */
+  /** Icon rail at intermediate widths, or when collapsed on desktop. */
   railCollapsed: boolean;
   toggleRail: () => void;
   /** True on the library screen, which is the only one with zoom and select. */
@@ -62,7 +67,9 @@ export function KxUiProvider({
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [searchOpen, setSearchOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [railCollapsed, setRailCollapsed] = useState(false);
+  const [railPreference, setRailPreference] = useState(false);
+  const compactWidth = useSyncExternalStore(subscribeToRailWidth, isCompactWidth, serverCompactWidth);
+  const railCollapsed = compactWidth || railPreference;
 
   // Restored after mount so the server and first client render agree.
   useEffect(() => {
@@ -78,12 +85,12 @@ export function KxUiProvider({
   // so the rail is painted in the right shape before React runs; all this does
   // is bring the component state into line with what is already on screen.
   useEffect(() => {
-    setRailCollapsed(document.documentElement.getAttribute("data-sidebar") === SIDEBAR_COLLAPSED);
+    setRailPreference(document.documentElement.getAttribute("data-sidebar") === SIDEBAR_COLLAPSED);
   }, []);
 
   const toggleRail = useCallback(() => {
     const next = document.documentElement.getAttribute("data-sidebar") !== SIDEBAR_COLLAPSED;
-    setRailCollapsed(next);
+    setRailPreference(next);
     document.documentElement.setAttribute("data-sidebar", next ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED);
     try {
       localStorage.setItem(SIDEBAR_KEY, next ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED);

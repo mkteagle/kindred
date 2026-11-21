@@ -149,31 +149,61 @@ def by_vector(query, embedding, facets, limit=60):
                 FROM photo_embeddings pe
                 ORDER BY pe.clip_embedding <=> %s
                 LIMIT %s
+            ),
+            matched AS (
+                SELECT hit.id, MIN(nearest.distance) AS distance
+                FROM nearest
+                CROSS JOIN LATERAL (
+                    SELECT id FROM photos WHERE id = CASE
+                        WHEN nearest.photo_id ~ '^[0-9a-f]{{8}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{12}}$'
+                        THEN nearest.photo_id::uuid END
+                    UNION ALL
+                    SELECT id FROM photos WHERE legacy_photo_id = nearest.photo_id
+                    UNION ALL
+                    SELECT photo_id FROM photo_copies
+                    WHERE provider = 'flickr' AND status = 'available'
+                      AND provider_key = nearest.photo_id
+                ) hit
+                GROUP BY hit.id
             )
-            SELECT {SELECT_COLUMNS}, nearest.distance {JOINS}
-            JOIN nearest ON nearest.photo_id = ANY({PHOTO_REF_IDS})
+            SELECT {SELECT_COLUMNS}, matched.distance {JOINS}
+            JOIN matched ON matched.id = p.id
             WHERE {' AND '.join(clauses)}
-            ORDER BY nearest.distance ASC LIMIT %s""",
+            ORDER BY matched.distance ASC, p.id LIMIT %s""",
         tuple([embedding, embedding, pool] + params + [limit]),
     )
     return [dict(row) for row in rows]
 
 
-def by_text(query, text, facets, limit=60):
-    """Literal match on title and filename.
+def escape_like(text):
+    return text.replace("!", "!!").replace("%", "!%").replace("_", "!_")
 
-    Videos have no embeddings or detections, so this is the only way free text
-    reaches them — without it a text search silently excludes every video.
-    """
+
+def by_text(query, text, facets, limit=60):
+    """Match title and filename terms, with intact phrases ranked first."""
     clauses, params = facets.where()
-    pattern = f"%{text}%"
+    phrase = f"%{escape_like(text)}%"
+    terms = list(dict.fromkeys(text.split()))
+    # Bound the work for pasted paragraphs. A single term uses the same
+    # predicate as a phrase and can go straight to the date tiebreaker.
+    predicate = "(p.title ILIKE %s ESCAPE '!' OR p.original_filename ILIKE %s ESCAPE '!')"
+    if 2 <= len(terms) <= 8:
+        clauses.extend(predicate for _ in terms)
+        for term in terms:
+            pattern = f"%{escape_like(term)}%"
+            params.extend([pattern, pattern])
+        phrase_order = f"CASE WHEN {predicate} THEN 0 ELSE 1 END, "
+        params.extend([phrase, phrase])
+    else:
+        clauses.append(predicate)
+        params.extend([phrase, phrase])
+        phrase_order = ""
     rows = query(
         f"""SELECT {SELECT_COLUMNS} {JOINS}
             WHERE {' AND '.join(clauses)}
-              AND (p.title ILIKE %s OR p.original_filename ILIKE %s)
-            ORDER BY COALESCE(p.taken_at,p.created_at) DESC, p.id DESC
+            ORDER BY {phrase_order}COALESCE(p.taken_at,p.created_at) DESC, p.id DESC
             LIMIT %s""",
-        tuple(params + [pattern, pattern, limit]),
+        tuple(params + [limit]),
     )
     return [dict(row) for row in rows]
 

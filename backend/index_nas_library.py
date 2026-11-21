@@ -11,17 +11,18 @@ import tempfile
 from contextlib import contextmanager
 
 import main
-import throttle
 
 
-def pending(limit: int | None) -> list[dict]:
+def pending(limit: int | None, library_only: bool = False) -> list[dict]:
     suffix = " LIMIT %s" if limit else ""
+    source_join = "JOIN nas_source_files source ON source.photo_id=p.id" if library_only else ""
+    source_filter = "AND source.preview_ready_at IS NOT NULL AND source.ml_error IS NULL" if library_only else ""
     # The sentinel keeps the ordering expression non-null so undated photos sort
     # to the end instead of ahead of everything, the way they used to in the
     # gallery when created_at stood in for a capture date.
     params = ("0001-01-01", limit) if limit else ("0001-01-01",)
     return main.db_query(
-        """
+        f"""
         SELECT p.id::text AS kindred_photo_id,
                nas.provider_key,
                flickr.provider_key AS flickr_photo_id
@@ -32,7 +33,9 @@ def pending(limit: int | None) -> list[dict]:
           ON flickr.photo_id=p.id AND flickr.provider='flickr' AND flickr.status='available'
         LEFT JOIN processed_photos done_kindred ON done_kindred.photo_id=p.id::text
         LEFT JOIN processed_photos done_flickr ON done_flickr.photo_id=flickr.provider_key
+        {source_join}
         WHERE p.media_type LIKE 'image/%%'
+          {source_filter}
           AND done_kindred.photo_id IS NULL AND done_flickr.photo_id IS NULL
         -- Newest first. There are more photos queued than this box can index
         -- in months, so the order decides which months of the library are
@@ -65,25 +68,20 @@ def indexable_original(source: Path):
 
 async def run(args: argparse.Namespace) -> int:
     provider = main.LocalStorageProvider(main.PHOTO_STORAGE_ROOT)
-    rows = pending(args.limit)
+    library_only = getattr(args, "library_only", False)
+    rows = pending(args.limit, library_only=library_only)
     print(f"[index] pending={len(rows):,}", flush=True)
     completed = failed = 0
     started = time.monotonic()
-    delay = 0.0
-    paused = 0.0
     for position, row in enumerate(rows, 1):
-        # Pace against what the box is actually feeling. A fixed quota would
-        # throttle this run just as hard on an idle NAS as on a thrashing one,
-        # and there are a million and a half photos to get through.
-        await throttle.wait_for_capacity()
-        pressure = throttle.read_pressure()
-        delay = throttle.next_delay(delay, pressure)
-        if delay:
-            paused += delay
-            await asyncio.sleep(delay)
+        on_progress = getattr(args, "on_progress", None)
+        if on_progress:
+            on_progress(position - 1, completed, failed)
         source = provider.resolve_local_path(row["provider_key"])
         if source is None:
             failed += 1
+            if library_only:
+                main.db_query("UPDATE nas_source_files SET ml_error='Source is unavailable' WHERE photo_id=%s", (row['kindred_photo_id'],), fetch=False)
             print(f"[index] missing NAS original {row['kindred_photo_id']}", flush=True)
             continue
         try:
@@ -94,6 +92,8 @@ async def run(args: argparse.Namespace) -> int:
                 )
         except Exception as exc:
             failed += 1
+            if library_only:
+                main.db_query("UPDATE nas_source_files SET ml_error=%s WHERE photo_id=%s", (str(exc)[:500],row['kindred_photo_id']), fetch=False)
             print(f"[index] failed {row['kindred_photo_id']}: {exc}", flush=True)
             continue
         verified = main.db_query(
@@ -104,16 +104,19 @@ async def run(args: argparse.Namespace) -> int:
             completed += 1
         else:
             failed += 1
+            if library_only:
+                main.db_query("UPDATE nas_source_files SET ml_error='Recognition did not complete' WHERE photo_id=%s", (row['kindred_photo_id'],), fetch=False)
             print(f"[index] failed {row['kindred_photo_id']}", flush=True)
         if position % 10 == 0:
             elapsed = max(time.monotonic() - started, 0.001)
             print(
                 f"[index] scanned={position:,}/{len(rows):,} completed={completed:,} "
-                f"failed={failed:,} rate={position/elapsed:.3f}/s "
-                f"paused={paused:.0f}s {throttle.describe(delay, pressure)}",
+                f"failed={failed:,} rate={position/elapsed:.3f}/s",
                 flush=True,
             )
 
+    if getattr(args, "on_progress", None):
+        args.on_progress(len(rows), completed, failed)
     if not args.defer_clustering:
         for category in ("people", "pets", "vehicles"):
             main.run_clustering(category, distance_threshold=0.80)
@@ -125,6 +128,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int)
     parser.add_argument("--defer-clustering", action="store_true")
+    parser.add_argument("--library-only", action="store_true")
     return parser.parse_args()
 
 

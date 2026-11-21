@@ -12,12 +12,16 @@ async def main():
         await context.add_cookies([{'name':'kindred_session', 'value':'fixture', 'url':'http://localhost:3109'}])
         page = await context.new_page()
         requests=[]; errors=[]
+        selected_id = None
+        release_preview = asyncio.Event()
         page.on('pageerror', lambda error: errors.append(str(error)))
         photos=[dict(photo_id=str(i), photo_title=f'Photo {i}', date_taken='2026-08-20T12:00:00', media_kind='photo', duration_seconds=None) for i in range(200)]
         async def api(route):
             url=route.request.url; path=urlparse(url).path
             if path.endswith('/image'):
                 query=parse_qs(urlparse(url).query); width=int(query.get('w',['4000'])[0]); requests.append(url)
+                if path.endswith(f'/photos/{selected_id}/image') and query.get('format') == ['jpeg']:
+                    await release_preview.wait()
                 if os.environ.get('LEGACY_BACKEND') == '1':
                     width = 512 if query.get('size') == ['n'] else 2048
                 ratio = 2 if os.environ.get('PORTRAIT') == '1' and '/photos/20/image' in path else .75
@@ -47,12 +51,28 @@ async def main():
         before=len(requests)
         await page.mouse.move(600,500); await page.mouse.wheel(0,1100); await page.wait_for_timeout(1200)
         assert len(requests)>before
-        await page.locator('.kx-tile').nth(20).click()
-        await page.locator('.lb-main-image.is-loaded').wait_for()
+        tile = page.locator('.kx-tile').nth(20)
+        await tile.scroll_into_view_if_needed()
+        await page.wait_for_function("() => { const img = document.querySelectorAll('.kx-tile')[20]?.querySelector('img'); return img?.complete && img.naturalWidth > 0; }")
+        selected_id = await tile.get_attribute('data-photo-id')
+        await tile.click()
+        placeholder = page.locator('.lb-placeholder')
+        await placeholder.wait_for()
+        await page.wait_for_function("() => document.querySelector('.lb-placeholder')?.naturalWidth > 0")
+        placeholder_box = await placeholder.bounding_box()
+        stage_box = await page.locator('.lb-photo-stage').bounding_box()
+        assert placeholder_box == stage_box, (placeholder_box, stage_box)
+        assert await placeholder.evaluate("(img) => getComputedStyle(img).objectPosition") == '50% 50%'
+        release_preview.set()
+        full_image = page.locator('.lb-main-image.is-loaded')
+        await full_image.wait_for()
+        assert await full_image.bounding_box() == placeholder_box
+        assert await placeholder.count() == 0
         await page.wait_for_timeout(1000)
         lightbox=list(requests)
         assert not any('size=o' in u for u in lightbox)
         preview=await page.locator('.lb-main-image').get_attribute('src')
+        assert parse_qs(urlparse(preview).query)['format'] == ['jpeg']
         width=int(parse_qs(urlparse(preview).query)['w'][0]); assert 960<=width<=2560,width
         adjacent=[u for u in requests if any(f'/photos/{i}/image' in u for i in [18,19,21,22]) and int(parse_qs(urlparse(u).query)['w'][0])>960]
         assert len(adjacent)>=4, adjacent

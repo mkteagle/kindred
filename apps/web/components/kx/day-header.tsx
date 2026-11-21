@@ -20,6 +20,7 @@ export function KxDayHeader({
   onSelectDay,
   headerRef,
   year,
+  loadedOnly = false,
 }: {
   /** "Saturday, 14 June". */
   label: string;
@@ -30,6 +31,7 @@ export function KxDayHeader({
   onSelectDay: () => void;
   headerRef: (node: HTMLDivElement | null) => void;
   year: number;
+  loadedOnly?: boolean;
 }) {
   const { isAdmin } = useUser();
   const nameDay = useNameDay();
@@ -42,7 +44,7 @@ export function KxDayHeader({
   }, [naming]);
 
   const provenance = day?.source ? PROVENANCE[day.source] : null;
-  const meta = `${day?.label ? `${day.label} · ` : ""}${fmt.format(count)} ${count === 1 ? "photo" : "photos"}`;
+  const meta = `${day?.label ? `${day.label} · ` : ""}${fmt.format(count)} ${count === 1 ? "item" : "items"}${loadedOnly ? " loaded" : ""}`;
 
   const save = () => {
     const name = draft.trim();
@@ -95,7 +97,7 @@ export function KxDayHeader({
       )}
 
       <button className="kx-selectday" data-selectday onClick={onSelectDay}>
-        {allSelected ? "Deselect" : "Select all"} {fmt.format(count)}
+        {allSelected ? "Deselect" : loadedOnly ? "Select loaded" : "Select all"} {fmt.format(count)}
       </button>
     </div>
   );

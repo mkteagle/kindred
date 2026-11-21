@@ -3,19 +3,14 @@
 import { OptimizedPhoto } from "@/components/optimized-photo";
 import { photoImageUrl } from "@/lib/image-delivery";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
 import { BACKEND, fmt } from "@/lib/constants";
 import type { SearchResult } from "@/types";
 import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
+import { SEARCH_DELAY, useSearchResults } from "@/lib/use-search-results";
 import { SearchIcon } from "./icons";
-
-interface SearchResponse {
-  results: SearchResult[];
-  query: string;
-}
 
 const SUGGESTIONS = [
   "marshmallows by the fire",
@@ -39,7 +34,7 @@ function readRecent(): string[] {
 
 export function rememberSearch(query: string) {
   const trimmed = query.trim();
-  if (trimmed.length < 3) return;
+  if (trimmed.length < 2) return;
   try {
     const next = [trimmed, ...readRecent().filter((item) => item !== trimmed)].slice(0, RECENT_LIMIT);
     localStorage.setItem(RECENT_KEY, JSON.stringify(next));
@@ -56,30 +51,37 @@ function thumbFor(result: SearchResult & { media_kind?: string }): string {
 }
 
 /**
- * The ⌘K overlay. Below three characters it offers somewhere to start; above
- * it, the people it matched, a square-thumb grid, and a way through to the
- * full search screen.
+ * The shell keeps this mounted so opening the overlay restores its last search.
  */
-export function KxSearchOverlay({ onClose }: { onClose: () => void }) {
+export function KxSearchOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const scrollTop = useRef(0);
   const { openLightbox } = useLightbox();
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [recent, setRecent] = useState<string[]>([]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!open) return;
     inputRef.current?.focus();
+    if (bodyRef.current) bodyRef.current.scrollTop = scrollTop.current;
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
     setRecent(readRecent());
-  }, []);
+  }, [open]);
 
-  // 300ms, as the rest of the app already does.
+  const trimmed = query.trim();
   useEffect(() => {
-    const timer = setTimeout(() => setDebounced(query.trim()), 300);
+    const timer = setTimeout(() => setDebounced(trimmed), SEARCH_DELAY);
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [trimmed]);
 
   useEffect(() => {
+    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
@@ -88,21 +90,12 @@ export function KxSearchOverlay({ onClose }: { onClose: () => void }) {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [open, onClose]);
 
-  const live = debounced.length > 2;
-
-  const { data, isLoading } = useQuery<SearchResponse>({
-    queryKey: ["kx-search-overlay", debounced],
-    queryFn: async () => {
-      const response = await fetch(`${BACKEND}/search?q=${encodeURIComponent(debounced)}&limit=12`);
-      if (!response.ok) throw new Error("Search failed");
-      return response.json();
-    },
-    enabled: live,
-  });
-
-  const results = useMemo(() => data?.results ?? [], [data]);
+  const live = trimmed.length >= 2;
+  const settling = trimmed !== debounced;
+  const params = new URLSearchParams({ q: debounced }).toString();
+  const { results, loading, error, retry } = useSearchResults(params, 12, open && live && !settling, false);
 
   /** One pill per matched person, with how many of the results are theirs. */
   const people = useMemo(() => {
@@ -129,16 +122,20 @@ export function KxSearchOverlay({ onClose }: { onClose: () => void }) {
         thumb_url: thumbFor(result),
         photo_title: result.photo_title,
         flickr_url: result.flickr_url,
-        photo_url: result.photo_url,
+        media_kind: result.media_kind,
+        date_taken: result.date_taken,
+        duration_seconds: result.duration_seconds,
       })),
     [results],
   );
 
   const goToResults = () => {
-    rememberSearch(debounced);
+    rememberSearch(trimmed);
     onClose();
-    router.push(`/search?q=${encodeURIComponent(debounced)}`);
+    router.push(`/search?${new URLSearchParams({ q: trimmed })}`);
   };
+
+  if (!open) return null;
 
   return (
     <div
@@ -156,9 +153,13 @@ export function KxSearchOverlay({ onClose }: { onClose: () => void }) {
           <input
             ref={inputRef}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              scrollTop.current = 0;
+              if (bodyRef.current) bodyRef.current.scrollTop = 0;
+              setQuery(e.target.value);
+            }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && live) goToResults();
+              if (e.key === "Enter" && !e.nativeEvent.isComposing && live) goToResults();
             }}
             placeholder="Search people, places, or things…"
             aria-label="Search your library"
@@ -166,7 +167,7 @@ export function KxSearchOverlay({ onClose }: { onClose: () => void }) {
           <kbd className="kx-kbd">esc</kbd>
         </div>
 
-        <div className="kx-searchdialog-body">
+        <div className="kx-searchdialog-body" ref={bodyRef} onScroll={(e) => { scrollTop.current = e.currentTarget.scrollTop; }}>
           {!live && (
             <>
               <div className="kx-suggestgroup">
@@ -194,13 +195,17 @@ export function KxSearchOverlay({ onClose }: { onClose: () => void }) {
             </>
           )}
 
-          {live && isLoading && <p className="kx-status" role="status">Searching…</p>}
+          {live && (settling || loading) && <p className="kx-status" role="status">Searching…</p>}
 
-          {live && !isLoading && results.length === 0 && (
+          {live && !settling && error && (
+            <p className="kx-status" role="alert">Search is unavailable. <button className="kx-chip" onClick={() => void retry()}>Retry</button></p>
+          )}
+
+          {live && !settling && !loading && !error && results.length === 0 && (
             <p className="kx-status">Nothing found for &ldquo;{debounced}&rdquo;.</p>
           )}
 
-          {live && results.length > 0 && (
+          {live && !settling && results.length > 0 && (
             <>
               {people.length > 0 && (
                 <div className="kx-suggestgroup-row">
@@ -208,6 +213,7 @@ export function KxSearchOverlay({ onClose }: { onClose: () => void }) {
                     <Link
                       key={person.name}
                       href={person.clusterId ? `/${person.category}/${person.clusterId}` : "/people"}
+                      prefetch={false}
                       className="kx-personpill"
                       onClick={onClose}
                     >

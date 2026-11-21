@@ -73,7 +73,7 @@ export interface User {
   fullname: string;
   display_name?: string;
   role?: "admin" | "member";
-  auth_method?: "flickr" | "password";
+  auth_method?: "flickr" | "password" | "google" | "apple" | "passkey";
   avatar_url?: string;
 }
 
@@ -93,6 +93,8 @@ export interface FutureFilter {
 export interface SearchResult {
   photo_id: string;
   media_kind?: "photo" | "video";
+  date_taken?: string | null;
+  duration_seconds?: number | null;
   distance: number;
   photo_url: string;
   thumb_url: string;

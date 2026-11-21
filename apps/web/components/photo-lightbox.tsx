@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -210,14 +211,11 @@ function PhotoLightboxOverlay({
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const [imageError, setImageError] = useState(false);
-  const [imageAttempt, setImageAttempt] = useState(0);
+  const [mediaResult, setMediaResult] = useState<{ url: string; loaded: boolean }>();
+  const [retry, setRetry] = useState<{ photoId: string; attempt: number }>();
   const [moreOpen, setMoreOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const imageRef = useRef<HTMLImageElement>(null);
   const imageAreaRef = useRef<HTMLDivElement>(null);
   const [previewBox, setPreviewBox] = useState({ width: 0, height: 0, scale: 1 });
   const thumbStripRef = useRef<HTMLDivElement>(null);
@@ -257,9 +255,7 @@ function PhotoLightboxOverlay({
   useEffect(() => {
     setZoom(1);
     setPanOffset({ x: 0, y: 0 });
-    setImageLoaded(false);
-    setImageError(false);
-    setImageAttempt(0);
+    setRetry(undefined);
     setMoreOpen(false);
     setShareOpen(false);
     setCopySuccess(false);
@@ -452,20 +448,30 @@ function PhotoLightboxOverlay({
     return groups;
   }, [detections]);
 
-  const previewPixels = (id: string, aspect?: number) => {
-    const ratio = aspect || thumbnailAspect(id);
-    return imageWidth((ratio ? Math.min(previewBox.width, previewBox.height * ratio) : previewBox.width) * previewBox.scale);
-  };
-  const previewWidth = previewBox.width ? previewPixels(photoId,
-    metadata?.width && metadata?.height ? metadata.width / metadata.height : undefined) : 0;
-  const imageUrl = previewWidth ? photoImageUrl(photoId, previewWidth) : "";
-  const thumbUrl = loadedThumbnail(photoId) || photoImageUrl(photoId, 320);
+  // Keep the sizing inputs stable while metadata and filmstrip images arrive.
+  const { cachedThumb, aspect } = useMemo(() => ({
+    cachedThumb: loadedThumbnail(photoId),
+    aspect: thumbnailAspect(photoId),
+  }), [photoId]);
+  const previewPixels = useCallback((ratio?: number) => {
+    const width = ratio ? Math.min(previewBox.width, previewBox.height * ratio) : previewBox.width;
+    return imageWidth(width * previewBox.scale);
+  }, [previewBox]);
+  const previewWidth = previewBox.width > 0 && previewBox.height > 0 ? previewPixels(aspect) : 0;
+  // JPEG is cheaper to encode on a cold NAS request. Use the same URL for prefetches.
+  const imageUrl = previewWidth ? photoImageUrl(photoId, previewWidth, "jpeg") : "";
+  const thumbUrl = cachedThumb || photoImageUrl(photoId, 320);
   const isVideo = currentPhoto?.media_kind === "video";
   // Videos stream the NAS original; the poster is the cached frame ffmpeg cut.
   const videoUrl = `${BACKEND}/photos/${photoId}/local?variant=original`;
   const posterUrl = `${BACKEND}/photos/${photoId}/local?variant=thumb`;
+  const mediaUrl = isVideo ? videoUrl : imageUrl;
+  const attempt = retry?.photoId === photoId ? retry.attempt : 0;
+  const requestUrl = attempt && mediaUrl ? `${mediaUrl}&retry=${attempt}` : mediaUrl;
+  const imageLoaded = mediaResult?.url === requestUrl && mediaResult.loaded;
+  const imageError = mediaResult?.url === requestUrl && !mediaResult.loaded;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const area = imageAreaRef.current;
     if (!area) return;
     const measure = () => {
@@ -473,7 +479,12 @@ function PhotoLightboxOverlay({
       const style = window.getComputedStyle(area);
       const width = box.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
       const height = box.height - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
-      setPreviewBox({ width, height, scale: Math.min(window.devicePixelRatio || 1, 3) });
+      const scale = Math.min(window.devicePixelRatio || 1, 3);
+      setPreviewBox((previous) =>
+        previous.width === width && previous.height === height && previous.scale === scale
+          ? previous
+          : { width, height, scale },
+      );
     };
     const observer = new ResizeObserver(measure);
     observer.observe(area);
@@ -482,24 +493,22 @@ function PhotoLightboxOverlay({
     return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
   }, []);
 
-  useEffect(() => { setImageLoaded(false); setImageError(false); }, [imageUrl]);
-
   useEffect(() => {
     if (!imageLoaded || !previewWidth) return;
     const controller = new AbortController();
     for (const offset of [1, -1, 2, -2]) {
       const photo = photos[index + offset];
       if (photo && photo.media_kind !== "video") {
-        void prefetchImage(photoImageUrl(photo.photo_id, previewPixels(photo.photo_id)), controller.signal);
+        const width = previewPixels(thumbnailAspect(photo.photo_id));
+        void prefetchImage(photoImageUrl(photo.photo_id, width, "jpeg"), controller.signal);
       }
     }
     return () => controller.abort();
-  }, [imageLoaded, previewWidth, previewBox, index, photos]);
+  }, [imageLoaded, previewWidth, previewPixels, index, photos]);
 
   return (
     <div
       className="lb-overlay"
-      ref={containerRef}
       onMouseUp={handleMouseUp}
       onMouseMove={handleMouseMove}
     >
@@ -653,48 +662,44 @@ function PhotoLightboxOverlay({
             they fight the transport controls and mean nothing for playback. */}
         {isVideo && (
           <video
-            key={photoId}
+            key={requestUrl}
             className="lb-main-video"
-            src={videoUrl}
+            src={requestUrl}
             poster={posterUrl}
             controls
             autoPlay
             playsInline
             preload="metadata"
-            onLoadedData={() => setImageLoaded(true)}
-            onError={() => setImageError(true)}
+            onLoadedData={() => setMediaResult({ url: requestUrl, loaded: true })}
+            onError={() => setMediaResult({ url: requestUrl, loaded: false })}
             onClick={(e) => e.stopPropagation()}
           />
         )}
 
-        {/* Blur-up placeholder */}
-        {!isVideo && !imageLoaded && thumbUrl && (
-          <img
-            src={thumbUrl}
-            alt=""
-            className="lb-placeholder"
-            style={{ filter: "blur(20px)", transform: "scale(1.1)" }}
-          />
-        )}
-
-        {/* Full image */}
-        {!isVideo && imageUrl && (
-        <img
-          ref={imageRef}
-          key={`${imageUrl}:${imageAttempt}`}
-          src={imageAttempt ? `${imageUrl}&retry=${imageAttempt}` : imageUrl}
-          decoding="async"
-          alt={currentPhoto?.photo_title || ""}
-          className={`lb-main-image ${imageLoaded ? "is-loaded" : ""}`}
-          onLoad={() => setImageLoaded(true)}
-          onError={() => setImageError(true)}
-          onClick={handleImageClick}
-          draggable={false}
-          style={{
-            transform: `scale(${zoom}) translate(${panOffset.x / zoom}px, ${panOffset.y / zoom}px)`,
-            transition: dragging ? "none" : "transform 0.2s ease",
-          }}
-        />
+        {!isVideo && (
+          <div className="lb-photo-stage">
+            {!imageLoaded && (
+              <img src={thumbUrl} alt="" className="lb-placeholder" draggable={false} />
+            )}
+            {requestUrl && (
+              <img
+                key={requestUrl}
+                src={requestUrl}
+                fetchPriority="high"
+                decoding="async"
+                alt={currentPhoto?.photo_title || ""}
+                className={`lb-main-image ${imageLoaded ? "is-loaded" : ""}`}
+                onLoad={() => setMediaResult({ url: requestUrl, loaded: true })}
+                onError={() => setMediaResult({ url: requestUrl, loaded: false })}
+                onClick={handleImageClick}
+                draggable={false}
+                style={{
+                  transform: `scale(${zoom}) translate(${panOffset.x / zoom}px, ${panOffset.y / zoom}px)`,
+                  transition: dragging ? "none" : "transform 0.2s ease",
+                }}
+              />
+            )}
+          </div>
         )}
 
         {/* Loading caption */}
@@ -705,7 +710,7 @@ function PhotoLightboxOverlay({
           </div>
         )}
         {imageError && <div className="lb-loading-caption" role="alert">
-          Could not load this photo. <button onClick={() => { setImageError(false); setImageAttempt(n => n + 1); }}>Retry</button>
+          Could not load this photo. <button onClick={() => setRetry({ photoId, attempt: attempt + 1 })}>Retry</button>
         </div>}
 
         {/* Zoom indicator */}

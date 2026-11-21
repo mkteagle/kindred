@@ -1,8 +1,8 @@
+import { BACKEND_URL } from "@/lib/backend-url";
 import { NextRequest, NextResponse } from "next/server";
-import { oauth, decryptToken, encryptToken } from "@/lib/oauth";
+import { oauth, decryptToken, encryptToken, getSessionFromRequest } from "@/lib/oauth";
 
 const ACCESS_TOKEN_URL = "https://www.flickr.com/services/oauth/access_token";
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 const API_KEY = process.env.API_KEY || "";
 
 export async function GET(req: NextRequest) {
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     }
 
     const reqData = decryptToken(flickrReqCookie.value);
-    if (!reqData) {
+    if (!reqData || (reqData.request_token && reqData.request_token !== oauth_token)) {
       return NextResponse.json({ error: "Invalid request token cookie" }, { status: 400 });
     }
 
@@ -49,8 +49,22 @@ export async function GET(req: NextRequest) {
     const username = params.get("username");
     const fullname = params.get("fullname");
 
-    if (!accessToken) {
+    if (!resp.ok || !accessToken) {
       return NextResponse.json({ error: "Failed to get access token", body }, { status: 400 });
+    }
+
+    if (reqData.integration) {
+      const session = getSessionFromRequest(req);
+      if (!session || session.user_id !== reqData.user_id || !accessTokenSecret || !userId) {
+        return NextResponse.redirect(new URL("/settings/integrations?error=flickr_session", req.url));
+      }
+      const linked = await fetch(`${BACKEND_URL}/integrations/flickr`, {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Session-Token": session.session_token },
+        body: JSON.stringify({ oauth_token: accessToken, oauth_secret: accessTokenSecret, user_id: userId }),
+      });
+      const response = NextResponse.redirect(new URL(`/settings/integrations?${linked.ok ? "connected=flickr" : "error=flickr_connect"}`, req.url));
+      response.cookies.delete("flickr_req");
+      return response;
     }
 
     // Check allowlist — if ALLOWED_USERS is set, only those Flickr user IDs may log in

@@ -25,9 +25,11 @@ function ThemeToggle() {
 
 export function KxTopbar({
   user,
+  drawerOpen,
   onOpenDrawer,
 }: {
   user: User | null;
+  drawerOpen: boolean;
   onOpenDrawer: () => void;
 }) {
   const { tile, zoomIn, zoomOut, selecting, setSelecting, isLibrary, setSearchOpen, setUploadOpen } = useKxUi();
@@ -38,6 +40,7 @@ export function KxTopbar({
         className="kx-iconbutton kx-drawer-toggle"
         onClick={onOpenDrawer}
         aria-label="Open navigation"
+        aria-expanded={drawerOpen}
         aria-controls="kx-sidebar"
       >
         <MenuIcon />
@@ -45,7 +48,7 @@ export function KxTopbar({
 
       <button className="kx-searchtrigger" onClick={() => setSearchOpen(true)} aria-label="Search photos">
         <SearchIcon size={17} />
-        <span>Search the way you remember it</span>
+        <span>Search people, places, moments…</span>
         <kbd className="kx-kbd">⌘K</kbd>
       </button>
 
@@ -83,10 +86,10 @@ export function KxTopbar({
         )}
 
         <button className="kx-button primary" onClick={() => setUploadOpen(true)}>
-          Upload
+          Add photos
         </button>
 
-        <KxUserMenu user={user} />
+        <span className="kx-mobile-account"><KxUserMenu user={user} /></span>
       </div>
     </header>
   );

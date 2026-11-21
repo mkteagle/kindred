@@ -18,17 +18,23 @@ export const consumer = { key: CONSUMER_KEY, secret: CONSUMER_SECRET };
 const COOKIE_SECRET = process.env.COOKIE_SECRET || "";
 
 export function encryptToken(data: Record<string, unknown>): string {
-  const text = JSON.stringify(data);
-  const iv = crypto.randomBytes(16);
+  if (!COOKIE_SECRET) throw new Error("COOKIE_SECRET is required");
+  const iv = crypto.randomBytes(12);
   const key = crypto.scryptSync(COOKIE_SECRET, "salt", 32);
-  const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
-  let encrypted = cipher.update(text, "utf8", "hex");
-  encrypted += cipher.final("hex");
-  return iv.toString("hex") + ":" + encrypted;
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(JSON.stringify(data), "utf8"), cipher.final()]);
+  return ["v2", iv.toString("hex"), cipher.getAuthTag().toString("hex"), encrypted.toString("hex")].join(":");
 }
 
 export function decryptToken(encoded: string): Record<string, string> | null {
   try {
+    if (!COOKIE_SECRET) return null;
+    if (encoded.startsWith("v2:")) {
+      const [, iv, tag, payload] = encoded.split(":");
+      const decipher = crypto.createDecipheriv("aes-256-gcm", crypto.scryptSync(COOKIE_SECRET, "salt", 32), Buffer.from(iv, "hex"));
+      decipher.setAuthTag(Buffer.from(tag, "hex"));
+      return JSON.parse(Buffer.concat([decipher.update(Buffer.from(payload, "hex")), decipher.final()]).toString("utf8"));
+    }
     const [ivHex, encrypted] = encoded.split(":");
     const iv = Buffer.from(ivHex, "hex");
     const key = crypto.scryptSync(COOKIE_SECRET, "salt", 32);
@@ -72,7 +78,7 @@ export interface SessionData {
   username: string;
   display_name: string;
   role: "admin" | "member";
-  auth_method: "flickr" | "password";
+  auth_method: "flickr" | "password" | "google" | "apple" | "passkey";
 }
 
 export function getSessionFromRequest(req: Request): SessionData | null {

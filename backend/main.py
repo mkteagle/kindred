@@ -5,8 +5,9 @@ Kindred backend — FastAPI + PostgreSQL/pgvector
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
-from pydantic import BaseModel
-from typing import Optional, List
+from pydantic import BaseModel, Field
+from typing import Literal, Optional, List
+from functools import lru_cache
 import numpy as np
 import json
 import uuid
@@ -296,6 +297,8 @@ def db_query(sql, params=None, fetch=True):
     conn = get_db()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            if sql.lstrip().startswith('/*kindred-catalog-aggregate*/'):
+                cur.execute("SET LOCAL work_mem='128MB'")
             cur.execute(sql, params)
             if fetch:
                 result = cur.fetchall()
@@ -397,7 +400,7 @@ def validate_api_key(raw_key: str) -> dict | None:
 def get_flickr_credentials() -> dict | None:
     """Get Flickr OAuth credentials from admin user in DB, falling back to env vars."""
     rows = db_query(
-        "SELECT flickr_user_id, flickr_oauth_token, flickr_oauth_secret FROM users WHERE role = 'admin' AND flickr_user_id IS NOT NULL LIMIT 1"
+        "SELECT flickr_user_id, flickr_oauth_token, flickr_oauth_secret FROM users WHERE role = 'admin' AND flickr_user_id IS NOT NULL AND flickr_oauth_token IS NOT NULL ORDER BY updated_at DESC LIMIT 1"
     )
     if rows and rows[0].get("flickr_oauth_token") and rows[0].get("flickr_oauth_secret"):
         return {
@@ -420,14 +423,20 @@ _yolo = None
 _clip_model = None
 _clip_preprocess = None
 _clip_tokenizer = None
+_clip_init_lock = threading.Lock()
 
 def get_face_app():
     global _face_app
     if _face_app is None:
         from insightface.app import FaceAnalysis
+        import onnxruntime
+        options = onnxruntime.SessionOptions()
+        options.intra_op_num_threads = max(1, int(os.environ.get("KINDRED_INFERENCE_THREADS", "2")))
+        options.inter_op_num_threads = 1
         _face_app = FaceAnalysis(name="buffalo_l",
             root=os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "insightface"),
-            providers=["CPUExecutionProvider"])
+            allowed_modules=["detection", "recognition"],
+            sess_options=options, providers=["CPUExecutionProvider"])
         _face_app.prepare(ctx_id=0, det_size=(960, 960))
     return _face_app
 
@@ -443,12 +452,15 @@ def get_yolo():
 def get_clip():
     global _clip_model, _clip_preprocess, _clip_tokenizer
     if _clip_model is None:
-        import open_clip
-        _clip_model, _, _clip_preprocess = open_clip.create_model_and_transforms(
-            "ViT-B-32", pretrained="laion2b_s34b_b79k"
-        )
-        _clip_tokenizer = open_clip.get_tokenizer("ViT-B-32")
-        _clip_model.eval()
+        with _clip_init_lock:
+            if _clip_model is None:
+                import open_clip
+                model, _, preprocess = open_clip.create_model_and_transforms(
+                    "ViT-B-32", pretrained="laion2b_s34b_b79k"
+                )
+                tokenizer = open_clip.get_tokenizer("ViT-B-32")
+                _clip_preprocess, _clip_tokenizer = preprocess, tokenizer
+                _clip_model = model.eval()
     return _clip_model, _clip_preprocess, _clip_tokenizer
 
 PET_CLASSES     = {15: "cat", 16: "dog", 17: "horse", 18: "sheep", 19: "cow", 20: "elephant", 21: "bear", 22: "zebra", 23: "giraffe"}
@@ -788,6 +800,91 @@ def auth_flickr_login(req: FlickrLoginRequest):
                  "avatar_url": avatar_url},
         "session": session,
     }
+
+class SocialExchangeRequest(BaseModel):
+    assertion: str
+
+
+@app.post("/auth/social/exchange")
+def social_exchange(req: SocialExchangeRequest, request: FastAPIRequest, user=Depends(get_current_user)):
+    from social_auth import exchange_identity
+    return exchange_identity(req.assertion, API_KEY, get_db, create_session, user)
+
+
+class PasskeyRequest(BaseModel):
+    challenge_id: str = Field(default="", max_length=64)
+    credential: dict = Field(default_factory=dict)
+    credential_id: str = Field(default="", max_length=1400)
+
+
+@app.post("/auth/passkeys/{action}")
+def passkeys(
+    action: Literal["list", "register-options", "register-verify", "login-options", "login-verify", "remove"],
+    body: PasskeyRequest,
+    request: FastAPIRequest,
+    user=Depends(get_current_user),
+):
+    import passkey_auth
+
+    origin, rp_id = passkey_auth.relying_party(
+        os.environ.get("AUTH_ORIGIN") or PUBLIC_WEB_URL, request.headers.get("X-Kindred-Origin"),
+    )
+    user_id = user.get("user_id")
+    if action.startswith("login-"):
+        if user_id or not API_KEY or not secrets.compare_digest(
+            request.headers.get("X-API-Key", "").encode(), API_KEY.encode(),
+        ):
+            raise HTTPException(403, "Use Kindred's web sign-in to continue.")
+        if action == "login-options":
+            return passkey_auth.authentication_options(db_query, origin, rp_id)
+        return passkey_auth.authenticate(
+            db_query, get_db, create_session, origin, rp_id, body.challenge_id, body.credential,
+        )
+    if not user_id or user.get("auth_method") != "session":
+        raise HTTPException(403, "Sign in to your Kindred account first.")
+    user_id = str(user_id)
+    if action == "list":
+        return {"passkeys": passkey_auth.list_passkeys(db_query, user_id, rp_id)}
+    if action == "remove":
+        passkey_auth.remove_passkey(db_query, user_id, rp_id, body.credential_id)
+    elif action == "register-options":
+        return passkey_auth.registration_options(db_query, origin, rp_id, user)
+    else:
+        passkey_auth.register(db_query, origin, rp_id, user_id, body.challenge_id, body.credential)
+    return {"ok": True}
+
+
+@app.get("/auth/identities")
+def social_identities(user=Depends(get_current_user)):
+    if not user.get("user_id"):
+        raise HTTPException(403, "A household account is required")
+    return {"identities": db_query("SELECT provider, email, created_at FROM user_identities WHERE user_id=%s ORDER BY provider", (user["user_id"],))}
+
+
+class IdentityApprovalRequest(BaseModel):
+    provider: str = "google"
+    email: str
+    user_id: str
+
+
+@app.post("/auth/identity-approvals")
+def approve_social_identity(body: IdentityApprovalRequest, admin=Depends(require_admin)):
+    email = body.email.strip().lower()
+    if body.provider not in ("google", "apple") or len(email) > 320 or email.count("@") != 1 or any(c.isspace() for c in email):
+        raise HTTPException(400, "A supported provider and valid email are required")
+    if not db_query("SELECT id FROM users WHERE id::text=%s", (body.user_id,)):
+        raise HTTPException(404, "Account not found")
+    rows = db_query("""INSERT INTO identity_link_approvals (provider, email, user_id, created_by)
+                       VALUES (%s,%s,%s,%s)
+                       ON CONFLICT (provider,email) DO UPDATE SET user_id=EXCLUDED.user_id, created_by=EXCLUDED.created_by
+                       WHERE identity_link_approvals.linked_subject IS NULL
+                          OR identity_link_approvals.user_id=EXCLUDED.user_id
+                       RETURNING provider, email, user_id::text""",
+                    (body.provider, email, body.user_id, admin.get("user_id")))
+    if not rows:
+        raise HTTPException(409, "This approval is already linked to another account")
+    return rows[0]
+
 
 class LoginRequest(BaseModel):
     username: str
@@ -4029,16 +4126,10 @@ async def search_photos(
     sort: str = Query("newest", description="Ordering when there is no free text"),
     smart: bool = Query(False, description="Let the local model infer facets from the query"),
     limit: int = Query(60, ge=1, le=200),
+    mode: Literal["full", "quick", "visual"] = "full",
+    request: FastAPIRequest = None,
 ):
-    """Search the catalog by free text, facets, or both.
-
-    Free text is answered from three sources, best first: photos of a person
-    whose name fuzzy-matches the query, CLIP visual similarity, and a literal
-    match on title or filename. The last of those is what lets videos appear
-    at all — they have no embeddings and no detections.
-
-    With no `q`, the facets stand on their own and this is a filtered browse.
-    """
+    """Return direct matches first, with optional CLIP visual matches."""
     import search_api
 
     query = q.strip()
@@ -4046,7 +4137,7 @@ async def search_photos(
 
     # Explicit facets always win: a filter the person set in the UI is never
     # overridden by something the model guessed.
-    if smart and query:
+    if smart and query and OLLAMA_URL:
         inferred = await _parse_query(query)
         if inferred:
             if media == "all":
@@ -4063,21 +4154,41 @@ async def search_photos(
         cluster_id=cluster_id, category=category, album_id=album_id,
     )
 
-    if not query:
-        results = search_api.browse(db_query, facets, sort=sort, limit=limit)
-        return {"results": results, "query": "", "facets": _facet_summary(facets),
-                "inferred": inferred}
+    results = []
+    if mode != "visual":
+        if query:
+            results = await asyncio.to_thread(_direct_search_matches, query, facets, sort, limit)
+        else:
+            results = await asyncio.to_thread(search_api.browse, db_query, facets, sort, limit)
+
+    # Videos currently have no visual embeddings.
+    can_search_visually = len(query) >= 3 and media != "video" and len(results) < limit
+    if can_search_visually and mode != "quick":
+        try:
+            async with _search_inference_slots:
+                if request is None or not await request.is_disconnected():
+                    visual = await asyncio.to_thread(_visual_search_matches, query, facets, limit)
+                    results = search_api.merge(results, visual, limit=limit)
+        except Exception as exc:
+            if mode == "visual":
+                raise HTTPException(503, "Visual search is unavailable") from exc
+            print(f"[search] visual phase failed: {exc}")
+
+    return {"results": results, "query": query, "facets": _facet_summary(facets),
+            "inferred": inferred, "visual_pending": mode == "quick" and can_search_visually}
+
+
+def _direct_search_matches(query, facets, sort, limit):
+    import search_api
 
     ranked = []
-
-    # Phase 1 — people. A name match is a stronger signal than anything the
-    # visual index can offer, so these lead the results.
-    if not facets.cluster_id:
+    if not facets.cluster_id and facets.media != "video":
         for match in _matching_clusters(query, limit=3):
             person_facets = search_api.Facets(
-                media=media, date_from=date_from, date_to=date_to, date_field=date_field,
+                media=facets.media, date_from=facets.date_from, date_to=facets.date_to,
+                date_field=facets.date_field,
                 cluster_id=match["cluster_id"], category=match["category"],
-                album_id=album_id,
+                album_id=facets.album_id,
             )
             people = search_api.browse(db_query, person_facets, sort=sort, limit=limit)
             for row in people:
@@ -4086,25 +4197,29 @@ async def search_photos(
                            match_category=match["category"], distance=0.0)
             ranked.append(people)
 
-    # Phase 2 — CLIP visual similarity over the ANN index.
-    try:
-        embedding = np.array(clip_embed_text(query), dtype=np.float32)
-        visual = search_api.by_vector(db_query, embedding, facets, limit=limit)
-        for row in visual:
-            row["match_type"] = "visual"
-        ranked.append(visual)
-    except Exception as exc:
-        print(f"[search] visual phase failed for {query!r}: {exc}")
-
-    # Phase 3 — literal title/filename match, the only path that reaches videos.
     literal = search_api.by_text(db_query, query, facets, limit=limit)
     for row in literal:
         row.setdefault("match_type", "text")
     ranked.append(literal)
 
-    results = search_api.merge(*ranked, limit=limit)
-    return {"results": results, "query": query, "facets": _facet_summary(facets),
-            "inferred": inferred}
+    return search_api.merge(*ranked, limit=limit)
+
+
+@lru_cache(maxsize=128)
+def _search_embedding(query):
+    return np.asarray(clip_embed_text(query), dtype=np.float32)
+
+
+_search_inference_slots = asyncio.Semaphore(1)
+
+
+def _visual_search_matches(query, facets, limit):
+    import search_api
+
+    visual = search_api.by_vector(db_query, _search_embedding(query), facets, limit=limit)
+    for row in visual:
+        row["match_type"] = "visual"
+    return visual
 
 
 def _facet_summary(facets) -> dict:
@@ -4125,19 +4240,23 @@ def _matching_clusters(query: str, limit: int = 3) -> list[dict]:
     Trigram similarity so "mike" reaches "Michael" and "jen" reaches
     "Jennifer"; migration 006 adds the GIN index this leans on.
     """
+    from search_api import escape_like
+
+    term = escape_like(query)
     rows = db_query("""
         SELECT c.id AS cluster_id, c.label, c.category,
-               similarity(LOWER(c.label), LOWER(%s)) AS sim,
-               LOWER(c.label) LIKE LOWER(%s) AS prefix_match
+               similarity(c.label, %s) AS sim,
+               c.label ILIKE %s ESCAPE '!' AS prefix_match
         FROM clusters c
         WHERE c.label IS NOT NULL AND (
-            c.label ILIKE %s
-            OR LOWER(c.label) LIKE LOWER(%s)
-            OR similarity(LOWER(c.label), LOWER(%s)) > 0.25
+            c.label ILIKE %s ESCAPE '!'
+            OR (%s AND similarity(c.label, %s) > 0.25)
         )
-        ORDER BY prefix_match DESC, sim DESC, LENGTH(c.label) ASC
+        ORDER BY (LOWER(c.label) = LOWER(%s)) DESC, prefix_match DESC,
+                 sim DESC, LENGTH(c.label) ASC
         LIMIT %s
-    """, (query, f"{query}%", f"%{query}%", f"{query}%", query, limit))
+    """, (query, f"{term}%", f"%{term}%", len(query) >= 4 and len(query.split()) == 1,
+          query, query, limit))
     return [dict(row) for row in rows]
 
 
@@ -4194,7 +4313,7 @@ async def _parse_query(query: str) -> dict | None:
     import query_parser
     from datetime import date as _date
 
-    people = _known_people()
+    people = await asyncio.to_thread(_known_people)
     raw = await _ollama_generate(
         query_parser.build_prompt(query, [p["label"] for p in people])
     )
@@ -4224,29 +4343,20 @@ async def parse_search_query(q: str, user=Depends(get_current_user)):
 # ── Scenes / Landmarks (cached) ──────────────────────────────────────────────
 import time as _time
 
+from memory_cache import MemoryCache
+_endpoint_cache = MemoryCache()
+
+
 def get_cached(key: str, ttl_seconds: int = 3600):
-    """Get data from DB cache if fresh enough."""
-    rows = db_query("""
-        SELECT data, updated_at FROM endpoint_cache
-        WHERE key = %s AND updated_at > now() - interval '%s seconds'
-    """, (key, ttl_seconds))
-    if rows:
-        return rows[0]["data"]
-    return None
+    return _endpoint_cache.get(key, ttl_seconds)
+
 
 def set_cached(key: str, data):
-    """Store data in DB cache."""
-    db_query("""
-        INSERT INTO endpoint_cache (key, data, updated_at) VALUES (%s, %s, now())
-        ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = now()
-    """, (key, json.dumps(data)), fetch=False)
+    _endpoint_cache.set(key, data)
+
 
 def invalidate_cache(prefix: str = ""):
-    """Clear cache entries matching prefix, or all if empty."""
-    if prefix:
-        db_query("DELETE FROM endpoint_cache WHERE key LIKE %s", (f"{prefix}%",), fetch=False)
-    else:
-        db_query("DELETE FROM endpoint_cache", fetch=False)
+    _endpoint_cache.invalidate(prefix)
 
 SCENE_LABELS = [
     "beach", "mountain", "city", "forest", "indoor", "church", "sunset",
@@ -6218,38 +6328,7 @@ async def backfill_metadata(background_tasks: BackgroundTasks, admin=Depends(req
     return {"job_id": job_id}
 
 
-# Disk measurements for /pipelines. Walking the Takeout tree takes minutes and
-# competes with the importer for the disk it is measuring, so it is never done
-# inside a request: a background thread refreshes this and requests read
-# whatever it last left, with the time it was taken.
-_disk_scan: dict = {}
-_disk_scan_started = 0.0
 _pipeline_samples: dict[str, tuple[float, int]] = {}
-
-
-def _measure_disk() -> None:
-    """Count the import trees. Slow; runs off the request path."""
-    global _disk_scan
-    from datetime import datetime, timezone
-    import pipelines  # noqa: F401  (kept together for readability)
-
-    measurement: dict = {"measured_at": datetime.now(timezone.utc).isoformat()}
-    root = Path(PHOTO_STORAGE_ROOT).parent / "imports" if PHOTO_STORAGE_ROOT else None
-    try:
-        if root and (root / "AllPhotos").exists():
-            measurement["takeout_files"] = sum(
-                1 for path in (root / "AllPhotos").rglob("*") if path.is_file())
-        icloud = root / "iCloudMichael" if root else None
-        if icloud and icloud.exists():
-            measurement["icloud_files"] = sum(
-                1 for path in icloud.rglob("*")
-                if path.is_file() and not path.name.endswith(".part"))
-        if THUMBNAIL_DIR.exists():
-            measurement["posters"] = sum(
-                1 for path in THUMBNAIL_DIR.iterdir() if path.name.endswith("-poster.jpg"))
-    except OSError as exc:
-        measurement["error"] = str(exc)[:200]
-    _disk_scan = measurement
 
 
 def _rate_per_minute(key: str, done: int) -> float | None:
@@ -6274,58 +6353,127 @@ def get_import_activity(kind: str = "all", search: str = "", cursor: str | None 
 
 @app.get("/pipelines")
 def get_pipelines(request: FastAPIRequest, user=Depends(get_current_user)):
-    """Progress for every long-running job, for the dashboard.
-
-    Everything here is either a cheap database count or a value the background
-    scan already computed. Nothing in this handler touches the import trees.
-    """
-    global _disk_scan_started
-    import asyncio as _asyncio
+    """Show current Kindred workers; never scan retired import directories."""
     import pipelines
-
-    counts = db_query("""
-        SELECT count(*) FILTER (WHERE media_kind = 'photo') AS photos,
-               count(*) FILTER (WHERE media_kind = 'video') AS videos
-        FROM photos
-    """)[0]
-    indexed = db_query("SELECT count(*) AS n FROM processed_photos")[0]["n"]
-    copies = db_query("""
-        SELECT provider, count(*) AS n FROM photo_copies
-        WHERE status = 'available' GROUP BY provider
-    """)
-    by_provider = {row["provider"]: int(row["n"]) for row in copies}
-
-    # Kick the slow scan off in the background if it is stale.
-    if _time.monotonic() - _disk_scan_started > 900:
-        _disk_scan_started = _time.monotonic()
-        threading.Thread(target=_measure_disk, daemon=True).start()
-
-    rows = {
-        "photos": int(counts["photos"] or 0),
-        "videos": int(counts["videos"] or 0),
-        # Posters are rendered on demand into the thumbnail cache rather than
-        # recorded in the catalog, so this is a file count, not a column.
-        "videos_ready": _disk_scan.get("posters", 0),
-        "indexed": int(indexed or 0),
-        "on_nas": by_provider.get("nas", 0),
-        "on_flickr": by_provider.get("flickr", 0),
-        "imported": by_provider.get("nas", 0),
-    }
-
-    result = pipelines.build(rows, _disk_scan)
+    from library_progress import progress
+    snapshot = progress()
+    counts = get_library_counts(user)
+    source_counts = get_cached('nas_pipeline_counts', ttl_seconds=30)
+    if source_counts is None:
+        source_counts = db_query('''SELECT count(*) AS registered,
+            count(*) FILTER (WHERE preview_ready_at IS NOT NULL) AS previews_ready
+            FROM nas_source_files''')[0]
+        set_cached('nas_pipeline_counts', dict(source_counts))
+    rows = dict(source_counts, photos=counts['photos'], indexed=counts['indexed_photos'])
+    result = pipelines.build(rows, snapshot.get('inventory'), snapshot)
     for entry in result:
-        rate = _rate_per_minute(entry["key"], entry["done"])
-        entry["rate_per_minute"] = round(rate, 2) if rate is not None else None
-        entry["running"] = bool(rate and rate > 0)
-        entry["eta"] = pipelines.format_eta(
-            pipelines.eta_seconds(entry["done"], entry["total"], rate))
-    return {"pipelines": result, "measured_at": _disk_scan.get("measured_at")}
+        worker = snapshot.get('recognition' if entry['key']=='index' else entry['key']) or {}
+        rate = worker.get('rate_per_minute') if entry['running'] else None
+        if rate is None and entry['running']:
+            rate = _rate_per_minute(entry['key'],entry['done'])
+        if entry.get('phase') == 'waiting_for_capacity':
+            rate = None
+        entry['rate_per_minute'] = round(rate, 2) if rate is not None else None
+        entry['eta'] = pipelines.format_eta(pipelines.eta_seconds(entry['done'], entry['total'], rate))
+    return {'pipelines': result}
+
+
+class FlickrIntegrationRequest(BaseModel):
+    oauth_token: str
+    oauth_secret: str
+    user_id: str
+
+
+@app.get("/integrations/flickr")
+def flickr_integration_status(admin=Depends(require_admin)):
+    creds = get_flickr_credentials()
+    return {"configured": bool(FLICKR_API_KEY and FLICKR_SECRET),
+            "connected": bool(creds), "user_id": creds.get("user_id") if creds else None}
+
+
+@app.post("/integrations/flickr")
+async def connect_flickr_integration(body: FlickrIntegrationRequest, admin=Depends(require_admin)):
+    if not admin.get("user_id"):
+        raise HTTPException(403, "Sign in to your owner account first")
+    if not FLICKR_API_KEY or not FLICKR_SECRET:
+        raise HTTPException(503, "Configure your installation's Flickr API key first")
+    creds = body.model_dump()
+    try:
+        verified = await asyncio.wait_for(flickr_api({"method": "flickr.test.login"}, creds=creds), timeout=30)
+        if verified.get("user", {}).get("id") != body.user_id:
+            raise ValueError("Flickr account mismatch")
+    except Exception:
+        raise HTTPException(400, "Flickr authorization could not be verified")
+    db_query("UPDATE users SET flickr_user_id=%s, flickr_oauth_token=%s, flickr_oauth_secret=%s, updated_at=now() WHERE id=%s",
+             (body.user_id, body.oauth_token, body.oauth_secret, admin["user_id"]), fetch=False)
+    return {"connected": True, "user_id": body.user_id}
+
+
+@app.get("/storage/browse")
+def browse_storage(path: str = "", cursor: str | None = None,
+                   limit: int = Query(100, ge=1, le=200), admin=Depends(require_admin)):
+    from nas_browser import browse
+    result = browse(os.environ.get("KINDRED_BROWSE_ROOT", PHOTO_STORAGE_ROOT), path, cursor, limit)
+    result["name"] = os.environ.get("KINDRED_STORAGE_NAME", "Home NAS")
+    result["display_root"] = os.environ.get("KINDRED_BROWSE_DISPLAY_ROOT", "")
+    return result
+
+
+@app.get("/storage/browse/preview")
+def preview_storage_file(path: str, admin=Depends(require_admin)):
+    from nas_browser import preview
+    from preview_delivery import THUMBNAIL_ROOT
+    file = preview(os.environ.get("KINDRED_BROWSE_ROOT", PHOTO_STORAGE_ROOT), path, THUMBNAIL_ROOT)
+    return FileResponse(file, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+
+@app.get("/storage/status")
+def get_storage_status(user=Depends(get_current_user)):
+    from storage_status import storage_status
+    return storage_status(PHOTO_STORAGE_ROOT,
+                          os.environ.get("KINDRED_STORAGE_NAME", "Home NAS"),
+                          os.environ.get("KINDRED_HOUSEHOLD_NAME", ""),
+                          os.environ.get("KINDRED_BROWSE_ROOT", ""))
+
+
+@app.get("/library/day-labels")
+def library_day_labels(date_from: str, date_to: str, user=Depends(get_current_user)):
+    try:
+        start = datetime.strptime(date_from, "%Y-%m-%d").date()
+        end = datetime.strptime(date_to, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(400, "Dates must use YYYY-MM-DD")
+    if start > end:
+        raise HTTPException(400, "Invalid date range")
+    rows = db_query("SELECT event_key, name FROM event_labels WHERE event_key >= %s AND event_key < %s AND name != '__dismissed__' ORDER BY event_key DESC LIMIT 1000",
+                    (start.isoformat(), (end + timedelta(days=1)).isoformat()))
+    return {"labels": rows}
+
+
+_library_counts_lock = threading.Lock()
 
 
 @app.get("/library/counts")
 def get_library_counts(user=Depends(get_current_user)):
     from library_api import counts
-    return counts(db_query)
+    cached = get_cached("library_counts", ttl_seconds=60)
+    if cached is not None:
+        return cached
+    # Coalesce simultaneous sidebar/grid/progress requests into one refresh.
+    with _library_counts_lock:
+        cached = get_cached("library_counts", ttl_seconds=60)
+        if cached is not None:
+            return cached
+        version = _endpoint_cache.version("library_counts")
+        result = counts(db_query)
+        _endpoint_cache.set("library_counts", result, version=version)
+        return result
+
+
+@app.get("/library/discovery")
+def get_library_discovery(user=Depends(get_current_user)):
+    from library_progress import progress
+    return progress()
 
 
 @app.get("/library/photos")
@@ -6335,10 +6483,16 @@ def get_library_photos(sort: str = "newest",
                        date_from: str | None = Query(None, description="ISO date, inclusive"),
                        date_to: str | None = Query(None, description="ISO date, inclusive"),
                        min_duration: float | None = Query(None, ge=0, description="Seconds; videos only"),
+                       album_id: str | None = Query(None),
                        limit: int = Query(48, ge=1, le=100), user=Depends(get_current_user)):
     from library_api import gallery
+    if album_id:
+        try:
+            album_id = str(uuid.UUID(album_id))
+        except ValueError:
+            raise HTTPException(400, "Invalid album ID")
     return gallery(db_query, sort, limit, media=media, cursor=cursor,
-                   date_from=date_from, date_to=date_to, min_duration=min_duration)
+                   date_from=date_from, date_to=date_to, min_duration=min_duration, album_id=album_id)
 
 
 @app.get("/favorites")
@@ -6469,7 +6623,12 @@ def get_library_years(media: str = Query("all", description="all, photo, or vide
     scrubber can show the full span before anything has been scrolled.
     """
     from library_api import years
-    return {"years": years(db_query, media=media)}
+    key='library_years_'+media
+    cached=get_cached(key, ttl_seconds=60)
+    if cached is None:
+        cached={'years':years(db_query,media=media)}
+        set_cached(key,cached)
+    return cached
 
 
 @app.get("/timeline")
@@ -6694,6 +6853,21 @@ def get_local_photo(photo_id: str, variant: str = "original", user=Depends(get_c
         (photo_id,),
     )
     row = rows[0] if rows else None
+    if row and variant in ("thumb", "preview"):
+        import preview_delivery
+        import image_transforms
+        cached = preview_delivery.cached_thumbnail([photo_id])
+        if cached is not None and (variant == 'thumb' or (w is not None and w <= 960)):
+            try:
+                if format in ('auto','jpeg'):
+                    return preview_delivery.thumbnail_response(cached, request)
+                width, quality, output_format = image_transforms.parameters(
+                    w if w is not None else 320, q, format,
+                    request.headers.get("accept", "") if request else "")
+                key, data = image_transforms.local_transform(cached, width, quality, output_format)
+                return image_transforms.image_response(key, data, output_format, request)
+            except (OSError, ValueError):
+                pass
     provider = LocalStorageProvider(PHOTO_STORAGE_ROOT)
     source = provider.resolve_local_path(row["provider_key"]) if row else None
     if source is None:
@@ -6858,6 +7032,7 @@ async def proxy_photo_image(photo_id: str, size: str = "b", user=Depends(get_cur
     """
     import urllib.parse
     import image_transforms
+    direct_jpeg = format in ("auto", "jpeg")
     original_requested = size == "o" and w is None
     if not original_requested:
         try:
@@ -6869,6 +7044,31 @@ async def proxy_photo_image(photo_id: str, size: str = "b", user=Depends(get_cur
     catalog = await asyncio.to_thread(_catalog_photo, photo_id)
     if not catalog and not await asyncio.to_thread(db_query, "SELECT 1 FROM detections WHERE photo_id = %s LIMIT 1", (photo_id,)):
         raise HTTPException(404, "Photo is not in this library")
+    if not original_requested:
+        # Catalog authorization above always runs first. The small persistent
+        # preview must not depend on reopening a multi-megabyte NAS original.
+        import preview_delivery
+        identities = [photo_id]
+        if catalog:
+            identities += [str(catalog.get('id') or ''), catalog.get('legacy_photo_id'), catalog.get('flickr_id')]
+        cached = await asyncio.to_thread(preview_delivery.cached_thumbnail, identities)
+        if cached is None and w <= 960 and catalog and catalog.get('nas_key'):
+            provider = LocalStorageProvider(PHOTO_STORAGE_ROOT)
+            source = await asyncio.to_thread(provider.resolve_local_path, catalog['nas_key'])
+            if source is not None:
+                try:
+                    cached = await asyncio.to_thread(preview_delivery.ensure_thumbnail, str(catalog['id']), source)
+                except (OSError, ValueError):
+                    pass
+        if cached is not None and w <= 960:
+            try:
+                if direct_jpeg:
+                    return preview_delivery.thumbnail_response(cached, request)
+                key, data = await asyncio.to_thread(image_transforms.local_transform, cached, w, q, format)
+                return image_transforms.image_response(key, data, format, request)
+            except (OSError, ValueError):
+                pass  # A damaged disposable preview can still use a real copy.
+
     if catalog and catalog.get('nas_key'):
         try:
             return await asyncio.to_thread(
@@ -7652,3 +7852,83 @@ async def _run_analysis(job_id: str, photos: list[dict]):
             {"faces": c["people"], "pets": c["pets"], "vehicles": c["vehicles"]})
     else:
         create_notification("scan_complete", "Scan complete", "No new detections found")
+
+
+def _register_phone_backup_resource(path, resource, manifest, owner):
+    """Archive all resources; show only the chosen display original in the library."""
+    if not resource.get('is_primary') or not resource['media_type'].startswith(('image/', 'video/')):
+        return
+    import hashlib
+    provider_key = path.relative_to(Path(PHOTO_STORAGE_ROOT).resolve()).as_posix()
+    captured, latitude, longitude, _ = _resolve_capture_metadata(
+        str(path),resource['filename'],resource['media_type'],manifest.get('created_at'),None,None)
+    conn=get_db()
+    try:
+        with conn.cursor() as cur:
+            cur.execute('SELECT id FROM photos WHERE sha256=%s', (resource['sha256'],))
+            existing=cur.fetchone()
+            identifier=str(existing[0]) if existing else resource['id']
+            if not existing:
+                cur.execute('''INSERT INTO photos(id,sha256,original_filename,media_type,byte_size,title,taken_at,latitude,longitude)
+                    VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(sha256) DO NOTHING''',
+                    (identifier,resource['sha256'],resource['filename'],resource['media_type'],resource['byte_size'],
+                     Path(resource['filename']).stem,captured,latitude,longitude))
+                cur.execute('SELECT id FROM photos WHERE sha256=%s',(resource['sha256'],))
+                identifier=str(cur.fetchone()[0])
+            cur.execute('''INSERT INTO photo_copies(photo_id,provider,provider_key,storage_path,sha256,byte_size,status)
+                VALUES(%s,'nas',%s,%s,%s,%s,'available') ON CONFLICT(photo_id,provider) DO UPDATE SET
+                provider_key=EXCLUDED.provider_key,storage_path=EXCLUDED.storage_path,sha256=EXCLUDED.sha256,
+                byte_size=EXCLUDED.byte_size,status='available',updated_at=now()''',
+                (identifier,provider_key,provider_key,resource['sha256'],resource['byte_size']))
+            stat=path.stat()
+            cur.execute('''INSERT INTO nas_source_files(source_key,relative_path,photo_id,byte_size,mtime_ns)
+                VALUES('phone-backups',%s,%s,%s,%s) ON CONFLICT(photo_id) DO NOTHING''',
+                (provider_key,identifier,stat.st_size,stat.st_mtime_ns))
+            for name in dict.fromkeys(manifest.get('albums',[])):
+                name=str(name).strip()[:255]
+                if not name:continue
+                slug='phone-'+hashlib.sha256((str(owner)+':'+name).encode()).hexdigest()[:24]
+                cur.execute('''INSERT INTO albums(name,slug,created_by) VALUES(%s,%s,%s)
+                    ON CONFLICT(slug) DO UPDATE SET name=EXCLUDED.name RETURNING id''',(name,slug,owner))
+                album_id=cur.fetchone()[0]
+                cur.execute('''INSERT INTO album_photos(album_id,photo_id,added_by) VALUES(%s,%s,%s)
+                    ON CONFLICT(album_id,photo_id) DO NOTHING''',(album_id,identifier,owner))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+from phone_backups import router as phone_backup_router
+app.include_router(phone_backup_router(get_current_user, PHOTO_STORAGE_ROOT, _register_phone_backup_resource))
+
+
+@app.get('/library/events')
+async def library_events(request: FastAPIRequest, user=Depends(get_current_user)):
+    from library_progress import progress
+    async def stream():
+        previous=None;last_body=None;last_heartbeat=0.0
+        try:
+            while not await request.is_disconnected():
+                snapshot=await asyncio.to_thread(progress)
+                discovery=snapshot.get('discovery') or {}
+                previews=snapshot.get('previews') or {}
+                recognition=snapshot.get('recognition') or {}
+                signature=(discovery.get('registered',0)+discovery.get('unchanged',0),
+                           previews.get('completed',0),recognition.get('completed',0),
+                           recognition.get('batch_completed',0))
+                counts_changed=previous is None or signature[0]!=previous[0] or signature[2:]!=previous[2:]
+                previews_changed=previous is None or signature[1]!=previous[1]
+                if counts_changed:_endpoint_cache.invalidate('library_counts')
+                if counts_changed or (previews_changed and not (snapshot.get('previews') or {}).get('counts_authoritative')):_endpoint_cache.invalidate('nas_pipeline_counts')
+                if counts_changed or previews_changed:_endpoint_cache.invalidate('library_years_')
+                body=json.dumps(dict(snapshot=snapshot,counts_changed=counts_changed,previews_changed=previews_changed))
+                now=_time.monotonic()
+                if body!=last_body or now-last_heartbeat>=15:
+                    yield 'event: progress\ndata: '+body+'\n\n'
+                    last_heartbeat=now;last_body=body
+                previous=signature
+                await asyncio.sleep(3)
+        except asyncio.CancelledError:
+            return
+    return StreamingResponse(stream(),media_type='text/event-stream',headers={
+        'Cache-Control':'no-store','X-Accel-Buffering':'no'})

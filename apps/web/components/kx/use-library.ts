@@ -18,12 +18,13 @@ export interface LibraryCounts {
 export function useLibraryCounts() {
   return useQuery<LibraryCounts>({
     queryKey: ["library-counts"],
-    queryFn: async () => {
-      const response = await fetch(`${BACKEND}/library/counts`);
+    queryFn: async ({ signal }) => {
+      const response = await fetch(`${BACKEND}/library/counts`, { signal });
       if (!response.ok) throw new Error("Library counts could not be loaded.");
       return response.json();
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
   });
 }
 
@@ -84,6 +85,9 @@ export function relativeTime(iso: string | null | undefined): string | null {
 
 /** One long-running job, as /pipelines reports it. */
 export interface Pipeline {
+  stale?: boolean;
+  complete?: boolean;
+  excluded?: number;
   key: string;
   label: string;
   detail: string;
@@ -95,6 +99,7 @@ export interface Pipeline {
   rate_per_minute: number | null;
   eta: string;
   measured_at: string | null;
+  phase?: string;
 }
 
 /**
@@ -105,7 +110,7 @@ export interface Pipeline {
  * lives in another container and cannot write to it. It answered "idle"
  * always, so nothing ever appeared. This reads the database and disk instead.
  */
-export function usePipelines(pollMs = 10000) {
+export function usePipelines(pollMs = 15000) {
   return useQuery<{ pipelines: Pipeline[] }>({
     queryKey: ["pipelines"],
     queryFn: async () => {
@@ -124,4 +129,29 @@ export function busiestPipeline(pipelines: Pipeline[] | undefined): Pipeline | n
   // The one furthest from done has the most left to say.
   return running.reduce((worst, p) =>
     (p.percent ?? 0) < (worst.percent ?? 0) ? p : worst);
+}
+
+export interface StorageStatus {
+  name: string;
+  household_name: string;
+  configured: boolean;
+  available: boolean;
+  total_bytes: number | null;
+  used_bytes: number | null;
+  free_bytes: number | null;
+  detail?: string;
+}
+
+export function useStorageStatus() {
+  return useQuery<StorageStatus>({
+    queryKey: ["storage-status"],
+    queryFn: async ({ signal }) => {
+      const response = await fetch(`${BACKEND}/storage/status`, { signal });
+      if (!response.ok) throw new Error("Storage status is unavailable.");
+      return response.json();
+    },
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+    retry: 1,
+  });
 }

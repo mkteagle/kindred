@@ -3,11 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { User } from "@/types";
+import { KxUserMenu, displayNameOf } from "./user-menu";
+import { StorageCard } from "./storage-card";
+import { useStorageStatus } from "./use-library";
 import { fmt } from "@/lib/constants";
 import { LIBRARY_ICON_PATHS, NavIcon, SidebarIcon } from "./icons";
 import { useFavorites } from "./favorites";
 import { useKxUi } from "./ui-state";
-import { useLibraryCounts, usePipelines, busiestPipeline, useShareCount, useStats } from "./use-library";
+import { useLibraryCounts, usePipelines, useShareCount, useStats } from "./use-library";
 
 /**
  * LIBRARY group — label, route, glyph, and where its count comes from.
@@ -17,16 +21,13 @@ import { useLibraryCounts, usePipelines, busiestPipeline, useShareCount, useStat
  * glyph is the only thing left to identify the row by.
  */
 const LIBRARY_ROWS = [
-  { href: "/activity", label: "Activity log", icon: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" },
-  { href: "/gallery", label: "All photos", icon: LIBRARY_ICON_PATHS.allPhotos, count: "photos" as const },
+  { href: "/gallery", label: "Library", icon: LIBRARY_ICON_PATHS.allPhotos, count: "photos" as const },
+  { href: "/search", label: "Search", icon: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" },
   { href: "/people", label: "People", icon: LIBRARY_ICON_PATHS.people, count: "people" as const },
-  { href: "/animals", label: "Animals", icon: LIBRARY_ICON_PATHS.animals, count: "pets" as const },
-  { href: "/vehicles", label: "Vehicles", icon: LIBRARY_ICON_PATHS.vehicles, count: "vehicles" as const },
-  { href: "/videos", label: "Videos", icon: LIBRARY_ICON_PATHS.videos, count: "videos" as const },
-  { href: "/timeline", label: "Timeline", icon: LIBRARY_ICON_PATHS.timeline, count: null },
-  { href: "/locations", label: "Locations", icon: LIBRARY_ICON_PATHS.locations, count: null },
-  { href: "/shares", label: "Shared", icon: LIBRARY_ICON_PATHS.shared, count: "shares" as const },
+  { href: "/albums", label: "Albums", icon: "M3 7h7l2 2h9v11H3z M3 7V4h7l2 3" },
   { href: "/favorites", label: "Favorites", icon: LIBRARY_ICON_PATHS.favorites, count: "favorites" as const },
+  { href: "/videos", label: "Videos", icon: LIBRARY_ICON_PATHS.videos, count: "videos" as const },
+  { href: "/timeline", label: "Timeline", icon: LIBRARY_ICON_PATHS.timeline },
 ];
 
 /**
@@ -35,6 +36,11 @@ const LIBRARY_ROWS = [
  * in step.
  */
 const WAYS_IN_ROWS = [
+  { href: "/animals", label: "Animals", icon: LIBRARY_ICON_PATHS.animals },
+  { href: "/vehicles", label: "Vehicles", icon: LIBRARY_ICON_PATHS.vehicles },
+  { href: "/locations", label: "Locations", icon: LIBRARY_ICON_PATHS.locations },
+  { href: "/shares", label: "Shared", icon: LIBRARY_ICON_PATHS.shared },
+  { href: "/activity", label: "Activity", icon: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" },
   { href: "/events", label: "Events", icon: "M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z M4 22v-7" },
   { href: "/together", label: "Together", icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2 M23 21v-2a4 4 0 00-3-3.87 M16 3.13a4 4 0 010 7.75 M9 7a4 4 0 11-8 0 4 4 0 018 0z" },
   { href: "/colors", label: "Colors", icon: "M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485" },
@@ -58,14 +64,8 @@ interface RailTip {
 function BrandLockup() {
   return (
     <Link href="/gallery" className="kx-brand" aria-label="Kindred, home" prefetch={false}>
-      <span className="kx-brand-mark">
-        <img src="/logo.svg" alt="" className="kx-mark" data-mark-theme="light" />
-        <img src="/logo-light.svg" alt="" className="kx-mark" data-mark-theme="dark" />
-      </span>
-      <span className="kx-brand-word">
-        <img src="/wordmark.svg" alt="Kindred" className="kx-wordmark" data-mark-theme="light" />
-        <img src="/wordmark-light.svg" alt="Kindred" className="kx-wordmark" data-mark-theme="dark" />
-      </span>
+      <span className="kx-brand-mark"><img src="/brand/kindred-mark.svg" alt="" className="kx-mark" /></span>
+      <span className="kx-brand-word"><img src="/brand/kindred-wordmark-dark.svg" alt="Kindred" className="kx-wordmark" /></span>
     </Link>
   );
 }
@@ -172,31 +172,28 @@ function NavRow({
 }
 
 function SyncCard() {
-  const { data } = usePipelines();
-  const busiest = busiestPipeline(data?.pipelines);
-  const caption = busiest
-    ? `${busiest.label}${busiest.eta ? ` · ${busiest.eta} left` : ""}`
-    : "Everything is up to date";
-
-  // The bar was hardcoded to 40% while running and 100% otherwise, which is a
-  // picture of nothing. An unknown total gets no bar rather than a made-up one.
-  const percent = busiest?.percent ?? null;
-
-  return (
-    <div className="kx-sync">
-      <span className="kx-sync-label">Sync</span>
-      <span className="kx-sync-caption">{caption}</span>
-      <Link href="/pipelines" className="kx-sync-link" prefetch={false}>
-        {busiest ? "See all jobs" : "Job history"}
-      </Link>
-      <div className="kx-sync-bar">
-        <span style={{ width: percent === null ? (busiest ? "100%" : "0%") : `${percent}%` }} />
-      </div>
+  const { data, error, isPending } = usePipelines(15000);
+  const pipelines = data?.pipelines ?? [];
+  const active = pipelines.some(pipeline => pipeline.running && pipeline.phase !== "waiting_for_capacity");
+  const headline = isPending ? "Checking indexing…" : error ? "Status unavailable" : active ? "Indexing your library" : pipelines.length ? "Indexing is waiting" : "No indexing workers connected";
+  const names: Record<string,string> = { discovery: "File catalog", previews: "Thumbnails", index: "Recognition" };
+  return <section className="kx-index-status" aria-label="Kindred indexing status">
+    <Link href="/pipelines" aria-label="View indexing progress" className="kx-index-status-heading" prefetch={false}>
+      <span className={`kx-index-dot ${active ? "is-active" : ""}`} aria-hidden="true" />
+      <strong>{headline}</strong><span aria-hidden="true">↗</span>
+    </Link>
+    <div className="kx-index-status-rows">
+      {pipelines.map(pipeline => <div key={pipeline.key}>
+        <span>{names[pipeline.key] || pipeline.label}</span>
+        <strong>{pipeline.complete ? "Complete" : pipeline.phase === "waiting_for_discovery" ? "After discovery" : pipeline.phase === "waiting_for_previews" ? "After thumbnails" : pipeline.phase === "waiting_for_capacity" ? "Waiting for NAS" : pipeline.stale ? "Update delayed" : !pipeline.running ? "No recent progress" : fmt.format(pipeline.done)}</strong>
+      </div>)}
     </div>
-  );
+    <Link href="/pipelines" className="kx-index-status-link" prefetch={false}>View indexing progress</Link>
+  </section>;
 }
 
-export function KxSidebar({ open, onNavigate }: { open: boolean; onNavigate: () => void }) {
+export function KxSidebar({ user, open, onNavigate }: { user: User | null; open: boolean; onNavigate: () => void }) {
+  const { data: storage } = useStorageStatus();
   const pathname = usePathname();
   const { railCollapsed } = useKxUi();
   const { data: counts } = useLibraryCounts();
@@ -211,13 +208,9 @@ export function KxSidebar({ open, onNavigate }: { open: boolean; onNavigate: () 
         return counts?.total_files ?? null;
       case "videos":
         return counts?.videos ?? null;
-      case "shares":
-        return shares ?? null;
       case "favorites":
         return favorites;
       case "people":
-      case "pets":
-      case "vehicles":
         return stats?.[key]?.groups ?? null;
       default:
         return null;
@@ -231,7 +224,7 @@ export function KxSidebar({ open, onNavigate }: { open: boolean; onNavigate: () 
   // Measured off the row itself rather than assumed from the 64px rail, so the
   // tooltip stays put if the rail's metrics ever change.
   const showTip = useCallback((label: string, el: HTMLElement) => {
-    if (!window.matchMedia("(min-width: 901px)").matches) return;
+    if (!window.matchMedia("(width > 640px)").matches) return;
     const rect = el.getBoundingClientRect();
     setTip({ label, top: rect.top + rect.height / 2, left: rect.right + 10 });
   }, []);
@@ -254,6 +247,7 @@ export function KxSidebar({ open, onNavigate }: { open: boolean; onNavigate: () 
         <RailToggle />
       </div>
 
+      <div className="kx-sidebar-scroll">
       <nav className="kx-navgroup" aria-label="Library">
         <span className="kx-eyebrow">Library</span>
         {LIBRARY_ROWS.map((row) => (
@@ -273,8 +267,9 @@ export function KxSidebar({ open, onNavigate }: { open: boolean; onNavigate: () 
         ))}
       </nav>
 
-      <nav className="kx-navgroup" aria-label="Ways in">
-        <span className="kx-eyebrow">Ways in</span>
+      <details className="kx-more-nav" open={WAYS_IN_ROWS.some(row => isActive(row.href)) || undefined}>
+      <summary>Explore more</summary>
+      <nav className="kx-navgroup" aria-label="Explore more">
         {WAYS_IN_ROWS.map((row) => (
           <NavRow
             key={row.href}
@@ -291,7 +286,21 @@ export function KxSidebar({ open, onNavigate }: { open: boolean; onNavigate: () 
         ))}
       </nav>
 
-      <SyncCard />
+      </details>
+      <StorageCard />
+      </div>
+      <div className="kx-sidebar-account">
+        <SyncCard />
+        {user?.role === "admin" && <Link href="/storage" className="kx-sidebar-settings" onClick={onNavigate}>Browse NAS folders</Link>}
+        <Link href="/settings" className="kx-sidebar-settings" onClick={onNavigate}>Settings</Link>
+        <Link href="/settings/integrations" className="kx-sidebar-settings" onClick={onNavigate}>Integrations</Link>
+        <div className="kx-account-row"><KxUserMenu user={user} placement="sidebar" />
+          <div className="kx-account-copy"><strong>{displayNameOf(user)}</strong>
+            <span>{[storage?.household_name, user?.role === "admin" ? "Owner" : user?.role === "member" ? "Member" : null].filter(Boolean).join(" · ")}</span>
+            <small>{storage?.configured ? `${storage.name} · ${storage.available ? "Connected" : "Offline"}` : "Your library, your home"}</small>
+          </div>
+        </div>
+      </div>
 
       {/* Not a `title`: that waits half a second, cannot be styled, and never
           appears for keyboard focus. It is `position: fixed` so the rail's own

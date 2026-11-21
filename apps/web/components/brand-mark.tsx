@@ -14,10 +14,10 @@ export function BrandMark({ className, size = 48 }: { className?: string; size?:
   return (
     <>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/logo.svg" alt="" width={size} height={size}
+      <img src="/brand/kindred-mark.svg" alt="" width={size} height={size}
         className={className} data-mark-theme="light" />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/logo-light.svg" alt="" width={size} height={size}
+      <img src="/brand/kindred-mark.svg" alt="" width={size} height={size}
         className={className} data-mark-theme="dark" />
     </>
   );
@@ -27,9 +27,9 @@ export function BrandWordmark({ className, alt = "Kindred" }: { className?: stri
   return (
     <>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/wordmark.svg" alt={alt} className={className} data-mark-theme="light" />
+      <img src="/brand/kindred-wordmark.svg" alt={alt} className={className} data-mark-theme="light" />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/wordmark-light.svg" alt={alt} className={className} data-mark-theme="dark" />
+      <img src="/brand/kindred-wordmark-dark.svg" alt={alt} className={className} data-mark-theme="dark" />
     </>
   );
 }

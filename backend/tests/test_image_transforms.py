@@ -124,6 +124,41 @@ class TransformTests(unittest.TestCase):
             self.assertEqual(client.get('/photos/photo/image?size=o', headers=headers).content, self.source.read_bytes())
             self.assertEqual(client.get('/photos/photo/image?w=90000', headers=headers).status_code, 400)
 
+    def test_durable_preview_survives_missing_original_without_flickr_call(self):
+        import preview_delivery
+        photo_id = 'bfedefa9-30da-49c4-b008-b7df8e8e7a1b'
+        cache = self.root / 'durable-previews'
+        cache.mkdir()
+        (cache / f'{photo_id}.jpg').write_bytes(self.source.read_bytes())
+        remote = AsyncMock(side_effect=AssertionError('Preview must not call Flickr'))
+        overrides = {'_catalog_photo': lambda _: {'id': photo_id, 'nas_key': 'missing.heic', 'flickr_id': 'known'},
+                     'db_query': lambda *args: [{'provider_key': 'missing.heic', 'media_type': 'image/heic'}],
+                     'flickr_api': remote}
+        with patch.object(preview_delivery, 'THUMBNAIL_ROOT', cache), self.client(overrides) as client:
+            result = client.get(f'/photos/{photo_id}/image?w=320', headers={'x-session-token': 'valid'})
+            self.assertEqual(result.status_code, 200)
+            self.assertEqual(Image.open(BytesIO(result.content)).width, 480)
+            remote.assert_not_awaited()
+            self.assertEqual(client.get(f'/photos/{photo_id}/image?w=320').status_code, 401)
+
+    def test_visible_cache_miss_builds_a_durable_jpeg_without_sqlite_transforms(self):
+        import preview_delivery
+        photo_id = 'bfedefa9-30da-49c4-b008-b7df8e8e7a1b'
+        cache = self.root / 'previews-on-demand'
+        overrides = {'_catalog_photo': lambda _: {'id': photo_id, 'nas_key': 'original.jpg'}}
+        with patch.object(preview_delivery, 'THUMBNAIL_ROOT', cache), self.client(overrides) as client, \
+             patch.object(images.CACHE, 'render', side_effect=AssertionError('Grid previews must bypass SQLite')):
+            url=f'/photos/{photo_id}/image?w=480&format=auto'
+            headers={'x-session-token':'valid'}
+            first=client.get(url,headers=headers)
+            self.assertEqual(first.status_code,200)
+            self.assertEqual(first.headers['content-type'],'image/jpeg')
+            self.assertLessEqual(Image.open(BytesIO(first.content)).width,512)
+            self.assertTrue((cache / f'{photo_id}.jpg').is_file())
+            self.source.unlink()
+            self.assertEqual(client.get(url,headers=headers).content,first.content)
+            self.assertEqual(client.get(url,headers={**headers,'if-none-match':first.headers['etag']}).status_code,304)
+
     def test_unknown_photo_is_not_an_open_flickr_proxy(self):
         with self.client({'_catalog_photo': lambda _: None, 'db_query': lambda *a: []}) as client:
             self.assertEqual(client.get('/photos/unknown/image?w=320', headers={'x-session-token': 'valid'}).status_code, 404)

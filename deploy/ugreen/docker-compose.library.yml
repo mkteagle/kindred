@@ -1,0 +1,59 @@
+# Opt-in overlay for the release template. Does not enable the legacy copy importer.
+x-library-worker: &library-worker
+  image: kindred-api:${KINDRED_REVISION:?Set KINDRED_REVISION}
+  restart: unless-stopped
+  depends_on:
+    api:
+      condition: service_healthy
+  environment: &library-environment
+    DATABASE_URL: postgresql://${POSTGRES_USER:-kindred}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-kindred}
+    PHOTO_STORAGE_ROOT: /data/photos/originals
+    PHOTO_LIBRARY_ROOT: /data/library
+    KINDRED_BROWSE_ROOT: /data/library
+    XDG_CACHE_HOME: /app/cache
+    OMP_NUM_THREADS: "2"
+    MKL_NUM_THREADS: "2"
+    OPENBLAS_NUM_THREADS: "2"
+    # Defaults remain conservative; tune to measured disk behavior per installation.
+    KINDRED_IO_HIGH: ${KINDRED_IO_HIGH:-40}
+    KINDRED_IO_LOW: ${KINDRED_IO_LOW:-15}
+    KINDRED_PREVIEWS_FIRST: ${KINDRED_PREVIEWS_FIRST:-1}
+  volumes:
+    - ${NAS_LIBRARY_SOURCE:?Set NAS_LIBRARY_SOURCE}:/data/library:ro
+    - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/backend:/app/data
+    - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/photos:/data/photos
+    - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/model-cache:/app/cache
+  networks: [kindred-internal]
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+
+services:
+  api:
+    environment:
+      PHOTO_LIBRARY_ROOT: /data/library
+      KINDRED_BROWSE_ROOT: /data/library
+      KINDRED_BROWSE_DISPLAY_ROOT: ${NAS_LIBRARY_SOURCE:?Set NAS_LIBRARY_SOURCE}
+      KINDRED_STORAGE_NAME: ${KINDRED_STORAGE_NAME:-Home NAS}
+      KINDRED_HOUSEHOLD_NAME: ${KINDRED_HOUSEHOLD_NAME:-}
+    volumes:
+      - ${NAS_LIBRARY_SOURCE:?Set NAS_LIBRARY_SOURCE}:/data/library:ro
+
+  nas-discovery:
+    <<: *library-worker
+    restart: on-failure
+    cpus: 2
+    mem_limit: 2g
+    command: [python, -u, /app/discover_nas_library.py, /data/library]
+
+  nas-previews:
+    <<: *library-worker
+    cpus: 4
+    mem_limit: 4g
+    command: [python, -u, /app/prepare_nas_previews.py]
+
+  nas-recognition:
+    <<: *library-worker
+    cpus: 4
+    mem_limit: 8g
+    command: [python, -u, /app/index_nas_watch.py]

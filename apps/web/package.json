@@ -8,17 +8,20 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "postinstall": "fumadocs-mdx"
+    "postinstall": "fumadocs-mdx",
+    "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.99.2",
     "@tanstack/react-virtual": "^3.13.24",
+    "@tanstack/redact": "0.3.1",
     "@types/leaflet": "^1.9.21",
     "fumadocs-core": "^16.8.3",
     "fumadocs-mdx": "^14.3.1",
     "fumadocs-ui": "^16.8.3",
+    "jose": "^6.2.17",
     "leaflet": "^1.9.4",
-    "next": "^16.2.4",
+    "next": "^16.2.12",
     "oauth-1.0a": "^2.2.6",
     "posthog-js": "^1.372.1",
     "qrcode.react": "^4.2.0",
@@ -35,6 +38,7 @@
     "@types/react-dom": "^19.2.3",
     "postcss": "^8.5.10",
     "tailwindcss": "^4.2.4",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "vite": "^8.0.10"
   },

@@ -63,7 +63,7 @@ def years(query, media="all"):
     """
     kind_sql, params = media_clause(media)
     rows = query(
-        f"""SELECT EXTRACT(YEAR FROM p.taken_at)::int AS year,
+        f"""/*kindred-catalog-aggregate*/ SELECT EXTRACT(YEAR FROM p.taken_at)::int AS year,
                    count(*) AS count
             {JOINS} WHERE {AVAILABLE} AND {kind_sql}
               AND p.taken_at IS NOT NULL
@@ -97,20 +97,27 @@ def decode_cursor(cursor):
 
 
 def counts(query):
-    row = dict(query(f"""SELECT
+    row = dict(query(f"""/*kindred-catalog-aggregate*/ WITH indexed_ids AS (
+        SELECT p.id FROM processed_photos x JOIN photos p ON x.photo_id=p.id::text
+        UNION
+        SELECT p.id FROM processed_photos x JOIN photos p ON x.photo_id=p.legacy_photo_id
+        UNION
+        SELECT copy.photo_id FROM processed_photos x JOIN photo_copies copy
+          ON copy.provider='flickr' AND copy.status='available' AND copy.provider_key=x.photo_id
+    ) SELECT
         count(*) AS total_files,
         count(*) FILTER (WHERE {IMAGE}) AS photos,
         count(*) FILTER (WHERE p.media_kind = 'video') AS videos,
         count(*) FILTER (WHERE n.photo_id IS NOT NULL) AS on_nas,
         count(*) FILTER (WHERE f.photo_id IS NOT NULL) AS on_flickr,
-        count(*) FILTER (WHERE {IMAGE} AND {INDEXED}) AS indexed_photos
-        {JOINS} WHERE {AVAILABLE}""")[0])
+        count(*) FILTER (WHERE {IMAGE} AND done_ids.id IS NOT NULL) AS indexed_photos
+        {JOINS} LEFT JOIN indexed_ids done_ids ON done_ids.id=p.id WHERE {AVAILABLE}""")[0])
     row['pending_index'] = max(0, row['photos'] - row['indexed_photos'])
     return row
 
 
 def gallery(query, sort, limit, media="all", cursor=None,
-            date_from=None, date_to=None, min_duration=None, favorited_by=None):
+            date_from=None, date_to=None, min_duration=None, favorited_by=None, album_id=None):
     """One page of the catalog, ordered by `sort` and filtered by `media`.
 
     Pages by keyset rather than OFFSET: the cursor carries the last row's sort
@@ -128,6 +135,10 @@ def gallery(query, sort, limit, media="all", cursor=None,
         kind_sql += (" AND EXISTS (SELECT 1 FROM photo_favorites pf"
                      " WHERE pf.photo_id = p.id AND pf.user_id = %s)")
         params.append(favorited_by)
+
+    if album_id:
+        kind_sql += " AND EXISTS (SELECT 1 FROM album_photos ap WHERE ap.photo_id = p.id AND ap.album_id = %s)"
+        params.append(album_id)
 
     keyset = "TRUE"
     if cursor:

@@ -196,6 +196,17 @@ class AgainstSqliteTests(unittest.TestCase):
         rows = by_text(self.query, "beach", Facets(), limit=10)
         self.assertEqual({r["photo_id"] for r in rows}, {"p1", "p2"})
 
+    def test_text_finds_separated_terms_and_ranks_a_phrase_first(self):
+        self.db.execute("UPDATE photos SET title='Beach day video' WHERE id='p2'")
+        self.db.execute("UPDATE photos SET title='Beach video by day' WHERE id='p1'")
+        rows = by_text(self.query, "beach day", Facets(), limit=10)
+        self.assertEqual([row["photo_id"] for row in rows], ["p2", "p1"])
+
+    def test_filename_punctuation_is_matched_literally(self):
+        self.db.execute("UPDATE photos SET original_filename='beach_1.jpg' WHERE id='p1'")
+        self.db.execute("UPDATE photos SET original_filename='beacha1.mp4' WHERE id='p2'")
+        self.assertEqual([row["photo_id"] for row in by_text(self.query, "beach_1", Facets())], ["p1"])
+
 
 if __name__ == "__main__":
     unittest.main()

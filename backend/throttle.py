@@ -31,15 +31,18 @@ law can be tested without a NAS under load.
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 # Above these, the box is stalling enough that a person notices.
-IO_HIGH = 40.0
+IO_HIGH = float(os.environ.get("KINDRED_IO_HIGH", "40"))
 MEMORY_HIGH = 5.0
 # Below these it has recovered and the worker may take more.
-IO_LOW = 15.0
+IO_LOW = float(os.environ.get("KINDRED_IO_LOW", "15"))
 MEMORY_LOW = 1.0
+if not 0 <= IO_LOW < IO_HIGH <= 100:
+    raise ValueError("Disk pressure thresholds must satisfy 0 <= low < high <= 100")
 
 # Seconds of pause per photo. The ceiling is a floor on throughput, not a
 # stop by itself. wait_for_capacity additionally prevents new background

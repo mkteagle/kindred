@@ -1,5 +1,6 @@
 "use client";
 
+import { useUser } from "@/lib/use-user";
 import React, { createContext, useContext, useCallback, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ToastContainer } from "./toast";
@@ -29,11 +30,13 @@ export function useToastContext() {
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const { toasts, addToast, dismissToast, pauseTimer, resumeTimer } = useToasts();
   const qc = useQueryClient();
+  const { isLoggedIn } = useUser();
   const lastSeenIdRef = useRef<number>(0);
   const initializedRef = useRef(false);
 
   // Poll for new notifications and show toasts when tab is focused
   useEffect(() => {
+    if (!isLoggedIn) return;
     // Only show toasts when tab is focused
     const pollInterval = setInterval(async () => {
       if (document.hidden) return;
@@ -74,7 +77,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     }, 15000);
 
     return () => clearInterval(pollInterval);
-  }, [addToast, qc]);
+  }, [addToast, qc, isLoggedIn]);
 
   return (
     <ToastContext.Provider value={{ addToast, dismissToast }}>

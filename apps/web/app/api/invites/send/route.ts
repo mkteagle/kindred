@@ -1,8 +1,8 @@
+import { BACKEND_URL } from "@/lib/backend-url";
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/oauth";
 
 const ENV_RESEND_API_KEY = process.env.RESEND_API_KEY;
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://kindredphotos.app";
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "Kindred Photos <noreply@kindredphotos.app>";
 

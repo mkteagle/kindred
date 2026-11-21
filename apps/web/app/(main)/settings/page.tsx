@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AvatarEditor } from "@/components/avatar-editor";
 import { BACKEND, fmt } from "@/lib/constants";
+import { StorageCard } from "@/components/kx/storage-card";
 import { useLibraryCounts } from "@/components/kx/use-library";
 
 interface HouseholdUser {
@@ -323,6 +324,8 @@ export default function SettingsPage() {
       <span className="kx-eyebrow">Settings</span>
       <h1 className="kx-title settings">Your household.</h1>
 
+      <StorageCard full />
+
       {revealedKey && (
         <div className="kx-reveal">
           <strong>Your new API key</strong>
@@ -537,6 +540,7 @@ export default function SettingsPage() {
       <section className="kx-card" id="kx-integrations">
         <div className="kx-cardhead">
           <h2>Integrations</h2>
+          <Link href="/settings/integrations" className="kx-button">Manage connections →</Link>
         </div>
 
         <div className="kx-row">

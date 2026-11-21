@@ -41,6 +41,7 @@ export function SyncProgress() {
       <span className="kx-syncbanner-bar" aria-hidden="true">
         <span style={busiest.percent === null ? undefined : { width: `${busiest.percent}%` }} />
       </span>
+      <span className="kx-syncbanner-arrow" aria-hidden="true">→</span>
     </Link>
   );
 }

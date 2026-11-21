@@ -35,6 +35,8 @@ services:
       API_KEY: ${API_KEY:?Set API_KEY in .env}
       SCAN_SECRET: ${SCAN_SECRET:?Set SCAN_SECRET in .env}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://kindredphotos.app,https://nas.kindredphotos.app}
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-https://nas.kindredphotos.app}
+      AUTH_ORIGIN: ${AUTH_ORIGIN:-}
       FLICKR_API_KEY: ${FLICKR_API_KEY:-}
       FLICKR_SECRET: ${FLICKR_SECRET:-}
       FLICKR_OAUTH_TOKEN: ${FLICKR_OAUTH_TOKEN:-}
@@ -118,6 +120,13 @@ services:
       BACKEND_URL: http://api:8000
       API_KEY: ${API_KEY:?Set API_KEY in .env}
       COOKIE_SECRET: ${COOKIE_SECRET:?Set COOKIE_SECRET in .env}
+      AUTH_ORIGIN: ${AUTH_ORIGIN:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      APPLE_CLIENT_ID: ${APPLE_CLIENT_ID:-}
+      APPLE_TEAM_ID: ${APPLE_TEAM_ID:-}
+      APPLE_KEY_ID: ${APPLE_KEY_ID:-}
+      APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY:-}
       FLICKR_API_KEY: ${FLICKR_API_KEY:-}
       FLICKR_SECRET: ${FLICKR_SECRET:-}
       NEXT_PUBLIC_APP_URL: ${PUBLIC_WEB_URL:-https://nas.kindredphotos.app}

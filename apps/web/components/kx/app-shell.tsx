@@ -1,14 +1,16 @@
 "use client";
 
+import { SyncProgress } from "@/components/sync-progress";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useUser } from "@/lib/use-user";
 import type { User } from "@/types";
 import { KxSearchOverlay } from "./search-overlay";
 import { KxSidebar } from "./sidebar";
 import { KxTopbar } from "./topbar";
 import { KxUiProvider, useKxUi } from "./ui-state";
 import { KxUploadDialog } from "./upload-dialog";
+import { LiveLibraryUpdates } from "./live-library-updates";
 
 const API = "/api";
 
@@ -21,6 +23,7 @@ const LIBRARY_PATH = "/gallery";
  */
 function isBareRoute(pathname: string): boolean {
   return (
+    pathname === "/" ||
     pathname === "/login" ||
     pathname.startsWith("/join") ||
     pathname.startsWith("/reset") ||
@@ -30,7 +33,7 @@ function isBareRoute(pathname: string): boolean {
 
 /** The grid, the chrome, and the shell-owned dialogs. */
 function ShellFrame({ user, children }: { user: User | null; children: React.ReactNode }) {
-  const { tile, loose, searchOpen, setSearchOpen, uploadOpen, setUploadOpen, exitSelect } = useKxUi();
+  const { tile, loose, railCollapsed, searchOpen, setSearchOpen, uploadOpen, setUploadOpen, exitSelect } = useKxUi();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
 
@@ -55,20 +58,29 @@ function ShellFrame({ user, children }: { user: User | null; children: React.Rea
     setDrawerOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    const mobile = window.matchMedia("(width <= 640px)");
+    const closeDrawer = () => { if (!mobile.matches) setDrawerOpen(false); };
+    mobile.addEventListener("change", closeDrawer);
+    return () => mobile.removeEventListener("change", closeDrawer);
+  }, []);
+
   return (
     <div
-      className="kx kx-shell"
-      style={{ ["--tile" as string]: `${tile}px`, ["--gap" as string]: loose ? "12px" : "4px" }}
+      className={`kx kx-shell${railCollapsed ? " is-compact" : ""}`}
+      style={{ ["--tile" as string]: `${tile}px`, ["--gap" as string]: loose ? "12px" : "8px" }}
     >
-      <KxSidebar open={drawerOpen} onNavigate={() => setDrawerOpen(false)} />
+      <LiveLibraryUpdates enabled={!!user?.loggedIn} />
+      <KxSidebar user={user} open={drawerOpen} onNavigate={() => setDrawerOpen(false)} />
       {drawerOpen && (
         <button className="kx-drawer-scrim" aria-label="Close navigation" onClick={() => setDrawerOpen(false)} />
       )}
       <div className="kx-content">
-        <KxTopbar user={user} onOpenDrawer={() => setDrawerOpen(true)} />
+        <KxTopbar user={user} drawerOpen={drawerOpen} onOpenDrawer={() => setDrawerOpen(true)} />
+        <SyncProgress />
         {children}
       </div>
-      {searchOpen && <KxSearchOverlay onClose={() => setSearchOpen(false)} />}
+      <KxSearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
       {uploadOpen && <KxUploadDialog onClose={() => setUploadOpen(false)} />}
     </div>
   );
@@ -76,16 +88,12 @@ function ShellFrame({ user, children }: { user: User | null; children: React.Rea
 
 export function KxAppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { data: user } = useQuery<User>({
-    queryKey: ["auth-me"],
-    queryFn: () => fetch(`${API}/auth/me`).then((r) => r.json()),
-    staleTime: 5 * 60 * 1000,
-  });
+  const { user } = useUser();
 
   if (isBareRoute(pathname)) return <>{children}</>;
 
   return (
-    <KxUiProvider isLibrary={pathname === LIBRARY_PATH}>
+    <KxUiProvider isLibrary={pathname === LIBRARY_PATH || pathname === "/timeline"}>
       <ShellFrame user={user?.loggedIn ? user : null}>{children}</ShellFrame>
     </KxUiProvider>
   );

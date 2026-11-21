@@ -1,7 +1,7 @@
+import { BACKEND_URL } from "@/lib/backend-url";
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest, getTokenFromRequest } from "@/lib/oauth";
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 
 export async function GET(req: NextRequest) {
   // Try session cookie first (new household auth)
@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
       const backendResp = await fetch(`${BACKEND_URL}/auth/me`, {
         headers: { "X-Session-Token": session.session_token },
       });
+      if (backendResp.status === 401 || backendResp.status === 403) return NextResponse.json({ loggedIn: false });
       if (backendResp.ok) {
         const data = await backendResp.json();
         if (data.loggedIn) {

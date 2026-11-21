@@ -113,3 +113,20 @@ export const PROVENANCE = {
     title: "Event label — reverse-geocoded from EXIF GPS when no member has named the day",
   },
 } as const;
+
+/** Read saved names directly; opening a library must not rebuild every event. */
+export function useLibraryDayLabels(dateFrom: string | undefined, dateTo: string | undefined) {
+  const { data } = useQuery({
+    queryKey: ["kx-day-labels", dateFrom, dateTo],
+    enabled: Boolean(dateFrom && dateTo),
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({ date_from: dateFrom!, date_to: dateTo! });
+      const response = await fetch(`${BACKEND}/library/day-labels?${params}`, { signal });
+      if (!response.ok) throw new Error("Day names could not be loaded");
+      const body: { labels: { event_key: string; name: string }[] } = await response.json();
+      return new Map(body.labels.map(row => [row.event_key.slice(0, 10), { label: row.name, source: "member" as const, eventKey: row.event_key }]));
+    },
+    staleTime: 300_000,
+  });
+  return useMemo(() => data ?? new Map<string, DayLabel>(), [data]);
+}

@@ -70,6 +70,13 @@ class CatalogTests(unittest.TestCase):
         self.assertIsNone(second['next_cursor'])
         self.assertEqual(gallery(self.query, 'oldest', 48, media='photo')['photos'][0]['photo_id'], 'a')
 
+    def test_album_pages_only_include_its_members(self):
+        self.db.execute('CREATE TABLE album_photos (album_id TEXT, photo_id TEXT)')
+        self.db.execute("INSERT INTO album_photos VALUES ('trip', 'b')")
+        page = gallery(self.query, 'newest', 96, album_id='trip')
+        self.assertEqual([row['photo_id'] for row in page['photos']], ['b'])
+        self.assertIsNone(page['next_cursor'])
+
     def test_cursor_never_repeats_or_skips_a_row(self):
         seen, cursor = [], None
         while True:

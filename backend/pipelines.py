@@ -1,24 +1,5 @@
 #!/usr/bin/env python3
-"""Progress for the long-running pipelines, in a shape a progress bar can use.
-
-Five things run for days at a time here -- the Takeout import, the iCloud
-download, ML indexing, the Flickr mirror and video derivatives -- and until now
-the only way to know how any of them was doing was to read a container log.
-That is how the iCloud download sat stopped for twenty minutes without anyone
-noticing: its container said "healthy" the whole time.
-
-The numbers come from two very different places, and the difference matters:
-
-  the database   cheap, exact, live. Counting indexed photos is an index scan.
-  the filesystem expensive. Counting the Takeout tree means walking a million
-                 files, which takes minutes and competes with the importer for
-                 the disk it is trying to measure.
-
-So filesystem totals are never gathered during a request. They are read from
-whatever the last background scan left behind, and reported with the time they
-were taken, because a progress bar built on a number of unknown age is worse
-than one that admits it does not know yet.
-"""
+"""Progress for installed Kindred workers, based on fresh heartbeats."""
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
@@ -41,7 +22,7 @@ class Progress:
         """None when the total is unknown -- an honest indeterminate bar."""
         if not self.total or self.total <= 0:
             return None
-        return round(min(100.0, 100.0 * self.done / self.total), 1)
+        return min(99.9, round(100.0 * self.done / self.total, 1)) if self.done < self.total else 100.0
 
     @property
     def remaining(self) -> int | None:
@@ -85,64 +66,51 @@ def format_eta(seconds: int | None) -> str:
     return f"{hours / 24:.1f} days"
 
 
-def build(rows: dict, disk: dict | None = None) -> list[dict]:
-    """Assemble every pipeline from counts already gathered.
-
-    Pure, so the arithmetic that decides what a bar shows can be tested without
-    a database, a filesystem or a running import.
-    """
-    disk = disk or {}
-    measured = disk.get("measured_at")
-
-    photos = rows.get("photos", 0)
-    indexed = rows.get("indexed", 0)
-    on_nas = rows.get("on_nas", 0)
-    on_flickr = rows.get("on_flickr", 0)
-    videos = rows.get("videos", 0)
-    videos_ready = rows.get("videos_ready", 0)
-
-    pipelines = [
-        Progress(
-            key="import",
-            label="Takeout import",
-            done=rows.get("imported", 0),
-            total=disk.get("takeout_files"),
-            running=rows.get("import_running", False),
-            detail="Google Takeout files copied into the library",
-            measured_at=measured,
-        ),
-        Progress(
-            key="icloud",
-            label="iCloud download",
-            done=disk.get("icloud_files", 0),
-            total=disk.get("icloud_total"),
-            running=rows.get("icloud_running", False),
-            detail="Originals pulled from iCloud onto the NAS",
-            measured_at=measured,
-        ),
-        Progress(
-            key="index",
-            label="Search and face indexing",
-            done=indexed,
-            total=photos,
-            running=rows.get("index_running", False),
-            detail="Photos with CLIP embeddings and detected faces",
-        ),
-        Progress(
-            key="flickr",
-            label="Flickr mirror",
-            done=on_flickr,
-            total=on_nas,
-            running=rows.get("flickr_running", False),
-            detail="Originals with an off-site Flickr copy",
-        ),
-        Progress(
-            key="video",
-            label="Video posters",
-            done=videos_ready,
-            total=videos,
-            running=rows.get("video_running", False),
-            detail="Videos with a poster frame and hover clip",
-        ),
+def build(rows: dict, disk: dict | None = None, workers: dict | None = None) -> list[dict]:
+    """Only installed Kindred workers appear; saved import folders are not jobs."""
+    disk, workers = disk or {}, workers or {}
+    specifications = [
+        ('discovery', 'discovery', 'NAS file discovery', rows.get('registered', 0),
+         disk.get('media_files'), 'Photo and video file locations registered in place'),
+        ('previews', 'previews', 'NAS previews', rows.get('previews_ready', 0),
+         rows.get('registered'), 'Cached previews and capture-date metadata'),
+        ('index', 'recognition', 'Search and face indexing', rows.get('indexed', 0),
+         rows.get('photos'), 'Photos processed for visual search and recognition'),
     ]
-    return [p.as_dict() for p in pipelines]
+    result = []
+    for key, worker_key, label, done, total, detail in specifications:
+        worker = workers.get(worker_key)
+        if worker is None:
+            continue
+        excluded = 0
+        if key == 'previews' and worker.get('counts_authoritative'):
+            done = worker.get('completed', done)
+        if key == 'discovery':
+            done = worker.get('registered', done)
+            if worker.get('reconciled'):
+                total = worker['eligible_total']
+                excluded = worker.get('excluded', 0)
+                detail = f'File scan complete; {excluded:,} empty or unsupported file entries excluded' if worker.get('complete') else detail
+        running = bool(worker.get('running')) and not worker.get('stale', True) and not worker.get('waiting')
+        value = Progress(key, label, done, total, running, detail,
+                         worker.get('updated_at')).as_dict()
+        value['phase'] = worker.get('phase')
+        value['stage'] = worker.get('stage')
+        value['workers'] = worker.get('workers')
+        value['in_flight'] = worker.get('in_flight')
+        value['excluded'] = excluded
+        value['complete'] = bool(worker.get('complete')) and total is not None and done >= total
+        if key == 'discovery' and worker.get('complete') and total is not None and done < total:
+            value['phase'] = 'reconciliation_needed'
+            value['detail'] = f'Scan finished; {total - done:,} file entries still need reconciliation'
+        value['stale'] = bool(worker.get('stale', True))
+        if value['stale'] and not worker.get('complete'):
+            value['detail'] = 'Progress update delayed; worker may be waiting on the NAS. Process status is unconfirmed.'
+        if worker.get('phase') == 'waiting_for_discovery':
+            value['detail'] = 'Starts after the initial NAS discovery pass finishes'
+        if worker.get('phase') == 'waiting_for_previews':
+            value['detail'] = 'Starts after file discovery and thumbnail generation'
+        if worker.get('phase') == 'waiting_for_capacity':
+            value['detail'] = 'Waiting for NAS disk or memory pressure to ease'
+        result.append(value)
+    return result

@@ -1,7 +1,7 @@
+import { BACKEND_URL } from "@/lib/backend-url";
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/oauth";
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 const API_KEY = process.env.API_KEY || "";
 
 /**
@@ -75,6 +75,7 @@ async function handleRequest(
       method: req.method,
       cache: "no-store",
       headers,
+      signal: req.signal,
     };
 
     if (["POST", "PUT", "PATCH"].includes(req.method)) {
@@ -99,6 +100,7 @@ async function handleRequest(
       contentType.startsWith("image/") ||
       contentType.startsWith("video/") ||
       contentType.startsWith("audio/") ||
+      contentType.startsWith("text/event-stream") ||
       contentType.startsWith("application/octet-stream");
 
     if (isBinary || backendResp.status === 304 || backendResp.status === 206 || backendResp.status === 416) {
@@ -110,7 +112,7 @@ async function handleRequest(
       };
       // Range answers are meaningless without these, and a 206 whose
       // Content-Range is dropped makes the player fail in confusing ways.
-      for (const header of ["accept-ranges", "content-range", "content-length", "content-disposition", "etag", "vary", "x-content-type-options"]) {
+      for (const header of ["accept-ranges", "content-range", "content-length", "content-disposition", "etag", "vary", "x-content-type-options", "x-accel-buffering"]) {
         const value = backendResp.headers.get(header);
         if (value) passthrough[header] = value;
       }

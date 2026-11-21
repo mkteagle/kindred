@@ -7,7 +7,7 @@
 /** Where the choice is remembered. Per browser profile, which is per user. */
 export const THEME_KEY = "kindred-theme";
 
-export const DEFAULT_THEME = "dark";
+export const DEFAULT_THEME = "light";
 
 /**
  * Runs before the shell paints so the page never flashes the wrong ground.

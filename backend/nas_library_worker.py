@@ -10,7 +10,18 @@ import time
 
 DATA = Path(os.environ.get('KINDRED_WORKER_DATA', '/app/data'))
 SCRIPTS = Path(__file__).resolve().parent
-SOURCE = os.environ.get('KINDRED_IMPORT_SOURCE', '/data/photos/imports/AllPhotos')
+# Importing a tree COPIES every file into PHOTO_STORAGE_ROOT -- the indexer
+# resolves paths through that store, not through the source folders -- so a
+# default source silently duplicates the whole library. It did: 62,200 files
+# and 212 GB of copies accumulated from a default nobody set on purpose.
+# Require the source to be named explicitly, and require it to exist.
+SOURCE = os.environ.get('KINDRED_IMPORT_SOURCE', '')
+if not SOURCE:
+    sys.exit('KINDRED_IMPORT_SOURCE is unset; refusing to import. Set it to the '
+             'tree you intend to copy into PHOTO_STORAGE_ROOT, or leave this '
+             'worker stopped.')
+if not Path(SOURCE).is_dir():
+    sys.exit('KINDRED_IMPORT_SOURCE=' + SOURCE + ' does not exist; refusing to import.')
 
 
 def status(**fields):

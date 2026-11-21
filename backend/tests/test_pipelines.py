@@ -73,32 +73,59 @@ class BuildTests(unittest.TestCase):
         base.update(overrides)
         return base
 
-    def test_every_pipeline_is_reported(self):
-        keys = [p["key"] for p in build(self.rows())]
-        self.assertEqual(keys, ["import", "icloud", "index", "flickr", "video"])
+    def workers(self):
+        return {key: dict(running=True, stale=False, updated_at='2026-11-18T21:00:00Z')
+                for key in ('discovery', 'previews', 'recognition')}
 
-    def test_it_works_with_no_disk_measurement_at_all(self):
-        # The first request after a restart has no cached scan yet.
-        rows = build(self.rows())
-        by_key = {p["key"]: p for p in rows}
-        self.assertIsNone(by_key["import"]["percent"])
-        self.assertIsNone(by_key["icloud"]["total"])
-        # Database-derived pipelines still report properly.
-        self.assertEqual(by_key["index"]["percent"], 40.0)
+    def test_retired_imports_are_never_reported_even_with_stale_disk_counts(self):
+        result = build(self.rows(), {'takeout_files': 1000, 'icloud_files': 300}, self.workers())
+        self.assertEqual([p['key'] for p in result], ['discovery', 'previews', 'index'])
 
-    def test_disk_measurements_are_stamped_with_their_age(self):
-        rows = build(self.rows(), {"takeout_files": 1000, "measured_at": "2026-09-07T12:00:00Z"})
-        by_key = {p["key"]: p for p in rows}
-        self.assertEqual(by_key["import"]["measured_at"], "2026-09-07T12:00:00Z")
-        # Database pipelines are live, so they carry no measurement time.
-        self.assertIsNone(by_key["index"]["measured_at"])
+    def test_absent_workers_are_not_invented_from_catalog_counts(self):
+        self.assertEqual(build(self.rows()), [])
 
-    def test_running_flags_pass_through(self):
-        rows = build(self.rows(index_running=True, flickr_running=False))
-        by_key = {p["key"]: p for p in rows}
-        self.assertTrue(by_key["index"]["running"])
-        self.assertFalse(by_key["flickr"]["running"])
+    def test_stale_or_stopped_heartbeat_cannot_claim_running(self):
+        workers = self.workers()
+        workers['recognition']['stale'] = True
+        workers['previews']['running'] = False
+        result = {p['key']: p for p in build(self.rows(), workers=workers)}
+        self.assertFalse(result['index']['running'])
+        self.assertFalse(result['previews']['running'])
+        self.assertTrue(result['discovery']['running'])
+
+    def test_worker_can_be_running_before_any_count_changes(self):
+        result = {p['key']: p for p in build(self.rows(), workers=self.workers())}
+        self.assertTrue(result['index']['running'])
+        self.assertEqual(result['index']['percent'], 40)
+
+    def test_waiting_worker_does_not_claim_active_work(self):
+        workers = self.workers()
+        workers['previews']['waiting'] = True
+        result = {p['key']: p for p in build(self.rows(), workers=workers)}
+        self.assertFalse(result['previews']['running'])
 
 
 if __name__ == "__main__":
     unittest.main()
+
+class DiscoveryCompletionTests(unittest.TestCase):
+    def test_remaining_work_never_rounds_up_to_100(self):
+        progress = Progress('discovery', 'Discovery', 2557564, 2558010, False)
+        self.assertEqual(progress.percent, 99.9)
+        self.assertEqual(progress.remaining, 446)
+
+    def test_finished_scan_with_unexplained_gap_needs_reconciliation(self):
+        item=build({'registered':2557564},{'media_files':2558010},
+                   {'discovery':{'complete':True,'phase':'complete','registered':2557564,'stale':True}})[0]
+        self.assertFalse(item['complete'])
+        self.assertEqual(item['phase'],'reconciliation_needed')
+        self.assertEqual(item['remaining'],446)
+
+    def test_verified_exclusions_use_eligible_total(self):
+        item=build({'registered':2557564},{'media_files':2558010},
+                   {'discovery':{'complete':True,'phase':'complete','registered':2557564,'reconciled':True,'eligible_total':2557564,'excluded':446,'stale':True}})[0]
+        self.assertTrue(item['complete'])
+        self.assertEqual(item['total'],2557564)
+        self.assertEqual(item['excluded'],446)
+        self.assertEqual(item['remaining'],0)
+        self.assertEqual(item['percent'],100)

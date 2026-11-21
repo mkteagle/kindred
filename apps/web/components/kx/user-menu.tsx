@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { BACKEND } from "@/lib/constants";
 import type { User } from "@/types";
-import { DocsIcon, EyeIcon, MoonIcon, PersonIcon, QrIcon, SignOutIcon, SunIcon } from "./icons";
+import { DocsIcon, MoonIcon, PersonIcon, QrIcon, SignOutIcon, SunIcon } from "./icons";
 import { useTheme } from "./theme";
 import { MobileSetupDialog } from "./mobile-setup-dialog";
 
@@ -18,12 +18,8 @@ export function displayNameOf(user: User | null | undefined): string {
   return user?.display_name || user?.fullname || user?.username || "Signed in";
 }
 
-/**
- * Avatar button plus its popover. Same item set as the previous topbar menu —
- * account, docs, mobile setup, view-as-member, sign out — with the admin-only
- * entries still gated on the real server role.
- */
-export function KxUserMenu({ user }: { user: User | null }) {
+/** Avatar button and account controls. */
+export function KxUserMenu({ user, placement = "topbar" }: { user: User | null; placement?: "topbar" | "sidebar" }) {
   const { theme, toggle: toggleTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
@@ -52,24 +48,6 @@ export function KxUserMenu({ user }: { user: User | null }) {
     if (signOutOpen && signOutRef.current && !signOutRef.current.open) signOutRef.current.showModal();
   }, [signOutOpen]);
 
-  const viewingAsMember = (() => {
-    try {
-      return user?.role === "admin" && sessionStorage.getItem("viewAsRole") === "member";
-    } catch {
-      return false;
-    }
-  })();
-
-  const toggleViewAs = () => {
-    try {
-      if (sessionStorage.getItem("viewAsRole") === "member") sessionStorage.removeItem("viewAsRole");
-      else sessionStorage.setItem("viewAsRole", "member");
-      window.location.reload();
-    } catch {
-      /* sessionStorage unavailable */
-    }
-  };
-
   const confirmSignOut = async () => {
     await fetch(`${API}/auth/logout`, { method: "POST" });
     window.location.href = "/login";
@@ -80,8 +58,8 @@ export function KxUserMenu({ user }: { user: User | null }) {
       // A plain anchor, not next/link: this is an OAuth redirect, not a route.
       // Link prefetches it, and prefetching mints a throwaway Flickr request
       // token on every render the session has not resolved in yet.
-      <a href={`${API}/auth/flickr`} className="kx-button primary">
-        Connect library
+      <a href="/login" className="kx-button primary">
+        Sign in
       </a>
     );
   }
@@ -90,7 +68,7 @@ export function KxUserMenu({ user }: { user: User | null }) {
 
   return (
     <>
-      <div className="kx-menu-anchor" ref={anchorRef}>
+      <div className={`kx-menu-anchor ${placement === "sidebar" ? "kx-menu-bottom" : ""}`} ref={anchorRef}>
         {avatar ? (
           <button
             className="kx-avatar"
@@ -149,24 +127,17 @@ export function KxUserMenu({ user }: { user: User | null }) {
             </button>
 
             {user.role === "admin" && (
-              <>
-                <button
-                  className="kx-menu-item"
-                  role="menuitem"
-                  onClick={() => {
-                    setQrOpen(true);
-                    setOpen(false);
-                  }}
-                >
-                  <QrIcon />
-                  Mobile setup
-                </button>
-                <div className="kx-menu-divider" />
-                <button className="kx-menu-item" role="menuitem" onClick={toggleViewAs}>
-                  <EyeIcon />
-                  {viewingAsMember ? "Back to admin view" : "View as member"}
-                </button>
-              </>
+              <button
+                className="kx-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setQrOpen(true);
+                  setOpen(false);
+                }}
+              >
+                <QrIcon />
+                Mobile setup
+              </button>
             )}
 
             <div className="kx-menu-divider" />
