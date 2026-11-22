@@ -19,7 +19,7 @@ interface PhotoRow {
 
 /** Virtualize rows rather than entire days: a single day can contain 50,000 items. */
 export function VirtualPhotoRows({ sections, selected, selecting, onSelectDay, onTileClick, registerTile,
-  dayLabels, hasNextPage, fetching, error, fetchNextPage,
+  dayLabels, hasNextPage, fetching, error, fetchNextPage, onVisibleYear,
 }: {
   sections: DaySection[];
   selected: ReadonlySet<string>;
@@ -32,6 +32,7 @@ export function VirtualPhotoRows({ sections, selected, selecting, onSelectDay, o
   fetching: boolean;
   error: boolean;
   fetchNextPage: () => void;
+  onVisibleYear: (year: number | null) => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const { tile } = useKxUi();
@@ -80,6 +81,9 @@ export function VirtualPhotoRows({ sections, selected, selecting, onSelectDay, o
   });
   useEffect(() => { virtualizer.measure(); }, [height, columns, virtualizer]);
   const items = virtualizer.getVirtualItems();
+  // The range excludes overscan, so a pre-rendered row cannot select the rail's year early.
+  const visibleYear = rows[virtualizer.range?.startIndex ?? 0]?.section.year || null;
+  useEffect(() => { onVisibleYear(visibleYear); }, [onVisibleYear, visibleYear]);
   const last = items[items.length - 1]?.index ?? -1;
   useEffect(() => {
     if (last >= rows.length - 5 && hasNextPage && !fetching && !error) fetchNextPage();
@@ -103,7 +107,7 @@ export function VirtualPhotoRows({ sections, selected, selecting, onSelectDay, o
               aria-pressed={selecting ? selected.has(photo.photo_id) : undefined}
               aria-label={photo.photo_title || (photo.media_kind === "video" ? "Open video" : "Open photo")}
               onClick={() => onTileClick(photo)}>
-              <OptimizedPhoto photoId={photo.photo_id} video={photo.media_kind === "video"} />
+              <OptimizedPhoto photoId={photo.photo_id} video={photo.media_kind === "video"} thumbnailUrl={photo.thumbnail_url} />
               {selected.has(photo.photo_id) && <span className="kx-selected-mark" aria-hidden="true">✓</span>}
               {photo.junk_reason && <span className="kx-tile-video">{JUNK_LABELS[photo.junk_reason]}</span>}
               {photo.media_kind === "video" && <span className="kx-tile-video"><PlayIcon size={9} />{formatDuration(photo.duration_seconds) ?? "Video"}</span>}

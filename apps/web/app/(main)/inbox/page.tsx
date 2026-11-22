@@ -90,7 +90,7 @@ export default function InboxPage() {
   let flatIdx = 0;
 
   return (
-    <div className="inbox-layout">
+    <div className="kx-page kx-task-surface inbox-layout">
       {/* Left sidebar / filter rail */}
       <aside className="inbox-side">
         <h4 className="inbox-side-head">Filter</h4>
@@ -100,6 +100,7 @@ export default function InboxPage() {
             <button
               key={f.id}
               className={`inbox-filter-row ${filter === f.id ? "inbox-filter-active" : ""}`}
+              aria-pressed={filter === f.id}
               onClick={() => { setFilter(f.id); setFocusedIdx(-1); }}
             >
               <SidebarIcon d={f.icon} />
@@ -122,7 +123,7 @@ export default function InboxPage() {
       <main className="inbox-main">
         <div className="inbox-header">
           <div>
-            <h2 className="inbox-h2">Notifications</h2>
+            <h1 className="kx-title">Notifications</h1>
             <span className="inbox-meta">
               {unreadCount} new &middot; last 30 days
             </span>

@@ -15,8 +15,8 @@ extension APIClient {
 
     /// A signed URL for one variant of a photo's bytes.
     ///
-    /// `/library/photos` and `/search` return catalog rows without thumbnail
-    /// URLs, so the client addresses media itself. Videos answer byte ranges
+    /// The client addresses media itself when a published thumbnail is unavailable.
+    /// Videos answer byte ranges
     /// here, which is what lets `AVPlayer` scrub a `clip` or `original`.
     ///
     /// The session token travels as a query item because `AsyncImage` and
@@ -79,6 +79,7 @@ extension APIClient {
             URLQueryItem(name: "sort", value: sort),
             URLQueryItem(name: "media", value: media.rawValue),
             URLQueryItem(name: "limit", value: String(min(limit, 100))),
+            URLQueryItem(name: "signed_thumbnails", value: "true"),
         ]
         if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
         if let dateFrom { items.append(URLQueryItem(name: "date_from", value: dateFrom)) }

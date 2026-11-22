@@ -11,6 +11,9 @@ export function photoImageUrl(id: string, width: number, format: "auto" | "jpeg"
   const legacy = requested <= 960 ? "n" : "h";
   return `${BACKEND}/photos/${encodeURIComponent(id)}/image?size=${legacy}&w=${requested}&q=80&format=${format}`;
 }
+export function viewerImageUrl(id: string, detail = false): string {
+  return `${photoImageUrl(id, detail ? 2560 : 1280, "jpeg")}&preview=viewer`;
+}
 export function canPrefetch(): boolean {
   const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
   return !connection?.saveData && !["slow-2g", "2g", "3g"].includes(connection?.effectiveType ?? "");
@@ -26,6 +29,7 @@ function pump() {
     active++;
     const image = new Image();
     image.fetchPriority = "low";
+    image.referrerPolicy = "no-referrer";
     const done = (loaded: boolean) => {
       image.onload = image.onerror = null;
       active--;
@@ -55,12 +59,10 @@ export function prefetchImage(url: string, signal: AbortSignal): Promise<boolean
 }
 
 // Remember the thumbnail actually displayed, so opening a tile can reuse it.
-const displayed = new Map<string, { url: string; aspect: number }>();
-export function rememberThumbnail(id: string, url: string, width: number, height: number) {
+const displayed = new Map<string, string>();
+export function rememberThumbnail(id: string, url: string) {
   displayed.delete(id);
-  displayed.set(id, { url, aspect: width / height });
+  displayed.set(id, url);
   if (displayed.size > 200) displayed.delete(displayed.keys().next().value!);
 }
-export function loadedThumbnail(id: string) { return displayed.get(id)?.url; }
-
-export function thumbnailAspect(id: string) { return displayed.get(id)?.aspect; }
+export function loadedThumbnail(id: string) { return displayed.get(id); }

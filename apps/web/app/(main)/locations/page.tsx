@@ -52,7 +52,7 @@ export default function LocationsPage() {
 
   return (
     <main className="kx-page">
-      <h1 className="kx-title">Where it all happened.</h1>
+      <h1 className="kx-title">Locations</h1>
       <p className="kx-lede">
         Places come from the GPS in each photo, resolved to a name once and cached. Pins cluster as
         you zoom out.

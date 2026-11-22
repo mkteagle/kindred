@@ -443,8 +443,8 @@ export default function PhotoDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="app-shell">
-        <main className="page">
+      <div className="kx-task-surface">
+        <main className="kx-page">
           <div className="empty-state">
             <Spinner />
           </div>
@@ -455,8 +455,8 @@ export default function PhotoDetailPage() {
 
   if (isError || !data) {
     return (
-      <div className="app-shell">
-        <main className="page">
+      <div className="kx-task-surface">
+        <main className="kx-page">
           <div className="empty-state">
             <div>
               <h2>Photo not found</h2>
@@ -472,8 +472,8 @@ export default function PhotoDetailPage() {
   }
 
   return (
-    <div className="app-shell">
-      <main className="page">
+    <div className="kx-task-surface">
+      <main className="kx-page kx-photo-detail">
         {/* ── Header ────────────────────────────────────────────── */}
         <div className="full-view-header">
           <div>
@@ -484,16 +484,7 @@ export default function PhotoDetailPage() {
             >
               &larr; Back
             </button>
-            <h2
-              style={{
-                fontFamily: "var(--display)",
-                fontSize: "clamp(22px, 3vw, 36px)",
-                lineHeight: 1.1,
-                margin: 0,
-              }}
-            >
-              {data.photo_title || "Untitled photo"}
-            </h2>
+            <h1 className="kx-title">{data.photo_title || "Untitled photo"}</h1>
             {data.flickr_url && (
               <a
                 href={data.flickr_url}
@@ -542,33 +533,14 @@ export default function PhotoDetailPage() {
         </div>
 
         {drawMode && !drawnBbox && (
-          <div
-            style={{
-              padding: "10px 16px",
-              marginBottom: 16,
-              borderRadius: 8,
-              background: "rgba(233, 184, 93, 0.15)",
-              border: "1px solid rgba(233, 184, 93, 0.3)",
-              color: "var(--ash)",
-              fontSize: 13,
-              fontWeight: 500,
-            }}
-          >
+          <div className="kx-banner kx-photo-tag-hint">
             Click and drag on the photo to draw a bounding box around the face
             you want to tag.
           </div>
         )}
 
         {/* ── Layout: photo + panel ─────────────────────────────── */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) 320px",
-            gap: 24,
-            alignItems: "start",
-          }}
-          className="pd-layout"
-        >
+        <div className="pd-layout">
           {/* ── Photo canvas ──────────────────────────────────── */}
           <div
             ref={containerRef}
@@ -577,7 +549,7 @@ export default function PhotoDetailPage() {
               borderRadius: 12,
               overflow: "hidden",
               border: "1px solid var(--line)",
-              background: "rgba(18, 18, 24, 0.03)",
+              background: "var(--tile-bg)",
               cursor: drawMode ? "crosshair" : "default",
               userSelect: "none",
               WebkitUserSelect: "none",
@@ -728,7 +700,7 @@ export default function PhotoDetailPage() {
                   padding: 18,
                   borderRadius: 12,
                   border: "1px solid rgba(201, 85, 28, 0.24)",
-                  background: "rgba(255, 248, 238, 0.8)",
+                  background: "var(--surface)",
                   marginBottom: 16,
                   animation: "rise 0.2s ease",
                 }}
@@ -984,7 +956,7 @@ export default function PhotoDetailPage() {
                   <p
                     style={{
                       marginTop: 8,
-                      color: "#a4324c",
+                      color: "var(--danger-ink)",
                       fontSize: 12,
                       textAlign: "center",
                     }}
@@ -1002,7 +974,7 @@ export default function PhotoDetailPage() {
                   padding: 18,
                   borderRadius: 12,
                   border: `1px solid ${CATEGORY_BORDER[selectedDet.category] || "var(--line)"}`,
-                  background: "rgba(255, 253, 248, 0.9)",
+                  background: "var(--surface)",
                   marginBottom: 16,
                   animation: "rise 0.2s ease",
                 }}
@@ -1086,7 +1058,7 @@ export default function PhotoDetailPage() {
                       padding: "7px 0",
                       borderRadius: 6,
                       border: "1px solid var(--line)",
-                      background: "rgba(255, 253, 248, 0.6)",
+                      background: "var(--field-ground)",
                       color: "var(--pine)",
                       fontSize: 12,
                       fontWeight: 700,
@@ -1105,7 +1077,7 @@ export default function PhotoDetailPage() {
               style={{
                 borderRadius: 12,
                 border: "1px solid var(--line)",
-                background: "rgba(255, 253, 248, 0.85)",
+                background: "var(--surface)",
                 overflow: "hidden",
               }}
             >
@@ -1205,7 +1177,7 @@ export default function PhotoDetailPage() {
                               width: 40,
                               height: 40,
                               borderRadius: 6,
-                              background: "rgba(18, 18, 24, 0.04)",
+                              background: "var(--fill-1)",
                               display: "grid",
                               placeItems: "center",
                               color: "var(--mist)",
@@ -1271,20 +1243,6 @@ export default function PhotoDetailPage() {
         </div>
       </main>
 
-      {/* ── Responsive styles ───────────────────────────────────── */}
-      <style>{`
-        .pd-layout {
-          grid-template-columns: minmax(0, 1fr) 320px;
-        }
-        @media (max-width: 840px) {
-          .pd-layout {
-            grid-template-columns: 1fr !important;
-          }
-          .pd-panel {
-            order: 2;
-          }
-        }
-      `}</style>
     </div>
   );
 }

@@ -11,6 +11,7 @@ export interface LibraryPhoto {
   media_kind: "photo" | "video";
   duration_seconds: number | null;
   flickr_url?: string;
+  thumbnail_url?: string;
   junk_reason?: JunkReason | null;
 }
 
@@ -20,7 +21,7 @@ export interface LibraryPhoto {
  */
 export function thumbUrl(photo: Pick<LibraryPhoto, "photo_id" | "media_kind">): string {
   return photo.media_kind === "video"
-    ? `${BACKEND}/photos/${photo.photo_id}/local?variant=thumb`
+    ? `${BACKEND}/photos/${encodeURIComponent(photo.photo_id)}/local?variant=thumb`
     : photoImageUrl(photo.photo_id, 320);
 }
 

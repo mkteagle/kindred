@@ -1,0 +1,11 @@
+/* Surfaces and accent shared by the library and documentation. */
+.kx, :root:has(.kindred-docs) { --accent:#6554c0; --on-accent:#fff; --focus:#6554c0; --amber:#f28b70; --sage:#35aa9c; --brand-forest:#6554c0; --bg:#f7f7f3; --bg-blur:#f7f7f3ed; --bg-96:#f7f7f3f5; --bg-70:#f7f7f3b3; --ink:#25262c; --ink-2:#454650; --ink-3:#70717b; --ink-4:#70717b; --line:#e5e5e1; --tile-bg:#e8e7ed; --surface:#fff; --panel:#fff;
+  --sidebar-surface: #eeecf3;
+  --brand-link: var(--accent);
+  --brand-tint: #eeeaf8;
+}
+:root[data-theme="dark"] .kx, :root[data-theme="dark"]:has(.kindred-docs) { --bg:#191820; --bg-blur:#191820ed; --bg-96:#191820f5; --bg-70:#191820b3; --ink:#f4f1ff; --ink-2:#dfdce9; --ink-3:#aaa6bb; --ink-4:#aaa6bb; --line:#383442; --tile-bg:#302c3e; --surface:#24232e; --panel:#24232e; --panel-2:#24232ef5;
+  --sidebar-surface: #25232f;
+  --brand-link: #c5b8f8;
+  --brand-tint: #39304e;
+}

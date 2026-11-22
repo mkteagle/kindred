@@ -7,6 +7,10 @@
 
 /** Where the rail's collapsed state is remembered. Per browser profile. */
 export const SIDEBAR_KEY = "kindred-sidebar";
+export const SIDEBAR_WIDTH_KEY = "kindred-sidebar-width";
+export const SIDEBAR_MIN_WIDTH = 220;
+export const SIDEBAR_DEFAULT_WIDTH = 250;
+export const SIDEBAR_MAX_WIDTH = 380;
 
 /** The only two values ever written. Anything else is treated as expanded. */
 export const SIDEBAR_COLLAPSED = "collapsed";
@@ -19,12 +23,17 @@ export const SIDEBAR_EXPANDED = "expanded";
  * React — which means the collapsed layout is correct on the very first frame
  * even though hydration has not happened yet.
  */
-export const SIDEBAR_BOOT_SCRIPT = `(function(){try{var s=localStorage.getItem(${JSON.stringify(
-  SIDEBAR_KEY,
-)});document.documentElement.setAttribute("data-sidebar",s===${JSON.stringify(
-  SIDEBAR_COLLAPSED,
-)}?${JSON.stringify(SIDEBAR_COLLAPSED)}:${JSON.stringify(
-  SIDEBAR_EXPANDED,
-)});}catch(e){document.documentElement.setAttribute("data-sidebar",${JSON.stringify(
-  SIDEBAR_EXPANDED,
-)});}})();`;
+export const SIDEBAR_BOOT_SCRIPT = `(function () {
+  const root = document.documentElement;
+  try {
+    const saved = localStorage.getItem(${JSON.stringify(SIDEBAR_KEY)});
+    root.dataset.sidebar = saved === ${JSON.stringify(SIDEBAR_COLLAPSED)}
+      ? ${JSON.stringify(SIDEBAR_COLLAPSED)} : ${JSON.stringify(SIDEBAR_EXPANDED)};
+    const width = Number(localStorage.getItem(${JSON.stringify(SIDEBAR_WIDTH_KEY)}));
+    if (width >= ${SIDEBAR_MIN_WIDTH} && width <= ${SIDEBAR_MAX_WIDTH}) {
+      root.style.setProperty("--kindred-sidebar-width", Math.round(width) + "px");
+    }
+  } catch {
+    root.dataset.sidebar = ${JSON.stringify(SIDEBAR_EXPANDED)};
+  }
+})();`;

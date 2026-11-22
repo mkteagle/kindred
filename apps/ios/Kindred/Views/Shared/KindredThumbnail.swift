@@ -1,12 +1,18 @@
 import SwiftUI
 
-/// Display and speculative loads share one session/cache and deduplicate URLs.
+/// Display and speculative loads share one memory cache and deduplicate URLs.
 /// Speculation is limited to three transfers, 32 waiters, and unmetered access.
 @MainActor
 final class PhotoImageDelivery {
     static let shared = PhotoImageDelivery()
-    private let session = URLSession(configuration: .default)
+    private let responseCache = URLCache(memoryCapacity: 12 * 1024 * 1024, diskCapacity: 0, directory: nil)
+    private lazy var session: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = responseCache
+        return URLSession(configuration: configuration)
+    }()
     private let thumbnails = NSCache<NSString, UIImage>()
+    private var purgeAfter = ContinuousClock.now + .seconds(30 * 60)
     private var inFlight: [URL: Task<UIImage?, Never>] = [:]
     private var speculativeActive = 0
     private var speculativeWaiting = 0
@@ -17,7 +23,12 @@ final class PhotoImageDelivery {
     }
 
     func thumbnail(for photoID: String) -> UIImage? {
-        thumbnails.object(forKey: "\(APIClient.publicBaseURL):\(APIClient.publicSessionToken ?? ""):\(photoID)" as NSString)
+        if ContinuousClock.now >= purgeAfter {
+            thumbnails.removeAllObjects()
+            responseCache.removeAllCachedResponses()
+            purgeAfter = .now + .seconds(30 * 60)
+        }
+        return thumbnails.object(forKey: "\(APIClient.publicBaseURL):\(APIClient.publicSessionToken ?? ""):\(photoID)" as NSString)
     }
 
     func remember(_ image: UIImage, photoID: String) {
@@ -79,9 +90,11 @@ struct KindredThumbnail: View {
             let fittedWidth = variant == .preview && aspect != nil
                 ? min(geo.size.width, geo.size.height * aspect!) : geo.size.width
             let pixels = min(variant == .thumb ? 960 : 2560, fittedWidth * displayScale)
-            let url = photo.isVideo
+            let apiURL = photo.isVideo
                 ? APIClient.mediaURL(photoID: photo.photo_id, variant: variant)
                 : APIClient.optimizedImageURL(photoID: photo.photo_id, pixels: pixels)
+            let publishedURL = variant == .thumb ? photo.thumbnail_url.flatMap { URL(string: $0) } : nil
+            let url = publishedURL ?? apiURL
             ZStack {
                 placeholder
                 if let demo = photo.thumb_url, DemoDataProvider.isDemoURL(demo) {
@@ -96,7 +109,12 @@ struct KindredThumbnail: View {
             .task(id: "\(url?.absoluteString ?? ""):\(near):\(visible)") {
                 guard near, let url, !DemoDataProvider.isDemoURL(photo.thumb_url ?? "") else { return }
                 let delivery = PhotoImageDelivery.shared
+                if variant == .thumb, delivery.thumbnail(for: photo.photo_id) != nil { return }
                 var image = await delivery.image(url, speculative: !visible)
+                if image == nil, publishedURL != nil, visible, !Task.isCancelled,
+                   let apiURL, apiURL != url {
+                    image = await delivery.image(apiURL)
+                }
                 if image == nil, visible, !photo.isVideo, !Task.isCancelled,
                    let fallback = APIClient.mediaURL(photoID: photo.photo_id) {
                     image = await delivery.image(fallback)

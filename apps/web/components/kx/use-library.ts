@@ -102,6 +102,7 @@ export interface Pipeline {
   stale?: boolean;
   complete?: boolean;
   excluded?: number;
+  skipped?: number;
   key: string;
   label: string;
   detail: string;

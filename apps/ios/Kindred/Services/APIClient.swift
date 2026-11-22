@@ -438,28 +438,31 @@ actor APIClient {
         try await postJSON("/uploads/resumable", body: upload)
     }
 
-    func uploadResumableChunk(
+    func resumableChunkRequest(
         uploadID: String,
         offset: Int64,
-        data: Data
-    ) async throws -> ResumableUploadResponse {
+        finalize: Bool,
+        allowsCellularAccess: Bool
+    ) throws -> URLRequest {
         guard var components = URLComponents(
             string: "\(baseURL)/uploads/resumable/\(uploadID)"
         ) else {
             throw APIError.invalidURL
         }
-        components.queryItems = [URLQueryItem(name: "offset", value: String(offset))]
+        var items = [URLQueryItem(name: "offset", value: String(offset))]
+        if finalize { items.append(URLQueryItem(name: "finalize", value: "true")) }
+        components.queryItems = items
         guard let url = components.url else { throw APIError.invalidURL }
 
         var req = URLRequest(url: url)
         req.httpMethod = "PUT"
-        req.httpBody = data
+        req.allowsCellularAccess = allowsCellularAccess
         req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
         req.timeoutInterval = 120
         if let token = sessionToken {
             req.setValue(token, forHTTPHeaderField: "X-Session-Token")
         }
-        return try await performResumableRequest(req)
+        return req
     }
 
     func completeResumableUpload(uploadID: String) async throws -> ResumableUploadResponse {

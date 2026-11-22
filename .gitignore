@@ -34,3 +34,6 @@ package-lock.json
 
 # Local database exports — irreplaceable, but too large for git
 backups/
+
+# Private per-machine iOS diagnostic configuration.
+apps/ios/Diagnostics.local.xcconfig

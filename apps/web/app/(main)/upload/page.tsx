@@ -265,11 +265,11 @@ export default function UploadPage() {
   /* ── Render ──────────────────────────────────────────────────────── */
 
   return (
-    <div className="page">
+    <main className="kx-page kx-task-surface">
       <div className="upload-page">
         <div className="upload-header">
-          <h1 className="upload-title">Upload Photos</h1>
-          <p className="upload-subtitle">
+          <h1 className="kx-title">Upload photos</h1>
+          <p className="kx-lede">
             Drag and drop photos or use the file picker. Originals are saved to your NAS,
             mirrored to Flickr, then analyzed by the ML pipeline.
           </p>
@@ -545,6 +545,6 @@ export default function UploadPage() {
           </div>
         )}
       </div>
-    </div>
+    </main>
   );
 }

@@ -1,17 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useInfiniteQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button, Spinner } from "@/components/ui";
 import { ClusterCard } from "@/components/cluster-card";
 import { KxClusterBrowse } from "@/components/kx/cluster-browse";
+import { ChevronDownIcon, CloseIcon, SearchIcon } from "@/components/kx/icons";
+import { KxErrorBanner, KxSkeletonCards } from "@/components/kx/states";
 import Link from "next/link";
 import { MergeDialog } from "@/components/dialogs";
 import { ReviewMode } from "@/components/review-mode";
 import type {
-  User,
   ClustersSummaryResponse,
   ClusterSummary,
   ClusterDetail,
@@ -273,7 +274,6 @@ function UnmatchedSection({
 
 function VirtualizedGrid({
   items,
-  gridRef,
   category,
   onDismiss,
   onLabel,
@@ -286,7 +286,6 @@ function VirtualizedGrid({
   onGridToggle,
 }: {
   items: ClusterSummary[];
-  gridRef: React.RefObject<HTMLElement | null>;
   category: string;
   onDismiss: (cat: string, id: string) => void;
   onLabel: (cat: string, id: string, name: string) => void;
@@ -300,40 +299,43 @@ function VirtualizedGrid({
 }) {
   const parentRef = useRef<HTMLDivElement>(null);
 
-  // Calculate columns based on container width.
-  // Must match the CSS for .grid: minmax(220px, 1fr) + 20px gap.
-  // If this drifts from the CSS, JS slices N items per row but CSS fits
-  // N-1, and the Nth item wraps inside the row — leaving a "lonely" card.
-  const GRID_MIN = 220;
-  const GRID_GAP = 20;
-  const [columns, setColumns] = useState(3);
-  useEffect(() => {
-    const el = parentRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width || 900;
-      setColumns(Math.max(1, Math.floor((width + GRID_GAP) / (GRID_MIN + GRID_GAP))));
-    });
-    observer.observe(el);
+  const gridGap = 12;
+  const minCardWidth = 250;
+  const [box, setBox] = useState({ width: 0, top: 0 });
+  useLayoutEffect(() => {
+    const node = parentRef.current;
+    const scroller = node?.closest<HTMLElement>(".kx-content");
+    if (!node || !scroller) return;
+    const measure = () => {
+      const rect = node.getBoundingClientRect();
+      const top = rect.top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+      setBox(previous => previous.width === rect.width && Math.abs(previous.top - top) < 1
+        ? previous : { width: rect.width, top });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    if (node.parentElement) observer.observe(node.parentElement);
     return () => observer.disconnect();
   }, []);
 
-  const rowCount = Math.ceil(items.length / columns);
-
-  const ROW_GAP = GRID_GAP;
+  const columns = Math.max(1, Math.floor((box.width + gridGap) / (minCardWidth + gridGap)));
   const virtualizer = useVirtualizer({
-    count: rowCount,
-    getScrollElement: () => typeof window !== "undefined" ? document.documentElement : null,
-    estimateSize: () => 420 + ROW_GAP,
+    count: Math.ceil(items.length / columns),
+    getScrollElement: () => parentRef.current?.closest<HTMLElement>(".kx-content") ?? null,
+    estimateSize: () => category === "people" ? 116 : 250,
+    getItemKey: index => items[index * columns]?.id ?? index,
     overscan: 3,
-    gap: ROW_GAP,
+    gap: gridGap,
+    scrollMargin: box.top,
   });
+  useEffect(() => { virtualizer.measure(); }, [columns, virtualizer]);
 
   return (
     <div ref={parentRef}>
       <section
-        ref={gridRef as React.RefObject<HTMLElement>}
-        aria-label="groups"
+        aria-label="Groups"
+        className="kx-managed-groups"
         style={{
           height: virtualizer.getTotalSize(),
           position: "relative",
@@ -349,13 +351,15 @@ function VirtualizedGrid({
               key={virtualRow.key}
               data-index={virtualRow.index}
               ref={virtualizer.measureElement}
-              className="grid"
+              className="kx-managed-grid"
               style={{
+                gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                gap: gridGap,
                 position: "absolute",
                 top: 0,
                 left: 0,
                 right: 0,
-                transform: `translateY(${virtualRow.start}px)`,
+                transform: `translateY(${virtualRow.start - box.top}px)`,
               }}
             >
               {rowItems.map((cluster) => (
@@ -391,13 +395,12 @@ export default function CategoryPage() {
   const { isAdmin: isEffectiveAdmin } = useUser();
   const { addToast } = useToastContext();
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
-  const [user, setUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [scanStatus, setScanStatus] = useState("");
   const [jobId, setJobId] = useState<string | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [activeCategory, setActiveCategory] = useState(categoryParam);
+  const [managing, setManaging] = useState(false);
   const backendCat = toBackendCategory(activeCategory);
   const [search, setSearch] = useState("");
   const [debouncedFilter, setDebouncedFilter] = useState("");
@@ -438,7 +441,7 @@ export default function CategoryPage() {
       fetch(`${BACKEND}/search?q=${encodeURIComponent(debouncedSearch)}&limit=30`).then(
         (r) => r.json()
       ),
-    enabled: debouncedSearch.length > 2,
+    enabled: managing && debouncedSearch.length > 2,
   });
 
   // Sync activeCategory with URL param when navigating
@@ -482,13 +485,8 @@ export default function CategoryPage() {
       if (e.button !== 0) return;
       const grid = gridRef.current;
       if (!grid || !grid.contains(e.target as Node)) return;
-      const tag = (e.target as HTMLElement).tagName;
-      if (
-        tag === "BUTTON" ||
-        tag === "INPUT" ||
-        (e.target as HTMLElement).closest("button, input")
-      )
-        return;
+      if (!(e.target instanceof Element) || !e.target.closest(".kx-managed-groups")) return;
+      if (e.target.closest("button, input")) return;
       e.preventDefault();
       dragRef.current = { startX: e.clientX, startY: e.clientY, active: true };
     };
@@ -524,34 +522,28 @@ export default function CategoryPage() {
     };
   }, [gridSelecting]);
 
-  useEffect(() => {
-    fetch(`${API}/auth/me`)
-      .then((response) => response.json())
-      .then((data: User) => {
-        if (data.loggedIn) setUser(data);
-        setAuthLoading(false);
-      })
-      .catch(() => setAuthLoading(false));
-  }, []);
-
   const PAGE_SIZE = 30;
   const {
     data: summaryPages,
     isLoading: summaryLoading,
+    error: summaryError,
+    refetch: refetchSummary,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery<ClustersSummaryResponse>({
     queryKey: ["clusters-summary", activeCategory, groupByVisual, debouncedFilter],
-    queryFn: ({ pageParam = 0, signal }) => {
+    queryFn: async ({ pageParam = 0, signal }) => {
       const params = new URLSearchParams();
       params.set("limit", String(PAGE_SIZE));
       params.set("offset", String(pageParam));
       if (groupByVisual) params.set("sort_visual", "true");
       if (debouncedFilter) params.set("q", debouncedFilter);
-      return fetch(`${BACKEND}/clusters/${backendCat}/summary?${params}`, { signal })
-        .then((r) => r.json());
+      const response = await fetch(`${BACKEND}/clusters/${backendCat}/summary?${params}`, { signal });
+      if (!response.ok) throw new Error("These groups could not be loaded.");
+      return response.json();
     },
+    enabled: managing,
     initialPageParam: 0,
     getNextPageParam: (lastPage) =>
       lastPage.has_more ? (lastPage.offset ?? 0) + PAGE_SIZE : undefined,
@@ -574,12 +566,14 @@ export default function CategoryPage() {
     queryKey: ["stats"],
     queryFn: () =>
       fetch(`${BACKEND}/stats`).then((response) => response.json()),
+    enabled: managing,
   });
 
   const { data: syncs } = useQuery<SyncLog[]>({
     queryKey: ["syncs"],
     queryFn: () =>
       fetch(`${BACKEND}/syncs`).then((response) => response.json()),
+    enabled: managing,
     refetchInterval: scanning ? 5000 : false,
   });
 
@@ -893,26 +887,40 @@ export default function CategoryPage() {
   const hasClusters = sorted.length > 0;
   const [namedCollapsed, setNamedCollapsed] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
-  /* The redesigned browse grid is what this route opens on. Labelling,
-     merging and review are a click away behind "Manage" — they are a
-     different job from looking through the library. */
-  const [managing, setManaging] = useState(false);
-
-  if (authLoading) {
-    return (
-      <div className="empty-state">
-        <Spinner />
-      </div>
-    );
-  }
-
   if (!managing) {
     return <KxClusterBrowse category={activeCategory} onManage={() => setManaging(true)} />;
   }
 
   return (
-    <div className="app-shell kx-manage-clusters">
-      <main className="page">
+    <div className="kx-managed-view kx-task-surface">
+      <main className="kx-page" ref={gridRef}>
+        <button className="kx-manage-back" onClick={() => setManaging(false)}>
+          ← Back to {activeInfo.label.toLowerCase()}
+        </button>
+        <div className="kx-pagehead kx-manage-head">
+          <div>
+            <h1 className="kx-title">{`Manage ${activeInfo.label.toLowerCase()}`}</h1>
+            {stats?.[backendCat] && (
+              <p className="kx-lede">
+                {fmt.format(stats[backendCat].detections || 0)} detections across {fmt.format(stats[backendCat].photos || 0)} photos
+              </p>
+            )}
+          </div>
+          <label className="kx-people-search">
+            <SearchIcon size={18} />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={`Find a named ${activeInfo.singular}`}
+              aria-label={`Find a named ${activeInfo.singular}`}
+            />
+            {search && (
+              <button className="kx-iconbutton" type="button" onClick={() => setSearch("")} aria-label="Clear search">
+                <CloseIcon size={16} />
+              </button>
+            )}
+          </label>
+        </div>
         {isEffectiveAdmin && scanning && (
           <section className="scan-card">
             <div className="scan-top">
@@ -959,57 +967,12 @@ export default function CategoryPage() {
           </section>
         )}
 
-        <section className="control-band" aria-label="Browse controls">
-          <div className="toolbar">
-            <label className="search">
-              <span aria-hidden="true">Search</span>
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={`Find a named ${activeInfo.singular}`}
-              />
-              {search && (
-                <button className="search-clear" type="button" onClick={() => setSearch("")} aria-label="Clear search">
-                  &times;
-                </button>
-              )}
-            </label>
-          </div>
-
-        </section>
-
-        <div className="content-head">
-          <div>
-            <h1>{`Manage ${activeInfo.label.toLowerCase()}`}</h1>
-            <p>
-              {activeCategory === "people"
-                ? "Tap a card name to label it. Open a card to review the matching photos."
-                : "Detected from the scan model and grouped into reviewable collections."}
-            </p>
-            <button className="button ghost small" onClick={() => setManaging(false)}>
-              &larr; Back to browsing
-            </button>
-            {activeCategory === "people" && <Link href="/review/names" className="button ghost small">Suggested names</Link>}
-          </div>
-          {stats && (
-            <div className="summary-note">
-              {fmt.format(stats?.[backendCat]?.detections || 0)} detections
-              across {fmt.format(stats?.[backendCat]?.photos || 0)} photos
-            </div>
-          )}
-        </div>
-
-        {summaryLoading && (
-          <div className="cluster-grid">
-            {Array.from({ length: 12 }).map((_, i) => (
-              // Background and animation come from the stylesheet so the
-              // shell's themed rule can win; inline styles cannot be themed.
-              <div key={i} className="skeleton-card" style={{ aspectRatio: "3/4", borderRadius: 8 }} />
-            ))}
-          </div>
+        {summaryLoading && <KxSkeletonCards count={8} minWidth={250} height={110} />}
+        {summaryError && !hasClusters && (
+          <KxErrorBanner detail={summaryError.message} onRetry={() => void refetchSummary()} />
         )}
 
-        {!summaryLoading && !scanning && !hasClusters && (
+        {!summaryLoading && !summaryError && !scanning && !hasClusters && (
           <div className="empty-state">
             <div>
               <h2>
@@ -1042,7 +1005,7 @@ export default function CategoryPage() {
                   {clustering ? "Building groups" : "Build groups"}
                 </Button>
               ) : (
-                isEffectiveAdmin && user &&
+                isEffectiveAdmin &&
                 !search && (
                   <Button variant="primary" onClick={startScan}>
                     <span className="icon">+</span>
@@ -1056,38 +1019,44 @@ export default function CategoryPage() {
 
         {!summaryLoading && hasClusters && (
           <>
-            <div className="grid-toolbar">
+            <div className="grid-toolbar" aria-label="Management actions" role="group">
+              {activeCategory === "people" && <Link href="/review/names" className="kx-button">Suggested names</Link>}
               {isEffectiveAdmin && (
                 <>
-                  <Button
-                    small
-                    variant={groupByVisual ? "primary" : "ghost"}
-                    onClick={() => {
-                      const newParams = new URLSearchParams(searchParams.toString());
-                      if (groupByVisual) {
-                        newParams.delete("group");
-                      } else {
-                        newParams.set("group", "visual");
-                      }
-                      sortOrderRef.current = [];
-                      router.replace(`/${activeCategory}?${newParams.toString()}`, { scroll: false });
-                    }}
-                  >
-                    {groupByVisual ? "Grouped by similarity" : "Group similar"}
-                  </Button>
-                  <Button small variant="ghost" onClick={buildGroups} disabled={clustering}>
-                    {clustering ? "Reclustering..." : "Recluster"}
-                  </Button>
-                  {activeCategory === "animals" && (
-                    <Button small variant="primary" onClick={reclassifySpecies} disabled={reclassifying}>
-                      {reclassifying ? "Reclassifying..." : "Reclassify species"}
-                    </Button>
-                  )}
                   {unnamedClusters.length > 0 && (
                     <Button small variant="primary" onClick={() => setReviewOpen(true)}>
-                      Review {fmt.format(unnamedClusters.length)} unnamed
+                      Review unnamed
                     </Button>
                   )}
+                  <details className="kx-recognition-tools">
+                    <summary className="kx-button">Recognition tools <ChevronDownIcon size={14} /></summary>
+                    <div className="kx-recognition-menu">
+                      <Button
+                        small
+                        variant={groupByVisual ? "primary" : "ghost"}
+                        onClick={() => {
+                          const newParams = new URLSearchParams(searchParams.toString());
+                          if (groupByVisual) {
+                            newParams.delete("group");
+                          } else {
+                            newParams.set("group", "visual");
+                          }
+                          sortOrderRef.current = [];
+                          router.replace(`/${activeCategory}?${newParams.toString()}`, { scroll: false });
+                        }}
+                      >
+                        {groupByVisual ? "Grouped by similarity" : "Group similar"}
+                      </Button>
+                      <Button small variant="ghost" onClick={buildGroups} disabled={clustering}>
+                        {clustering ? "Reclustering..." : "Recluster"}
+                      </Button>
+                      {activeCategory === "animals" && (
+                        <Button small variant="primary" onClick={reclassifySpecies} disabled={reclassifying}>
+                          {reclassifying ? "Reclassifying..." : "Reclassify species"}
+                        </Button>
+                      )}
+                    </div>
+                  </details>
                 </>
               )}
               {isEffectiveAdmin && gridSelecting ? (
@@ -1184,25 +1153,17 @@ export default function CategoryPage() {
             </div>
             {/* Named people — collapsible */}
             {namedClusters.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <button
-                  className="section-toggle"
-                  onClick={() => setNamedCollapsed(!namedCollapsed)}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                    strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                    style={{ transition: "transform .2s", transform: namedCollapsed ? "rotate(-90deg)" : "rotate(0)" }}>
-                    <polyline points="6 9 12 15 18 9"/>
-                  </svg>
-                  <strong>Named ({namedClusters.length})</strong>
+              <h2 className="kx-manage-section">
+                <button className="kx-manage-section-toggle" type="button" aria-expanded={!namedCollapsed}
+                  onClick={() => setNamedCollapsed(!namedCollapsed)}>
+                  <ChevronDownIcon size={14} /> Named <span>{fmt.format(namedClusters.length)}</span>
                 </button>
-              </div>
+              </h2>
             )}
 
             {!namedCollapsed && namedClusters.length > 0 && (
               <VirtualizedGrid
                 items={namedClusters}
-                gridRef={gridRef}
                 category={activeCategory}
                 onDismiss={handleDismiss}
                 onLabel={labelCluster}
@@ -1225,16 +1186,13 @@ export default function CategoryPage() {
 
             {/* Unnamed people */}
             {unnamedClusters.length > 0 && (
-              <div style={{ marginTop: 24, marginBottom: 16 }}>
-                <strong style={{ fontSize: 13, color: "var(--mist)", textTransform: "uppercase", letterSpacing: ".08em" }}>
-                  Unnamed ({unnamedClusters.length})
-                </strong>
-              </div>
+              <h2 className="kx-manage-section">
+                Needs a name <span>{fmt.format(unnamedClusters.length)}</span>
+              </h2>
             )}
 
             <VirtualizedGrid
               items={unnamedClusters}
-              gridRef={gridRef}
               category={activeCategory}
               onDismiss={handleDismiss}
               onLabel={labelCluster}
@@ -1260,8 +1218,8 @@ export default function CategoryPage() {
                 ref={(el) => {
                   if (!el) return;
                   const observer = new IntersectionObserver(
-                    (entries) => { if (entries[0]?.isIntersecting) fetchNextPage(); },
-                    { rootMargin: "400px" }
+                    (entries) => { if (entries[0]?.isIntersecting && !summaryError) void fetchNextPage({ cancelRefetch: false }); },
+                    { root: el.closest(".kx-content"), rootMargin: "400px" }
                   );
                   observer.observe(el);
                   return () => observer.disconnect();
@@ -1269,7 +1227,7 @@ export default function CategoryPage() {
                 style={{ textAlign: "center", padding: 24 }}
               >
                 {isFetchingNextPage ? <Spinner /> : (
-                  <Button small variant="ghost" onClick={() => fetchNextPage()}>
+                  <Button small variant="ghost" onClick={() => void fetchNextPage({ cancelRefetch: false })}>
                     Load more
                   </Button>
                 )}
@@ -1289,15 +1247,7 @@ export default function CategoryPage() {
 
         {debouncedSearch.length > 2 && (
           <section style={{ marginTop: 32 }}>
-            <div className="content-head">
-              <div>
-                <h2>Photo search results</h2>
-                <p>
-                  Matching photos for &ldquo;{debouncedSearch}&rdquo; via CLIP
-                  text-to-image search.
-                </p>
-              </div>
-            </div>
+            <h2 className="kx-manage-section">Matching photos</h2>
             {clipLoading ? (
               <div className="empty-state" style={{ minHeight: 180 }}>
                 <Spinner />
@@ -1338,13 +1288,6 @@ export default function CategoryPage() {
           </section>
         )}
 
-        <footer className="kindling-footer">
-          <span>By Kindling Signal</span>
-          <p>
-            Kindling builds useful software with character: warm enough for
-            real homes, sharp enough to hold up in real use.
-          </p>
-        </footer>
       </main>
 
       {isEffectiveAdmin && reviewOpen && unnamedClusters.length > 0 && (

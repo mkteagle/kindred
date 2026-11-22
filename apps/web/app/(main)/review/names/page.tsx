@@ -92,8 +92,8 @@ export default function NameReviewPage() {
 
   return (
     <main className="kx-page" style={{ maxWidth: 880 }}>
-      <h1 className="kx-title" style={{ fontSize: 40 }}>
-        Names Google already knew.
+      <h1 className="kx-title">
+        Suggested names
       </h1>
       <p className="kx-lede">
         Google tagged who was in each photo but never which face was which. Where

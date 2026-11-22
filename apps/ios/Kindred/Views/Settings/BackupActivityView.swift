@@ -2,34 +2,71 @@ import Photos
 import SwiftUI
 
 struct BackupActivityView: View {
+    private enum ActivityFilter: String, CaseIterable, Identifiable {
+        case all = "All"
+        case waiting = "Waiting"
+        case active = "Active"
+        case backedUp = "Backed up"
+
+        var id: Self { self }
+
+        func includes(_ status: BackupActivityItem.Status) -> Bool {
+            switch self {
+            case .all: true
+            case .waiting: status == .queued || status == .failed
+            case .active: status.isActive
+            case .backedUp: status == .backedUp
+            }
+        }
+    }
+
     var waitingForFlickrOnly = false
     @State private var uploader = FlickrUploader.shared
+    @State private var library = PhotoLibraryManager.shared
     @State private var uploadVM = UploadViewModel()
+    @State private var filter: ActivityFilter = .all
     @State private var restoredQueue: [BackupActivityItem] = []
     @State private var earlierBackups: [BackupActivityItem] = []
 
     private var accountID: String? { SessionManager.shared.currentUser?.id }
 
-    private var current: [BackupActivityItem] {
-        if uploader.activityAccountID == accountID, !uploader.activity.isEmpty {
-            return filtered(uploader.activity)
+    private var live: [BackupActivityItem] {
+        guard uploader.activityAccountID == accountID else { return [] }
+        let restored = Dictionary(uniqueKeysWithValues: restoredQueue.map { ($0.id, $0) })
+        let completed = Set(earlierBackups.map(\.id))
+        return uploader.activity.map { item in
+            if completed.contains(item.id) {
+                return BackupActivityItem(asset: item.asset, status: .backedUp, progress: 1)
+            }
+            return !uploader.isUploading ? restored[item.id] ?? item : item
         }
-        return filtered(restoredQueue)
     }
 
     var body: some View {
-        let earlier = filtered(earlierBackups)
+        let visibleIDs = Set(live.map(\.id))
+        let current = filtered(live + restoredQueue.filter { !visibleIDs.contains($0.id) })
+        let earlier = filtered(earlierBackups.filter { !visibleIDs.contains($0.id) })
         List {
+            if !waitingForFlickrOnly {
+                Picker("Backup status", selection: $filter) {
+                    ForEach(ActivityFilter.allCases) { option in
+                        Text(option.rawValue).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
             if current.isEmpty && earlier.isEmpty {
                 ContentUnavailableView(
-                    waitingForFlickrOnly ? "No items waiting for Flickr" : "No backup activity",
+                    emptyTitle,
                     systemImage: "clock.arrow.circlepath",
-                    description: waitingForFlickrOnly ? nil : Text("Your items appear here after you start a backup.")
+                    description: !waitingForFlickrOnly && filter == .all ? Text("Your items appear here after you start a backup.") : nil
                 )
                 .listRowBackground(Color.clear)
             }
             if !current.isEmpty {
-                Section("Queue") {
+                Section("Current backup") {
                     ForEach(current) { item in activityRow(item) }
                 }
             }
@@ -43,14 +80,28 @@ struct BackupActivityView: View {
         .navigationBarTitleDisplayMode(.inline)
         .scrollContentBackground(.hidden)
         .kindredPaperBackground()
-        .task(id: accountID) { await loadActivity() }
+        .task(id: "\(accountID ?? ""):\(library.totalDevicePhotos):\(uploader.isUploading)") { await loadActivity() }
+        .refreshable { await loadActivity() }
+        .onReceive(NotificationCenter.default.publisher(for: .backupBackgroundActivityChanged)) { _ in
+            Task { await loadActivity() }
+        }
         .task {
             if waitingForFlickrOnly { await uploadVM.refreshBackupStatuses() }
         }
     }
 
+    private var emptyTitle: String {
+        if waitingForFlickrOnly { return "No items waiting for Flickr" }
+        switch filter {
+        case .all: return "No backup activity"
+        case .waiting: return "Nothing waiting"
+        case .active: return "No active transfers"
+        case .backedUp: return "No backed-up items"
+        }
+    }
+
     private func filtered(_ items: [BackupActivityItem]) -> [BackupActivityItem] {
-        guard waitingForFlickrOnly else { return items }
+        guard waitingForFlickrOnly else { return items.filter { filter.includes($0.status) } }
         return items.filter { item in
             guard item.status == .backedUp,
                   let receipt = PhotoLibraryManager.shared.backupRecord(for: item.id) else { return false }
@@ -91,19 +142,19 @@ struct BackupActivityView: View {
             return
         }
         let records = await UploadQueueStore.shared.activityRecords(accountID: accountID)
+        let active = await BackgroundUploadSession.shared.activeLocalIdentifiers(accountID: accountID)
         guard self.accountID == accountID, !Task.isCancelled else { return }
         let manager = PhotoLibraryManager.shared
         let photos = Dictionary(uniqueKeysWithValues: manager.allPhotos.map { ($0.localIdentifier, $0) })
         restoredQueue = records.compactMap { record in
             guard let asset = photos[record.localIdentifier], !manager.isUploaded(localIdentifier: record.localIdentifier)
             else { return nil }
-            let status: BackupActivityItem.Status = record.state == .failed ? .failed : .queued
+            let status: BackupActivityItem.Status = active.contains(record.localIdentifier)
+                ? .uploading : record.state == .failed ? .failed : .queued
             return BackupActivityItem(asset: asset, status: status, error: record.lastError)
         }
-        let currentIdentifiers = Set(uploader.activityAccountID == accountID ? uploader.activity.map(\.id) : [])
-        earlierBackups = manager.getTrackedAssets().compactMap { asset in
-            guard !currentIdentifiers.contains(asset.localIdentifier) else { return nil }
-            return BackupActivityItem(asset: asset, status: .backedUp)
+        earlierBackups = manager.getTrackedAssets().map { asset in
+            BackupActivityItem(asset: asset, status: .backedUp)
         }
     }
 }

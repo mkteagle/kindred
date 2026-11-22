@@ -74,7 +74,7 @@ function StorageBrowser() {
   const parts = folder.split("/").filter(Boolean);
   const selectedPath = selected ? [info?.display_root, selected.path].filter(Boolean).join("/") : "";
   return <main className="kx-page kx-storage-page">
-    <div className="kx-pagehead"><div><h1 className="kx-title">On your NAS.</h1><p className="kx-lede">Explore your folders. Find the originals. Know where every moment lives.</p></div><button className="kx-button" onClick={() => void query.refetch()} disabled={query.isFetching}>Refresh</button></div>
+    <div className="kx-pagehead"><div><h1 className="kx-title">NAS storage</h1><p className="kx-lede">Explore your folders. Find the originals. Know where every moment lives.</p></div><button className="kx-button" onClick={() => void query.refetch()} disabled={query.isFetching}>Refresh</button></div>
     {!folder && <StorageCard full />}
     <nav className="kx-folder-breadcrumbs" aria-label="Folder path"><button onClick={() => go("")}>{info?.name || "Home NAS"}</button>{parts.map((part, index) => <span key={index}><span aria-hidden="true">/</span><button aria-current={index === parts.length - 1 ? "location" : undefined} onClick={() => go(parts.slice(0, index + 1).join("/"))}>{part}</button></span>)}</nav>
     {info?.display_root && <p className="kx-folder-location">{info.display_root}{folder ? `/${folder}` : ""}</p>}

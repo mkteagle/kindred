@@ -89,7 +89,7 @@ export const ClusterCard = ({
 
   return (
     <article
-      className={`cluster-card ${gridSelected ? "grid-selected" : ""} ${processing ? "cluster-card-processing" : ""}`}
+      className={`cluster-card ${category === "people" ? "cluster-card-person" : ""} ${gridSelected ? "grid-selected" : ""} ${processing ? "cluster-card-processing" : ""}`}
       data-cluster-id={cluster.id}
       onClick={
         gridSelecting ? () => onGridToggle?.(cluster.id) : undefined
@@ -111,8 +111,21 @@ export const ClusterCard = ({
         </span>
       )}
 
-      <Link href={`/${category}/${cluster.id}`} className="card-cover" style={{ display: "block" }}>
+      <Link href={`/${category}/${cluster.id}`} className="card-cover" prefetch={false}
+        aria-label={`View photos of ${name}`}
+        aria-pressed={gridSelecting ? gridSelected : undefined}
+        role={gridSelecting ? "button" : undefined}
+        onClick={event => { if (gridSelecting) event.preventDefault(); }}
+        onKeyDown={event => {
+          if (gridSelecting && event.key === " ") {
+            event.preventDefault();
+            onGridToggle?.(cluster.id);
+          }
+        }}>
         {(() => {
+          if (category === "people" && cluster.avatar) {
+            return <img src={cluster.avatar} alt="" loading="lazy" className="cover-photo" />;
+          }
           // A real cover photo is a URL, not a base64 data URI
           const coverUrl = cluster.photo_url || cluster.thumb_url;
           const hasRealCover = coverUrl && !coverUrl.startsWith("data:");
@@ -122,6 +135,7 @@ export const ClusterCard = ({
                 <img
                   src={coverUrl}
                   alt=""
+                  loading="lazy"
                   className="cover-photo"
                   style={cluster.cover_crop ? {
                     objectPosition: `${cluster.cover_crop.x}% ${cluster.cover_crop.y}%`,
@@ -138,7 +152,7 @@ export const ClusterCard = ({
           if (avatarSrc) {
             return (
               <div className="cover-avatar-only">
-                <img src={avatarSrc} alt="" className="cover-avatar-small" />
+                <img src={avatarSrc} alt="" loading="lazy" className="cover-avatar-small" />
               </div>
             );
           }

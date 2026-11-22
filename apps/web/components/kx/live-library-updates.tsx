@@ -32,6 +32,8 @@ export function LiveLibraryUpdates({ enabled }: { enabled: boolean }) {
           queryClient.setQueryData(["library-discovery"], data.snapshot);
           queryClient.setQueryData<{ pipelines: Pipeline[] }>(["pipelines"], old => old ? {
             ...old, pipelines: old.pipelines.map(pipeline => {
+              // The R2 API row joins the upload checkpoint with the preview inventory.
+              if (pipeline.key === "r2") return pipeline;
               const worker = data.snapshot[pipeline.key === "index" ? "recognition" : pipeline.key];
               if (!worker) return pipeline;
               const done = pipeline.key === "discovery" ? (worker.registered ?? 0) + (worker.unchanged ?? 0)

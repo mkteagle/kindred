@@ -9,8 +9,8 @@ THUMBNAIL_PREFIX = "thumbnails/v1/"
 THUMBNAIL_TTL = 300
 
 
-@lru_cache(maxsize=1)
-def storage():
+@lru_cache(maxsize=2)
+def storage(*, upload_workers=0):
     bucket = os.environ.get("KINDRED_R2_BUCKET", "")
     if not bucket:
         return None
@@ -26,8 +26,13 @@ def storage():
         aws_access_key_id=os.environ["KINDRED_R2_ACCESS_KEY_ID"],
         aws_secret_access_key=os.environ["KINDRED_R2_SECRET_ACCESS_KEY"],
         region_name="auto",
-        config=Config(signature_version="s3v4", s3={"addressing_style": "path"},
-                      connect_timeout=2, read_timeout=3, retries={"total_max_attempts": 1}),
+        config=Config(
+            signature_version="s3v4", s3={"addressing_style": "path"},
+            max_pool_connections=max(10, upload_workers),
+            connect_timeout=4 if upload_workers else 2,
+            read_timeout=10 if upload_workers else 3,
+            retries={"mode": "standard", "total_max_attempts": 3 if upload_workers else 1},
+        ),
     )
     return client, bucket
 
@@ -37,6 +42,31 @@ def key_for(identity):
 
     identity = thumbnail_identity(identity)
     return f"{THUMBNAIL_PREFIX}{identity}.jpg" if identity else None
+
+
+def sign_key(client, bucket, key):
+    return client.generate_presigned_url(
+        "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=THUMBNAIL_TTL,
+    )
+
+
+def attach_published_urls(photos):
+    """Sign catalog-confirmed thumbnail keys locally, with no R2 requests."""
+    candidates = [(photo, photo.pop("thumbnail_object_key", None)) for photo in photos]
+    if not any(key for _, key in candidates):
+        return
+
+    from botocore.exceptions import BotoCoreError, ClientError
+
+    try:
+        configured = storage()
+        if configured:
+            client, bucket = configured
+            for photo, key in candidates:
+                if key:
+                    photo["thumbnail_url"] = sign_key(client, bucket, key)
+    except (BotoCoreError, ClientError, KeyError, ValueError):
+        log.warning("R2 page signing failed, falling back to thumbnail routes")
 
 
 def preview_url(identities):
@@ -54,9 +84,7 @@ def preview_url(identities):
                 if exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
                     continue
                 raise
-            return client.generate_presigned_url(
-                "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=THUMBNAIL_TTL,
-            )
+            return sign_key(client, bucket, key)
     except (BotoCoreError, ClientError, KeyError, ValueError):
         log.warning("R2 thumbnail lookup failed, falling back to local delivery")
     return None

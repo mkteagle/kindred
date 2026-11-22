@@ -1,11 +1,13 @@
 """Run API orchestration without loading the unrelated ML model dependencies."""
 import ast
 import asyncio
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import os
 import tempfile
 import unittest
-from unittest.mock import Mock, AsyncMock
+import uuid
+from unittest.mock import Mock, AsyncMock, MagicMock
 
 
 def functions(names, namespace):
@@ -41,6 +43,57 @@ class UploadPathsTests(unittest.TestCase):
                     _flickr_set_location=AsyncMock(), _process_uploaded_photo=AsyncMock(),
                     _add_photo_to_album_everywhere=AsyncMock(return_value={}),
                     _album_row=Mock(return_value={'id': 'album'}))
+
+    def test_phone_worker_takes_session_lock_on_an_existing_transaction(self):
+        conn = MagicMock()
+        conn.autocommit = False
+        cursor = conn.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = (True,)
+        ns = functions({'_claim_phone_flickr_worker'}, {})
+
+        self.assertTrue(ns['_claim_phone_flickr_worker'](conn))
+        cursor.execute.assert_called_once_with('SELECT pg_try_advisory_lock(%s)', (4_921_733_109,))
+        conn.commit.assert_called_once()
+        self.assertFalse(conn.autocommit)
+
+    def test_chunk_can_finish_on_nas_without_another_phone_request(self):
+        from resumable_uploads import append_chunk
+
+        upload_id = str(uuid.uuid4())
+        for finalize, body, expected_status in (
+            (True, b"cd", "finalizing"),
+            (False, b"cd", "ready"),
+            (True, b"c", "pending"),
+        ):
+            with self.subTest(finalize=finalize, body=body), tempfile.TemporaryDirectory() as directory:
+                source = Path(directory) / "upload.part"
+                source.write_bytes(b"ab")
+                row = dict(id=upload_id, user_id="member", received_bytes=2, byte_size=4,
+                           status="pending", temp_path=str(source), expires_at=datetime.now(timezone.utc) + timedelta(days=1))
+                conn = MagicMock()
+                cur = conn.cursor.return_value.__enter__.return_value
+                cur.fetchone.side_effect = [row, dict(row, received_bytes=2 + len(body), status=expected_status)]
+                nas_finalize = AsyncMock()
+                tasks = Mock()
+                tasks.add_task.side_effect = lambda *args: conn.commit.assert_called_once()
+                ns = functions({'append_resumable_upload_chunk', '_resumable_session_response'}, dict(
+                    uuid=uuid, datetime=datetime, timezone=timezone, append_chunk=append_chunk,
+                    RESUMABLE_CHUNK_MAX_SIZE=8 * 1024**2, get_db=lambda: conn, RealDictCursor=object,
+                    _finalize_resumable_upload=nas_finalize,
+                ))
+                request = Mock(headers={}, body=AsyncMock(return_value=body))
+
+                response = asyncio.run(ns['append_resumable_upload_chunk'](
+                    upload_id, request, tasks, offset=2, finalize=finalize, user={'user_id': 'member'},
+                ))
+
+                self.assertEqual(source.read_bytes(), b"ab" + body)
+                self.assertEqual(response, dict(upload_id=upload_id, status=expected_status, next_offset=2 + len(body)))
+                self.assertEqual(cur.execute.call_args.args[1], (2 + len(body), expected_status, upload_id))
+                if expected_status == "finalizing":
+                    tasks.add_task.assert_called_once_with(nas_finalize, upload_id, dict(row, received_bytes=4, status=expected_status))
+                else:
+                    tasks.add_task.assert_not_called()
 
     def test_resumable_video_finishes_nas_session_without_flickr(self):
         ns = functions({'_finalize_resumable_upload'}, self.namespace())

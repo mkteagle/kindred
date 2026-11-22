@@ -270,7 +270,7 @@ function ReviewScreen() {
     <>
       <div className="kx-reviewhead">
         <div>
-          <h1 className="kx-title" style={{ fontSize: 40 }}>
+          <h1 className="kx-title">
             Who is this?
           </h1>
           <p className="kx-lede">

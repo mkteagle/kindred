@@ -1,87 +1,43 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { QRCodeSVG } from "qrcode.react";
-import { Spinner } from "@/components/ui";
-import { BACKEND } from "@/lib/constants";
+import { useEffect, useId, useRef } from "react";
+import Link from "next/link";
+import { CloseIcon, QrIcon } from "./icons";
+import { PairDeviceForm } from "./pair-device-form";
 
-/**
- * Mobile setup QR. Carried over unchanged from the previous topbar so the
- * redesigned user menu keeps the same admin item set.
- */
 export function MobileSetupDialog({ onClose }: { onClose: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [backendUrl, setBackendUrl] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [loaded, setLoaded] = useState(false);
+  const titleID = useId();
 
   useEffect(() => {
-    dialogRef.current?.showModal();
-    fetch(`${BACKEND}/app-config`)
-      .then((r) => r.json())
-      .then((cfg) => {
-        setBackendUrl(cfg.backend_url || window.location.origin);
-        setLoaded(true);
-      })
-      .catch(() => {
-        setBackendUrl(window.location.origin);
-        setLoaded(true);
-      });
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.open) dialog.showModal();
   }, []);
-
-  const configPayload = JSON.stringify({
-    kindred: true,
-    url: backendUrl,
-    key: apiKey || undefined,
-  });
 
   return (
     <dialog
       ref={dialogRef}
-      className="confirm qr-dialog"
+      className="kx-mobile-setup"
+      aria-labelledby={titleID}
       onClose={onClose}
-      onClick={(e) => {
-        if (e.target === dialogRef.current) onClose();
+      onClick={(event) => {
+        if (event.target === event.currentTarget) event.currentTarget.close();
       }}
     >
-      <div className="confirm-body">
-        <h3>Mobile setup</h3>
-        <p>Scan this QR code with the Kindred iOS app to connect to your server.</p>
-
-        <div className="qr-fields">
-          <label className="qr-field">
-            <span>Backend URL</span>
-            <input
-              type="url"
-              value={backendUrl}
-              onChange={(e) => setBackendUrl(e.target.value)}
-              placeholder="https://api.your-domain.com"
-            />
-          </label>
-          <label className="qr-field">
-            <span>API key</span>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Paste your API key"
-            />
-          </label>
+      <header className="kx-pair-heading">
+        <span className="kx-pair-heading-icon" aria-hidden="true"><QrIcon /></span>
+        <div>
+          <h2 id={titleID}>Mobile setup</h2>
+          <p>In Kindred on your iPhone, tap <strong>Scan a pairing code</strong> to sign in to this household.</p>
         </div>
-
-        {backendUrl && (
-          <div className="qr-code-wrap">
-            <QRCodeSVG value={configPayload} size={200} bgColor="#fffdf8" fgColor="#2a201b" level="M" marginSize={2} />
-          </div>
-        )}
-
-        {!loaded && <Spinner />}
-      </div>
-      <div className="confirm-actions">
-        <button className="button ghost" onClick={onClose}>
-          Close
+        <button className="kx-iconbutton" aria-label="Close mobile setup" type="button" onClick={() => dialogRef.current?.close()}>
+          <CloseIcon />
         </button>
-      </div>
+      </header>
+      <PairDeviceForm />
+      <footer className="kx-mobile-setup-footer">
+        <Link href="/docs/mobile/config" onClick={() => dialogRef.current?.close()}>Mobile setup guide</Link>
+      </footer>
     </dialog>
   );
 }

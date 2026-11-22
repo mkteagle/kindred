@@ -32,7 +32,7 @@ export default function IntegrationsPage() {
   }, []);
   if (isLoading) return <main className="kx-page"><p role="status">Loading connections…</p></main>;
   return <main className="kx-page kx-integrations-page">
-    <div className="kx-pagehead"><div><h1 className="kx-title">Connections</h1></div></div>
+    <div className="kx-pagehead"><div><h2 className="kx-setting-title">Connections</h2></div></div>
     {notice && <p className="kx-connection-notice" role="status">{notice}</p>}
     <section className="kx-connection-section" id="sign-in"><div className="kx-section-copy"><h2>Sign-in methods</h2><p>Connect Apple or Google to this Kindred account. Both sign-in methods open the same library, even when Apple uses a private relay email.</p></div>
       <div className="kx-connection-list">

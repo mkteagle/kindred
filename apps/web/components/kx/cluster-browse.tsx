@@ -19,13 +19,13 @@ const COPY: Record<string, { title: string; lede: string; singular: string; plur
     plural: "people",
   },
   animals: {
-    title: "The other members.",
+    title: "Animals",
     lede: "Pets get their own profiles — name one and every photo of them follows.",
     singular: "animal",
     plural: "animals",
   },
   vehicles: {
-    title: "Everything with wheels.",
+    title: "Vehicles",
     lede: "The van, the truck, the car that lasted nine summers.",
     singular: "vehicle",
     plural: "vehicles",
@@ -97,6 +97,8 @@ export function KxClusterBrowse({
   const firstPage = data?.pages[0];
   const named = firstPage?.named_total ?? Object.values(firstPage?.labels ?? {}).filter(Boolean).length;
   const unnamed = Math.max(0, (firstPage?.total ?? 0) - named);
+  const loading = isPending || isFetchingNextPage;
+  const placeholderCount = isPending ? 12 : 6;
 
   useEffect(() => {
     const target = sentinel.current;
@@ -153,7 +155,7 @@ export function KxClusterBrowse({
         }}>Needs a name</button>
       </div>}
 
-      {isPending && <KxSkeletonCards count={12} minWidth={round ? 150 : 240} height={220} round={round} />}
+      {!round && isPending && <KxSkeletonCards count={placeholderCount} height={220} />}
       {error && <KxErrorBanner detail={(error as Error).message} onRetry={() => void refetch()} />}
       {!isPending && !error && clusters.length === 0 && (
         <KxEmpty
@@ -162,7 +164,7 @@ export function KxClusterBrowse({
         />
       )}
 
-      <div className={round ? "kx-peoplegrid" : "kx-covergrid"}>
+      <div className={round ? "kx-peoplegrid" : "kx-covergrid"} aria-busy={loading}>
         {clusters.map((cluster) => {
           const cover = coverFor(cluster);
           const named = Boolean(cluster.label);
@@ -235,9 +237,16 @@ export function KxClusterBrowse({
             </Link>
           );
         })}
+        {round && loading && Array.from({ length: placeholderCount }, (_, index) => (
+          <div key={`placeholder-${index}`} className="kx-personcard kx-person-placeholder" aria-hidden="true">
+            <span className="kx-skel round" />
+            <span className="kx-skel kx-person-placeholder-name" />
+            <span className="kx-skel kx-person-placeholder-count" />
+          </div>
+        ))}
       </div>
 
-      {isFetchingNextPage && <KxSkeletonCards count={6} minWidth={round ? 150 : 240} height={220} round={round} />}
+      {!round && isFetchingNextPage && <KxSkeletonCards count={placeholderCount} height={220} />}
       {hasNextPage && !isFetchingNextPage && (
         <div className="kx-loadmore">
           <button className="kx-button" onClick={() => void fetchNextPage()}>

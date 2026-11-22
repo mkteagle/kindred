@@ -44,7 +44,7 @@ export default function LandmarksPage() {
 
   return (
     <main className="kx-page">
-      <h1 className="kx-title">Places that name themselves.</h1>
+      <h1 className="kx-title">Landmarks</h1>
       <p className="kx-lede">
         Landmarks and scenes, separate from GPS places — the same bridge from three different trips
         lands in one group.

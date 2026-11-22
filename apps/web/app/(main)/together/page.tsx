@@ -94,7 +94,7 @@ function TogetherScreen() {
 
   return (
     <>
-      <h1 className="kx-title">Two people, one pile.</h1>
+      <h1 className="kx-title">Together</h1>
       <p className="kx-lede">Pick anyone and see only the photos where they all appear.</p>
 
       <div className="kx-togetherbar">

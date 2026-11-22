@@ -8,6 +8,7 @@ import { KxUserMenu, displayNameOf } from "./user-menu";
 import { useStorageStatus } from "./use-library";
 import { BrandMark, BrandWordmark } from "@/components/brand-mark";
 import { LIBRARY_ICON_PATHS, NavIcon, SidebarIcon } from "./icons";
+import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, SIDEBAR_WIDTH_KEY } from "./sidebar-script";
 import { useKxUi } from "./ui-state";
 
 const LIBRARY_ROWS = [
@@ -21,6 +22,7 @@ const LIBRARY_ROWS = [
 ];
 
 const WAYS_IN_ROWS = [
+  { href: "/pipelines", label: "Indexer", icon: "M3 12h4l3-7 4 14 3-7h4" },
   { href: "/timeline", label: "Timeline", icon: LIBRARY_ICON_PATHS.timeline },
   { href: "/animals", label: "Animals", icon: LIBRARY_ICON_PATHS.animals },
   { href: "/vehicles", label: "Vehicles", icon: LIBRARY_ICON_PATHS.vehicles },
@@ -70,6 +72,78 @@ function RailToggle() {
         <SidebarIcon direction={railCollapsed ? "right" : "left"} />
       </span>
     </button>
+  );
+}
+
+function SidebarResizeHandle() {
+  const [width, setWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
+  const [resizing, setResizing] = useState(false);
+  const drag = useRef<{ pointerId: number; x: number; startWidth: number; width: number } | null>(null);
+
+  useEffect(() => {
+    const saved = parseInt(document.documentElement.style.getPropertyValue("--kindred-sidebar-width"), 10);
+    if (saved >= SIDEBAR_MIN_WIDTH && saved <= SIDEBAR_MAX_WIDTH) setWidth(saved);
+  }, []);
+
+  const resize = (value: number) => {
+    const next = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, value));
+    document.documentElement.style.setProperty("--kindred-sidebar-width", `${next}px`);
+    setWidth(next);
+    return next;
+  };
+
+  const remember = (value: number) => {
+    try {
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(value));
+    } catch {
+      // The current width still works when storage is disabled.
+    }
+  };
+
+  return (
+    <div
+      className="kx-sidebar-resize"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize sidebar"
+      aria-controls="kx-sidebar"
+      aria-valuemin={SIDEBAR_MIN_WIDTH}
+      aria-valuemax={SIDEBAR_MAX_WIDTH}
+      aria-valuenow={width}
+      tabIndex={0}
+      data-resizing={resizing ? "true" : undefined}
+      onPointerDown={event => {
+        if (!event.isPrimary || event.button !== 0) return;
+        const startWidth = Math.round(event.currentTarget.parentElement?.getBoundingClientRect().width ?? width);
+        drag.current = { pointerId: event.pointerId, x: event.clientX, startWidth, width: startWidth };
+        event.currentTarget.setPointerCapture(event.pointerId);
+        setResizing(true);
+      }}
+      onPointerMove={event => {
+        const active = drag.current;
+        if (active?.pointerId !== event.pointerId) return;
+        active.width = resize(active.startWidth + Math.round(event.clientX - active.x));
+      }}
+      onLostPointerCapture={event => {
+        const active = drag.current;
+        if (active?.pointerId !== event.pointerId) return;
+        remember(active.width);
+        drag.current = null;
+        setResizing(false);
+      }}
+      onKeyDown={event => {
+        const targets: Partial<Record<string, number>> = {
+          ArrowLeft: width - 12,
+          ArrowRight: width + 12,
+          Home: SIDEBAR_MIN_WIDTH,
+          End: SIDEBAR_MAX_WIDTH,
+        };
+        const target = targets[event.key];
+        if (target === undefined || resizing) return;
+        event.preventDefault();
+        remember(resize(target));
+      }}
+    />
   );
 }
 
@@ -141,9 +215,12 @@ export function KxSidebar({ user, open, onNavigate }: { user: User | null; open:
   const pathname = usePathname();
   const { railCollapsed } = useKxUi();
   const [tip, setTip] = useState<RailTip | null>(null);
+  const [moreOpen, setMoreOpen] = useState<boolean | null>(null);
+  const moreButton = useRef<HTMLButtonElement>(null);
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`) ||
     (href === "/settings" && pathname === "/storage");
+  const showMore = moreOpen ?? WAYS_IN_ROWS.some(row => isActive(row.href));
 
   const hideTip = useCallback(() => setTip(null), []);
 
@@ -166,6 +243,7 @@ export function KxSidebar({ user, open, onNavigate }: { user: User | null; open:
       id="kx-sidebar"
       onScroll={hideTip}
     >
+      {!railCollapsed && <SidebarResizeHandle />}
       <div className="kx-brandbar">
         <BrandLockup />
         <RailToggle />
@@ -189,26 +267,47 @@ export function KxSidebar({ user, open, onNavigate }: { user: User | null; open:
         ))}
       </nav>
 
-      <details className="kx-more-nav" open={WAYS_IN_ROWS.some(row => isActive(row.href)) || undefined}>
-      <summary>Explore more</summary>
-      <nav className="kx-navgroup" aria-label="Explore more">
-        {WAYS_IN_ROWS.map((row) => (
-          <NavRow
-            key={row.href}
-            href={row.href}
-            label={row.label}
-            icon={row.icon}
-            active={isActive(row.href)}
-            wide
-            collapsed={railCollapsed}
-            onNavigate={onNavigate}
-            onShowTip={showTip}
-            onHideTip={hideTip}
-          />
-        ))}
-      </nav>
-
-      </details>
+      <div className="kx-more-nav" onKeyDown={(event) => {
+        if (event.key === "Escape" && showMore) {
+          event.stopPropagation();
+          setMoreOpen(false);
+          moreButton.current?.focus();
+        }
+      }}>
+        <button
+          ref={moreButton}
+          type="button"
+          className="kx-more-nav-button"
+          aria-label="Explore more"
+          aria-expanded={showMore}
+          aria-controls="kx-more-navigation"
+          onClick={() => setMoreOpen(!showMore)}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="5" cy="12" r="2.65" />
+            <circle cx="12" cy="12" r="2.65" />
+            <circle cx="19" cy="12" r="2.65" />
+          </svg>
+        </button>
+        <div id="kx-more-navigation" hidden={!showMore}>
+          <nav className="kx-navgroup" aria-label="Explore more">
+            {WAYS_IN_ROWS.map((row) => (
+              <NavRow
+                key={row.href}
+                href={row.href}
+                label={row.label}
+                icon={row.icon}
+                active={isActive(row.href)}
+                wide
+                collapsed={railCollapsed}
+                onNavigate={onNavigate}
+                onShowTip={showTip}
+                onHideTip={hideTip}
+              />
+            ))}
+          </nav>
+        </div>
+      </div>
       </div>
       <div className="kx-sidebar-account">
         <div className="kx-account-row"><KxUserMenu user={user} placement="sidebar" />

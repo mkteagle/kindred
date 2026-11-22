@@ -35,6 +35,11 @@ async function handleRequest(
     const pathStr = path.join("/");
     const queryString = req.nextUrl.search;
     const thumbnail = req.method === "GET" && isThumbnailRequest(pathStr, req.nextUrl.searchParams);
+    const previewQuery = req.nextUrl.searchParams;
+    const viewerPreview = req.method === "GET" && /^photos\/[^/]+\/image$/.test(pathStr)
+      && previewQuery.get("preview") === "viewer"
+      && previewQuery.get("size") === "h" && previewQuery.get("format") === "jpeg"
+      && ["1280", "2560"].includes(previewQuery.get("w") ?? "");
     const catalog = CATALOG_BACKEND_URL && CATALOG_BACKEND_URL !== BACKEND_URL &&
       catalogRequest(req.method, pathStr, req.nextUrl.searchParams)
       ? CATALOG_BACKEND_URL
@@ -120,7 +125,12 @@ async function handleRequest(
       }
       return new NextResponse(null, {
         status: 307,
-        headers: { Location: location!, "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" },
+        headers: {
+          Location: location!,
+          "Cache-Control": "private, max-age=120",
+          Vary: "Cookie",
+          "Referrer-Policy": "no-referrer",
+        },
       });
     }
 
@@ -136,15 +146,21 @@ async function handleRequest(
     if (isBinary || backendResp.status === 304 || backendResp.status === 206 || backendResp.status === 416) {
       // Stream rather than buffer: a full-length video through arrayBuffer()
       // would be held in this process's memory in its entirety.
+      const cacheViewerPreview = viewerPreview && (backendResp.status === 304 ||
+        (backendResp.status === 200 && contentType.startsWith("image/jpeg")));
       const passthrough: Record<string, string> = {
         "Content-Type": contentType,
-        "Cache-Control": backendResp.headers.get("cache-control") || "private, max-age=3600",
+        "Cache-Control": cacheViewerPreview ? "private, max-age=300" :
+          backendResp.headers.get("cache-control") || (thumbnail ? "private, no-store" : "private, max-age=3600"),
       };
       // Range answers are meaningless without these, and a 206 whose
       // Content-Range is dropped makes the player fail in confusing ways.
       for (const header of ["accept-ranges", "content-range", "content-length", "content-disposition", "etag", "vary", "x-content-type-options", "x-accel-buffering"]) {
         const value = backendResp.headers.get(header);
         if (value) passthrough[header] = value;
+      }
+      if ((thumbnail || cacheViewerPreview) && !passthrough["vary"]?.split(",").some(field => field.trim().toLowerCase() === "cookie")) {
+        passthrough["vary"] = [passthrough["vary"], "Cookie"].filter(Boolean).join(", ");
       }
       return new NextResponse(backendResp.status === 304 ? null : backendResp.body, {
         status: backendResp.status,
@@ -153,7 +169,10 @@ async function handleRequest(
     }
 
     const data = await backendResp.json();
-    return NextResponse.json(data, { status: backendResp.status });
+    return NextResponse.json(data, {
+      status: backendResp.status,
+      headers: pathStr === "library/photos" ? { "Cache-Control": "private, no-store" } : undefined,
+    });
   } catch (err) {
     return NextResponse.json(
       { error: `Backend unreachable: ${(err as Error).message}` },

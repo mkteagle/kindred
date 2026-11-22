@@ -18,7 +18,7 @@ export default function AlbumsPage() {
     },
   });
   const albums = query.data?.albums.filter(album => album.name.toLocaleLowerCase().includes(filter.toLocaleLowerCase())) ?? [];
-  return <main className="kx-page"><div className="kx-pagehead"><div><h1 className="kx-title">Better together.</h1><p className="kx-lede">Trips, birthdays, and all the little things in between.</p></div><button className="kx-button primary" style={{ marginLeft: "auto" }} onClick={() => setUploadOpen(true)}>Add to an album</button></div>
+  return <main className="kx-page"><div className="kx-pagehead"><div><h1 className="kx-title">Albums</h1></div><button className="kx-button primary" style={{ marginLeft: "auto" }} onClick={() => setUploadOpen(true)}>Add to an album</button></div>
     <input className="kx-input" aria-label="Find an album" placeholder="Find an album…" value={filter} onChange={event => setFilter(event.target.value)} style={{ maxWidth: 360, marginBottom: 24 }} />
     {query.error && <KxErrorBanner detail={query.error.message} onRetry={() => void query.refetch()} />}
     {query.isPending && <p role="status">Opening your albums…</p>}

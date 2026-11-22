@@ -68,7 +68,7 @@ export default function ObjectsPage() {
 
   return (
     <main className="kx-page">
-      <h1 className="kx-title">The things in the frame.</h1>
+      <h1 className="kx-title">Objects</h1>
       <p className="kx-lede">
         Worked out on your server, never sent anywhere. Handy for the specific: the guitar, the
         tent, the birthday cake.

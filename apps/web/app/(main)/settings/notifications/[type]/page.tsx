@@ -41,8 +41,8 @@ export default function NotifTypeDetailPage() {
   if (!typeDef) {
     return (
       <div className="ntd-layout">
-        <main className="ntd-main" style={{ padding: "48px 32px" }}>
-          <h2>Notification type not found</h2>
+        <main className="ntd-main">
+          <h2 className="kx-setting-title">Notification type not found</h2>
           <p>The type &ldquo;{typeId}&rdquo; doesn&rsquo;t exist in the catalog.</p>
           <Link href="/settings/notifications" style={{ color: "var(--ember)", fontWeight: 700 }}>
             &larr; Back to notifications
@@ -70,7 +70,7 @@ export default function NotifTypeDetailPage() {
         <div className="ntd-grid">
           {/* Left column - controls */}
           <div className="ntd-controls">
-            <h2 className="ntd-h2">{typeDef.title}</h2>
+            <h2 className="kx-setting-title">{typeDef.title}</h2>
             <p className="ntd-lede">{typeDef.description}. {typeDef.triggers}.</p>
 
             {/* Send via */}

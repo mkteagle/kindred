@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Photos
 import UniformTypeIdentifiers
 
@@ -68,21 +69,24 @@ actor UploadQueueStore {
         var persistedAll = true
         for localIdentifier in localIdentifiers {
             let key = Self.key(localIdentifier, accountID: accountID)
-            if records[key]?.state == .succeeded { continue }
+            guard records[key] == nil else { continue }
             let record = UploadQueueRecord(
                 id: key,
-                requestID: records[key]?.requestID ?? UUID().uuidString,
+                requestID: UUID().uuidString,
                 accountID: accountID,
                 localIdentifier: localIdentifier,
                 state: .pending,
-                attempts: records[key]?.attempts ?? 0,
-                lastError: records[key]?.lastError,
-                flickrPhotoID: records[key]?.flickrPhotoID,
-                kindredPhotoID: records[key]?.kindredPhotoID,
+                attempts: 0,
+                lastError: nil,
+                flickrPhotoID: nil,
+                kindredPhotoID: nil,
                 updatedAt: Date()
             )
-            records[key] = record
-            persistedAll = persist(record) && persistedAll
+            if persist(record) {
+                records[key] = record
+            } else {
+                persistedAll = false
+            }
         }
         return persistedAll
     }
@@ -148,8 +152,9 @@ actor UploadQueueStore {
         guard var record = records[key] else { return false }
         mutation(&record)
         record.updatedAt = Date()
+        guard persist(record) else { return false }
         records[key] = record
-        return persist(record)
+        return true
     }
 
     private func persist(_ record: UploadQueueRecord) -> Bool {
@@ -207,10 +212,19 @@ struct UploadSummary: Sendable {
 struct BackupActivityItem: Identifiable {
     enum Status: String {
         case queued = "Queued"
+        case preparing = "Getting original"
+        case fetchingICloud = "Downloading from iCloud"
         case uploading = "Uploading"
         case finishing = "Finishing"
         case backedUp = "Backed up"
         case failed = "Needs retry"
+
+        var isActive: Bool {
+            switch self {
+            case .preparing, .fetchingICloud, .uploading, .finishing: true
+            case .queued, .backedUp, .failed: false
+            }
+        }
     }
 
     let asset: PHAsset
@@ -230,7 +244,9 @@ final class FlickrUploader {
     static let shared = FlickrUploader()
     private static let resumableThreshold: Int64 = 50 * 1024 * 1024
     private static let resumableChunkSize = 8 * 1024 * 1024
-    private static let hostedChunkSize = 4 * 1024 * 1024
+    // The hosted upload route is an external rewrite to the NAS. A 12 MiB
+    // multipart probe reached NAS authentication; allow headroom for the body.
+    private static let hostedMultipartThreshold: Int64 = 10 * 1024 * 1024
 
     private(set) var isUploading = false
     private(set) var totalProgress: Float = 0
@@ -244,10 +260,14 @@ final class FlickrUploader {
     private(set) var isPaused = UserDefaults.standard.bool(forKey: "kindred_backup_paused")
     private var runningBackup: Task<UploadSummary, Never>?
     private var activeIndices: Set<Int> = []
+    @ObservationIgnored private var didCleanStaging = false
 
     var currentProgress: Float { activeIndices.min().map { activity[$0].progress } ?? 0 }
     var currentAssetTitle: String {
         guard let index = activeIndices.min() else { return "Preparing backup" }
+        if activity[index].status == .fetchingICloud {
+            return "Downloading from iCloud · \(index + 1) of \(totalCount)"
+        }
         return "\(activity[index].title) \(index + 1) of \(totalCount)"
     }
 
@@ -275,6 +295,9 @@ final class FlickrUploader {
             SyncManager.shared.finishContinuedBackup(
                 success: !result.wasCancelled && !result.wasSkipped && result.failedIdentifiers.isEmpty
             )
+            if result.wasCancelled, !isPaused, SessionManager.shared.isAuthenticated {
+                SyncManager.shared.scheduleBackgroundSync(after: 0)
+            }
         }
         return result
     }
@@ -283,6 +306,9 @@ final class FlickrUploader {
         isPaused = true
         UserDefaults.standard.set(true, forKey: "kindred_backup_paused")
         runningBackup?.cancel()
+        if let accountID = SessionManager.shared.currentUser?.id {
+            BackgroundUploadSession.shared.cancelUploads(accountID: accountID)
+        }
     }
 
     func suspendBackup() { runningBackup?.cancel() }
@@ -304,7 +330,8 @@ final class FlickrUploader {
             return .skipped(lastError!)
         }
 
-        let activeIdentifiers = await BackgroundUploadSession.shared.activeLocalIdentifiers()
+        await cleanupAbandonedStagingFiles()
+        let activeIdentifiers = await BackgroundUploadSession.shared.activeLocalIdentifiers(accountID: accountID)
         let toUpload = assets.filter {
             !PhotoLibraryManager.shared.isUploaded(localIdentifier: $0.localIdentifier)
                 && !activeIdentifiers.contains($0.localIdentifier)
@@ -324,6 +351,7 @@ final class FlickrUploader {
             activeIndices.removeAll()
         }
 
+        let queuedAt = ContinuousClock.now
         let queuePersisted = await UploadQueueStore.shared.enqueue(
             toUpload.map(\.localIdentifier),
             accountID: accountID
@@ -336,17 +364,25 @@ final class FlickrUploader {
                 failedIdentifiers: Set(toUpload.map(\.localIdentifier))
             )
         }
-        if userInitiated { SyncManager.shared.scheduleBackgroundSync() }
+        if userInitiated { SyncManager.shared.scheduleBackgroundSync(after: 0) }
 
         var succeeded = Set<String>()
         var failed = Set<String>()
-        await withTaskGroup(of: BackupItemResult.self) { group in
-            var nextIndex = 0
+        await withTaskGroup(of: (BackupItemResult, isVideo: Bool).self) { group in
+            let (videoAssets, stillAssets) = toUpload.indices.reduce(into: ([Int](), [Int]())) { indices, index in
+                if toUpload[index].mediaType == .video { indices.0.append(index) }
+                else { indices.1.append(index) }
+            }
+            var videos = videoAssets[...]
+            var stills = stillAssets[...]
             var runningCount = 0
+            var runningVideos = 0
+            var stillsSinceVideo = 0
             var nasLimit = 1
             var nextCapacityCheck = ContinuousClock.now
+            var detachedUploads = activeIdentifiers
             while true {
-                if nextIndex < toUpload.count,
+                if !stills.isEmpty || !videos.isEmpty,
                    SessionManager.shared.currentUser?.id == accountID,
                    !Task.isCancelled {
                     if ContinuousClock.now >= nextCapacityCheck {
@@ -354,16 +390,40 @@ final class FlickrUploader {
                         nextCapacityCheck = .now + .seconds(15)
                     }
                     activeUploadLimit = min(nasLimit, SyncManager.shared.uploadLimit)
-                    while runningCount < activeUploadLimit && nextIndex < toUpload.count &&
-                            !Task.isCancelled && SessionManager.shared.currentUser?.id == accountID {
-                        let index = nextIndex
-                        nextIndex += 1
+                    if !detachedUploads.isEmpty {
+                        detachedUploads.formIntersection(
+                            await BackgroundUploadSession.shared.activeLocalIdentifiers(accountID: accountID)
+                        )
+                    }
+                    while runningCount + detachedUploads.count < activeUploadLimit,
+                          !stills.isEmpty || !videos.isEmpty,
+                          !Task.isCancelled, SessionManager.shared.currentUser?.id == accountID {
+                        // Keep a slot available for photos while a long video is moving.
+                        // With a single lane, give videos a turn after a short run of photos.
+                        let isVideo = stills.isEmpty || (!videos.isEmpty && runningVideos == 0 &&
+                            (activeUploadLimit > 1 || stillsSinceVideo >= 8))
+                        let index = isVideo ? videos.removeFirst() : stills.removeFirst()
+                        if isVideo {
+                            runningVideos += 1
+                            stillsSinceVideo = 0
+                        } else {
+                            stillsSinceVideo += 1
+                        }
                         runningCount += 1
-                        group.addTask { await self.backUpItem(toUpload[index], index: index, accountID: accountID) }
+                        group.addTask {
+                            let result = await self.backUpItem(toUpload[index], index: index, accountID: accountID, queuedAt: queuedAt)
+                            return (result, isVideo)
+                        }
                     }
                 }
-                guard let result = await group.next() else { break }
+                guard let (result, isVideo) = await group.next() else {
+                    guard !detachedUploads.isEmpty, !stills.isEmpty || !videos.isEmpty,
+                          !Task.isCancelled, SessionManager.shared.currentUser?.id == accountID else { break }
+                    try? await Task.sleep(for: .seconds(1))
+                    continue
+                }
                 runningCount -= 1
+                if isVideo { runningVideos -= 1 }
                 switch result {
                 case let .backedUp(identifier): succeeded.insert(identifier)
                 case let .failed(identifier): failed.insert(identifier)
@@ -384,8 +444,11 @@ final class FlickrUploader {
         case interrupted
     }
 
-    private func backUpItem(_ asset: PHAsset, index: Int, accountID: String) async -> BackupItemResult {
+    private func backUpItem(
+        _ asset: PHAsset, index: Int, accountID: String, queuedAt: ContinuousClock.Instant
+    ) async -> BackupItemResult {
         guard !Task.isCancelled, SessionManager.shared.currentUser?.id == accountID else { return .interrupted }
+        let queueWait = queuedAt.duration(to: .now)
         activeIndices.insert(index)
         activity[index].status = .uploading
         defer {
@@ -398,7 +461,9 @@ final class FlickrUploader {
                 Analytics.backupDiagnostic(.queue, failure: .init(.queueWriteFailed))
                 throw UploadError.queuePersistenceFailed
             }
-            let receipt = try await uploadWithRetry(asset, index: index, accountID: accountID, requestID: requestID)
+            let receipt = try await uploadWithRetry(
+                asset, index: index, accountID: accountID, requestID: requestID, queueWait: queueWait
+            )
             PhotoLibraryManager.shared.markAsUploaded(
                 localIdentifier: asset.localIdentifier,
                 flickrPhotoId: receipt.photo_id,
@@ -435,15 +500,16 @@ final class FlickrUploader {
 
     /// Resumes queue entries left pending or failed after a previous launch.
     func resumeQueuedUploads() async -> UploadSummary {
-        guard !isUploading,
+        guard runningBackup == nil,
+              !isPaused,
               SessionManager.shared.isAuthenticated,
               let accountID = SessionManager.shared.currentUser?.id else {
             return .empty
         }
 
-        Self.cleanupAbandonedStagingFiles()
+        await cleanupAbandonedStagingFiles()
 
-        let active = await BackgroundUploadSession.shared.activeLocalIdentifiers()
+        let active = await BackgroundUploadSession.shared.activeLocalIdentifiers(accountID: accountID)
         let identifiers = await UploadQueueStore.shared.resumableIdentifiers(
             accountID: accountID,
             activeIdentifiers: active
@@ -460,13 +526,29 @@ final class FlickrUploader {
         _ asset: PHAsset,
         index: Int,
         accountID: String,
-        requestID: String
+        requestID: String,
+        queueWait: Duration
     ) async throws -> UploadReceipt {
         var mostRecentError: Error = BackgroundUploadError.invalidResponse
+        var staged: StagedAsset?
+        defer {
+            if let staged { try? FileManager.default.removeItem(at: staged.url) }
+        }
 
         for attempt in 1...3 {
+            if attempt > 1 {
+                try await Task.sleep(for: .seconds(attempt == 2 ? 2 : 5))
+            }
             let attemptID = UUID()
             var stage = Analytics.BackupStage.queue
+            var timing = Analytics.BackupTiming()
+            var failure: Analytics.BackupFailure?
+            defer {
+                timing.record(
+                    attemptID: attemptID, attemptNumber: attempt, queueWait: attempt == 1 ? queueWait : nil,
+                    isVideo: asset.mediaType == .video, stage: stage, failure: failure
+                )
+            }
             do {
                 try Task.checkCancellation()
                 guard SessionManager.shared.currentUser?.id == accountID else { throw CancellationError() }
@@ -479,23 +561,36 @@ final class FlickrUploader {
                 activity[index].progress = 0
                 activity[index].status = .uploading
                 updateProgress()
+                let original: StagedAsset
+                if let staged {
+                    original = staged
+                } else {
+                    stage = .staging
+                    timing.begin(.staging)
+                    activity[index].status = .preparing
+                    original = try await stageOriginalAsset(asset, index: index, timing: &timing)
+                    staged = original
+                }
+                activity[index].status = .uploading
                 let receipt = try await uploadAsset(
                     asset,
+                    staged: original,
                     index: index,
                     accountID: accountID,
                     requestID: requestID,
                     attemptID: attemptID,
-                    stage: &stage
+                    stage: &stage,
+                    timing: &timing
                 )
                 stage = .receipt
                 guard receipt.hasNASOriginal else { throw BackgroundUploadError.nasOriginalUnconfirmed }
                 return receipt
             } catch {
                 mostRecentError = error
-                let failure = Analytics.BackupFailure(error)
-                Analytics.backupDiagnostic(stage, failure: failure, attemptID: attemptID)
-                if !failure.retryable || attempt == 3 || Task.isCancelled || error is CancellationError { throw error }
-                try? await Task.sleep(for: .seconds(attempt == 1 ? 2 : 5))
+                let diagnosed = Analytics.BackupFailure(error)
+                failure = diagnosed
+                Analytics.backupDiagnostic(stage, failure: diagnosed, attemptID: attemptID)
+                if !diagnosed.retryable || attempt == 3 || Task.isCancelled || error is CancellationError { throw error }
             }
         }
         throw mostRecentError
@@ -503,15 +598,14 @@ final class FlickrUploader {
 
     private func uploadAsset(
         _ asset: PHAsset,
+        staged: StagedAsset,
         index: Int,
         accountID: String,
         requestID: String,
         attemptID: UUID,
-        stage: inout Analytics.BackupStage
+        stage: inout Analytics.BackupStage,
+        timing: inout Analytics.BackupTiming
     ) async throws -> UploadReceipt {
-        stage = .staging
-        let staged = try await stageOriginalAsset(asset)
-        defer { try? FileManager.default.removeItem(at: staged.url) }
         try Task.checkCancellation()
         guard SessionManager.shared.currentUser?.id == accountID else { throw CancellationError() }
 
@@ -520,8 +614,10 @@ final class FlickrUploader {
         guard let fileSize = resourceValues.fileSize, fileSize > 0 else {
             throw UploadError.cannotStageUpload
         }
+        timing.bytes = fileSize
 
         stage = .queue
+        timing.begin(.setup)
         guard await UploadQueueStore.shared.markUploading(
             asset.localIdentifier,
             accountID: accountID
@@ -531,8 +627,8 @@ final class FlickrUploader {
 
         let baseURL = await APIClient.shared.currentBaseURL()
         let hostedGateway = URL(string: baseURL)?.host == "api.kindredphotos.app"
-        // The hosted API checkpoints every original, including small photos.
-        if hostedGateway || Int64(fileSize) > Self.resumableThreshold {
+        let multipartThreshold = hostedGateway ? Self.hostedMultipartThreshold : Self.resumableThreshold
+        if Int64(fileSize) > multipartThreshold {
             return try await uploadResumable(
                 staged,
                 index: index,
@@ -541,13 +637,16 @@ final class FlickrUploader {
                 hostedGateway: hostedGateway,
                 title: title,
                 requestID: requestID,
+                attemptID: attemptID,
                 creationDate: asset.creationDate,
                 location: asset.location,
-                stage: &stage
+                stage: &stage,
+                timing: &timing
             )
         }
 
         stage = .staging
+        timing.begin(.staging)
         let bodyFile = try Self.makeMultipartBody(
             sourceURL: staged.url,
             filename: staged.filename,
@@ -559,6 +658,7 @@ final class FlickrUploader {
         )
 
         stage = .multipart
+        timing.begin(.transfer)
         guard let url = URL(string: "\(baseURL)/photos/upload") else {
             try? FileManager.default.removeItem(at: bodyFile.url)
             throw URLError(.badURL)
@@ -567,6 +667,7 @@ final class FlickrUploader {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 120
+        request.allowsCellularAccess = !SyncManager.shared.wifiOnly
         request.setValue(
             "multipart/form-data; boundary=\(bodyFile.boundary)",
             forHTTPHeaderField: "Content-Type"
@@ -575,14 +676,31 @@ final class FlickrUploader {
             request.setValue(token, forHTTPHeaderField: "X-Session-Token")
         }
 
-        return try await BackgroundUploadSession.shared.upload(
-            request: request,
-            bodyFileURL: bodyFile.url,
-            localIdentifier: asset.localIdentifier,
-            filename: staged.filename,
-            accountID: accountID,
-            attemptID: attemptID
-        )
+        do {
+            return try await BackgroundUploadSession.shared.upload(
+                request: request,
+                bodyFileURL: bodyFile.url,
+                localIdentifier: asset.localIdentifier,
+                filename: staged.filename,
+                accountID: accountID,
+                attemptID: attemptID
+            ) { [weak self, identifier = asset.localIdentifier] fraction in
+                Task { @MainActor in
+                    guard let self, self.activityAccountID == accountID,
+                          self.activity.indices.contains(index), self.activity[index].id == identifier,
+                          self.activity[index].status == .uploading else { return }
+                    self.activity[index].progress = max(self.activity[index].progress, 0.95 * fraction)
+                    if fraction >= 1 { self.activity[index].status = .finishing }
+                    self.updateProgress()
+                }
+            }
+        } catch BackgroundUploadError.http(status: 413, message: _) {
+            return try await uploadResumable(
+                staged, index: index, accountID: accountID, fileSize: Int64(fileSize),
+                hostedGateway: hostedGateway, title: title, requestID: requestID, attemptID: attemptID,
+                creationDate: asset.creationDate, location: asset.location, stage: &stage, timing: &timing
+            )
+        }
     }
 
     private func uploadResumable(
@@ -593,9 +711,11 @@ final class FlickrUploader {
         hostedGateway: Bool,
         title: String,
         requestID: String,
+        attemptID: UUID,
         creationDate: Date?,
         location: CLLocation?,
-        stage: inout Analytics.BackupStage
+        stage: inout Analytics.BackupStage,
+        timing: inout Analytics.BackupTiming
     ) async throws -> UploadReceipt {
         let upload = APIClient.ResumableUploadRequest(
             client_upload_id: requestID,
@@ -617,7 +737,7 @@ final class FlickrUploader {
 
         if state.next_offset < fileSize {
             stage = .resumableChunk
-            let chunkSize = hostedGateway ? Self.hostedChunkSize : Self.resumableChunkSize
+            timing.begin(.transfer)
             let source = try FileHandle(forReadingFrom: staged.url)
             defer { try? source.close() }
             try source.seek(toOffset: UInt64(state.next_offset))
@@ -627,15 +747,24 @@ final class FlickrUploader {
                 try Task.checkCancellation()
                 guard SessionManager.shared.currentUser?.id == accountID else { throw CancellationError() }
                 let remaining = fileSize - offset
-                let amount = min(chunkSize, Int(remaining))
+                let amount = min(Self.resumableChunkSize, Int(remaining))
                 guard let chunk = try source.read(upToCount: amount), !chunk.isEmpty else {
                     throw UploadError.cannotStageUpload
                 }
-                state = try await APIClient.shared.uploadResumableChunk(
-                    uploadID: state.upload_id,
-                    offset: offset,
-                    data: chunk
+                let request = try await APIClient.shared.resumableChunkRequest(
+                    uploadID: state.upload_id, offset: offset,
+                    finalize: offset + Int64(chunk.count) == fileSize,
+                    allowsCellularAccess: !SyncManager.shared.wifiOnly
                 )
+                try Task.checkCancellation()
+                let body = try Self.stagingDirectory().appendingPathComponent("\(UUID().uuidString).chunk")
+                try chunk.write(to: body, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+                let response = try await BackgroundUploadSession.shared.uploadChunk(
+                    request: request, bodyFileURL: body,
+                    localIdentifier: activity[index].id, filename: staged.filename,
+                    accountID: accountID, attemptID: attemptID
+                )
+                state = try JSONDecoder().decode(APIClient.ResumableUploadResponse.self, from: response)
                 guard state.next_offset == offset + Int64(chunk.count) else {
                     throw UploadError.invalidServerOffset
                 }
@@ -645,6 +774,7 @@ final class FlickrUploader {
             }
         }
 
+        timing.begin(.finalize)
         if state.status != "finalizing" && state.status != "completed" {
             try Task.checkCancellation()
             stage = .resumableComplete
@@ -683,7 +813,9 @@ final class FlickrUploader {
         let contentType: String
     }
 
-    private func stageOriginalAsset(_ asset: PHAsset) async throws -> StagedAsset {
+    private func stageOriginalAsset(
+        _ asset: PHAsset, index: Int, timing: inout Analytics.BackupTiming
+    ) async throws -> StagedAsset {
         let resources = PHAssetResource.assetResources(for: asset)
         let resource: PHAssetResource?
         if asset.mediaType == .video {
@@ -702,6 +834,25 @@ final class FlickrUploader {
             .appendingPathComponent("\(UUID().uuidString)-\(filename)")
         let options = PHAssetResourceRequestOptions()
         options.isNetworkAccessAllowed = true
+        let firstCloudProgress = OSAllocatedUnfairLock<ContinuousClock.Instant?>(initialState: nil)
+        let identifier = asset.localIdentifier
+        options.progressHandler = { [weak self] _ in
+            let started = firstCloudProgress.withLock { first in
+                guard first == nil else { return false }
+                first = .now
+                return true
+            }
+            guard started else { return }
+            Task { @MainActor in
+                guard let self, self.activity.indices.contains(index),
+                      self.activity[index].id == identifier,
+                      self.activity[index].status == .preparing else { return }
+                self.activity[index].status = .fetchingICloud
+            }
+        }
+        defer {
+            timing.iCloudFetch = firstCloudProgress.withLock { $0?.duration(to: .now) }
+        }
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             PHAssetResourceManager.default().writeData(
@@ -799,10 +950,13 @@ final class FlickrUploader {
         return directory
     }
 
-    private static func cleanupAbandonedStagingFiles() {
-        let cutoff = Date().addingTimeInterval(-7 * 24 * 60 * 60)
+    func cleanupAbandonedStagingFiles() async {
+        guard !didCleanStaging else { return }
+        let activeBodies = await BackgroundUploadSession.shared.activeBodyPaths()
+        guard !didCleanStaging else { return }
+        didCleanStaging = true
         let directories = [
-            try? stagingDirectory(),
+            try? Self.stagingDirectory(),
             FileManager.default.temporaryDirectory
                 .appendingPathComponent("kindred_uploads", isDirectory: true),
         ].compactMap { $0 }
@@ -810,16 +964,11 @@ final class FlickrUploader {
         for directory in directories {
             guard let files = try? FileManager.default.contentsOfDirectory(
                 at: directory,
-                includingPropertiesForKeys: [.contentModificationDateKey],
+                includingPropertiesForKeys: nil,
                 options: [.skipsHiddenFiles]
             ) else { continue }
-            for file in files {
-                let modified = try? file.resourceValues(
-                    forKeys: [.contentModificationDateKey]
-                ).contentModificationDate
-                if let modified, modified < cutoff {
-                    try? FileManager.default.removeItem(at: file)
-                }
+            for file in files where !activeBodies.contains(file.path) {
+                try? FileManager.default.removeItem(at: file)
             }
         }
     }

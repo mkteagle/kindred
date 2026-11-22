@@ -146,7 +146,7 @@ def is_favorite(query, photo_id, user_id):
 
 def gallery(query, sort, limit, media="all", cursor=None,
             date_from=None, date_to=None, min_duration=None, favorited_by=None, album_id=None,
-            junk="all", viewer_id=None):
+            junk="all", viewer_id=None, thumbnail_bucket=None):
     """One page of the catalog, ordered by `sort` and filtered by `media`.
 
     Pages by keyset rather than OFFSET: the cursor carries the last row's sort
@@ -184,7 +184,7 @@ def gallery(query, sort, limit, media="all", cursor=None,
 
     # One extra row tells us whether a further page exists.
     params += [limit + 1]
-    rows = query(f"""SELECT p.id::text AS photo_id,
+    page_sql = f"""SELECT p.id::text AS photo_id,
         COALESCE(NULLIF(p.title,''),p.original_filename,'Untitled') AS photo_title,
         p.taken_at AS date_taken,
         p.media_kind, p.duration_seconds,
@@ -192,7 +192,18 @@ def gallery(query, sort, limit, media="all", cursor=None,
         {order_expr} AS sort_value,
         f.remote_url AS flickr_url
         {JOINS} WHERE {AVAILABLE} AND {kind_sql} AND {junk_sql} AND {keyset}
-        ORDER BY {order_expr} {direction}, p.id {direction} LIMIT %s""", tuple(params))
+        ORDER BY {order_expr} {direction}, p.id {direction} LIMIT %s"""
+    if thumbnail_bucket:
+        from r2_thumbnails import THUMBNAIL_PREFIX
+
+        # Limit the catalog query first, then look up only this page's R2 keys.
+        page_sql = f"""SELECT page.*, thumbnail.object_key AS thumbnail_object_key
+            FROM ({page_sql}) page
+            LEFT JOIN r2_thumbnail_objects thumbnail ON thumbnail.bucket = %s
+              AND thumbnail.object_key = %s || page.photo_id || '.jpg'
+            ORDER BY page.sort_value {direction}, page.photo_id::uuid {direction}"""
+        params += [thumbnail_bucket, THUMBNAIL_PREFIX]
+    rows = query(page_sql, tuple(params))
 
     has_more = len(rows) > limit
     page = [dict(row) for row in rows[:limit]]

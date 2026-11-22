@@ -1,6 +1,7 @@
 import Foundation
 import OSLog
 import PostHog
+import UIKit
 
 enum Analytics {
     enum BackupStage: String {
@@ -98,8 +99,13 @@ enum Analytics {
     private static let logger = Logger(subsystem: "com.kindlingsignal.kindred", category: "Backup")
     private static let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
     private static let event = "backup_diagnostic"
+    private static let timingEvent = "backup_timing"
+    private static let transportTimingEvent = "backup_transport_timing"
     private static let propertyNames: Set<String> = [
-        "stage", "reason", "http_status", "retryable", "attempt_id", "app_build"
+        "stage", "reason", "http_status", "retryable", "attempt_id", "app_build",
+        "attempt_number", "media_type", "bytes", "network_start", "network_end", "low_data_mode",
+        "app_state_start", "app_state_end", "elapsed_ms", "queue_wait_ms", "staging_ms", "setup_ms",
+        "transfer_ms", "finalize_ms", "icloud_fetch_ms", "outcome", "response_wait_ms", "callback_wait_ms"
     ]
 
     static func configure() {
@@ -115,7 +121,7 @@ enum Analytics {
         config.enableSwizzling = false
         config.preloadFeatureFlags = false
         config.setBeforeSend { event in
-            guard event.event == Self.event,
+            guard [Self.event, Self.timingEvent, Self.transportTimingEvent].contains(event.event),
                   let id = event.properties["attempt_id"] as? String,
                   UUID(uuidString: id) != nil else { return nil }
             event.distinctId = id
@@ -140,5 +146,119 @@ enum Analytics {
         ]
         properties["http_status"] = failure.httpStatus
         PostHogSDK.shared.capture(event, distinctId: id, properties: properties)
+    }
+
+    static func backupTransportTiming(
+        _ stage: BackupStage, attemptID: UUID, submittedAt: Date?,
+        transaction: URLSessionTaskTransactionMetrics, callbackAt: Date
+    ) {
+        func milliseconds(_ start: Date?, _ end: Date?) -> Int? {
+            guard let start, let end else { return nil }
+            return Int(max(0, end.timeIntervalSince(start) * 1_000))
+        }
+        var properties: [String: Any] = [
+            "attempt_id": attemptID.uuidString, "stage": stage.rawValue, "app_build": build,
+            "bytes": transaction.countOfRequestBodyBytesSent,
+            "network_start": transaction.isCellular ? "cellular" : "unmetered_or_unknown",
+        ]
+        properties["queue_wait_ms"] = milliseconds(submittedAt, transaction.fetchStartDate)
+        properties["transfer_ms"] = milliseconds(transaction.requestStartDate, transaction.requestEndDate)
+        properties["response_wait_ms"] = milliseconds(transaction.requestEndDate, transaction.responseEndDate)
+        properties["callback_wait_ms"] = milliseconds(transaction.responseEndDate, callbackAt)
+        properties["http_status"] = (transaction.response as? HTTPURLResponse)?.statusCode
+        PostHogSDK.shared.capture(transportTimingEvent, distinctId: attemptID.uuidString, properties: properties)
+    }
+
+    struct BackupTiming {
+        enum Phase: String {
+            case staging = "staging_ms"
+            case setup = "setup_ms"
+            case transfer = "transfer_ms"
+            case finalize = "finalize_ms"
+        }
+
+        private let startedAt = ContinuousClock.now
+        private let appState: String
+        private let network: String
+        private let lowDataMode: Bool
+        private var phase: Phase?
+        private var phaseStartedAt: ContinuousClock.Instant?
+        private var durations: [Phase: Duration] = [:]
+        var bytes: Int?
+        var iCloudFetch: Duration?
+
+        @MainActor init() {
+            appState = Self.currentAppState
+            network = NetworkReachability.shared.backupConnection
+            lowDataMode = NetworkReachability.shared.isConstrained
+        }
+
+        mutating func begin(_ phase: Phase) {
+            let now = ContinuousClock.now
+            finishPhase(at: now)
+            self.phase = phase
+            phaseStartedAt = now
+        }
+
+        @MainActor mutating func record(
+            attemptID: UUID,
+            attemptNumber: Int,
+            queueWait: Duration?,
+            isVideo: Bool,
+            stage: BackupStage,
+            failure: BackupFailure?
+        ) {
+            let now = ContinuousClock.now
+            finishPhase(at: now)
+            let id = attemptID.uuidString
+            let outcome = failure.map { $0.reason == .cancelled ? "cancelled" : "failed" } ?? "succeeded"
+            let elapsed = Self.milliseconds(startedAt.duration(to: now))
+            let appStateEnd = Self.currentAppState
+            let networkEnd = NetworkReachability.shared.backupConnection
+            var properties: [String: Any] = [
+                "attempt_id": id,
+                "attempt_number": attemptNumber,
+                "app_build": Analytics.build,
+                "media_type": isVideo ? "video" : "photo",
+                "stage": stage.rawValue,
+                "outcome": outcome,
+                "elapsed_ms": elapsed,
+                "app_state_start": appState,
+                "app_state_end": appStateEnd,
+                "network_start": network,
+                "network_end": networkEnd,
+                "low_data_mode": lowDataMode,
+            ]
+            properties["reason"] = failure?.reason.rawValue
+            properties["http_status"] = failure?.httpStatus
+            properties["bytes"] = bytes
+            properties["queue_wait_ms"] = queueWait.map(Self.milliseconds)
+            properties["icloud_fetch_ms"] = iCloudFetch.map(Self.milliseconds)
+            for (phase, duration) in durations {
+                properties[phase.rawValue] = Self.milliseconds(duration)
+            }
+            Analytics.logger.notice("backup_timing outcome=\(outcome, privacy: .public) stage=\(stage.rawValue, privacy: .public) elapsed_ms=\(elapsed, privacy: .public) app_state=\(appStateEnd, privacy: .public) network=\(networkEnd, privacy: .public)")
+            PostHogSDK.shared.capture(Analytics.timingEvent, distinctId: id, properties: properties)
+        }
+
+        private mutating func finishPhase(at now: ContinuousClock.Instant) {
+            guard let phase, let phaseStartedAt else { return }
+            durations[phase, default: .zero] += phaseStartedAt.duration(to: now)
+            self.phaseStartedAt = nil
+        }
+
+        private static func milliseconds(_ duration: Duration) -> Int64 {
+            let parts = duration.components
+            return parts.seconds * 1_000 + parts.attoseconds / 1_000_000_000_000_000
+        }
+
+        @MainActor private static var currentAppState: String {
+            switch UIApplication.shared.applicationState {
+            case .active: return "active"
+            case .inactive: return "inactive"
+            case .background: return "background"
+            @unknown default: return "unknown"
+            }
+        }
     }
 }

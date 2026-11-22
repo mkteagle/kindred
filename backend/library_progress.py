@@ -3,6 +3,16 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+R2_STATUS_FILE = 'worker-status/r2-thumbnail-status.json'
+
+
+def previews_finished(status):
+    discovery = status.get("discovery") or {}
+    previews = status.get("previews") or {}
+    return bool(discovery.get("complete") and previews.get("counts_authoritative")
+                and previews.get("stale") is False and previews.get("stage") == "queue_empty"
+                and previews.get("in_flight") == 0)
+
 
 def progress(root='/app/data'):
     root = Path(root)
@@ -12,6 +22,7 @@ def progress(root='/app/data'):
         ('discovery', 'nas-discovery-status.json'),
         ('previews', 'nas-preview-status.json'),
         ('recognition', 'nas-recognition-status.json'),
+        ('r2', R2_STATUS_FILE),
     ):
         try:
             path = root / filename
@@ -19,7 +30,7 @@ def progress(root='/app/data'):
             # Never return exception messages or source paths to household members.
             allowed = ('photos', 'videos', 'media_files', 'complete', 'phase', 'found',
                        'registered', 'unchanged', 'folders', 'errors', 'completed',
-                       'failed', 'waiting', 'batches', 'batch_completed', 'updated_at', 'elapsed_seconds',
+                       'failed', 'waiting', 'batches', 'batch_completed', 'updated_at', 'elapsed_seconds', 'thumbnail_total',
                        'stage', 'workers', 'in_flight', 'rate_per_minute', 'commit_batch_size', 'counts_authoritative', 'decode_seconds', 'metadata_seconds', 'commit_seconds')
             clean = {field: value[field] for field in allowed if field in value}
             age = max(0, datetime.now(timezone.utc).timestamp() - path.stat().st_mtime)

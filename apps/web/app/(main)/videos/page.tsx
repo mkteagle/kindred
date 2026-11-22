@@ -169,7 +169,7 @@ export default function VideosPage() {
 
   return (
     <main className="kx-page">
-      <h1 className="kx-title">The ones that move.</h1>
+      <h1 className="kx-title">Videos</h1>
       <p className="kx-lede">
         {total > 0 ? `${fmt.format(total)} clips, newest first.` : "Newest first."} Posters come off
         the first clear frame.

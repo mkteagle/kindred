@@ -57,7 +57,7 @@ export default function ColorsPage() {
 
   return (
     <main className="kx-page">
-      <h1 className="kx-title">Browse by what it looked like.</h1>
+      <h1 className="kx-title">Colors</h1>
       <p className="kx-lede">
         Dominant colour is worked out per photo on your server. Useful when you remember the red
         door but not the year.

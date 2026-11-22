@@ -38,6 +38,8 @@ struct LibraryPhoto: Codable, Identifiable, Hashable, Sendable {
     let flickr_url: String?
     /// Present on /timeline, absent on /library/photos.
     let thumb_url: String?
+    /// A short-lived R2 URL for the published library thumbnail, when available.
+    var thumbnail_url: String? = nil
 
     var id: String { photo_id }
 

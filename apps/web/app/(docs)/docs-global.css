@@ -1,46 +1,108 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700;800&display=swap');
 @import 'tailwindcss';
 @import 'fumadocs-ui/css/neutral.css';
 @import 'fumadocs-ui/css/preset.css';
+@import '../../components/kx/palette.css';
 
-html {
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root:has(.kindred-docs) {
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --color-fd-background: var(--bg);
+  --color-fd-foreground: var(--ink);
+  --color-fd-muted: var(--bg);
+  --color-fd-muted-foreground: var(--ink-2);
+  --color-fd-card: var(--surface);
+  --color-fd-card-foreground: var(--ink);
+  --color-fd-popover: var(--surface);
+  --color-fd-popover-foreground: var(--ink);
+  --color-fd-secondary: var(--surface);
+  --color-fd-secondary-foreground: var(--ink);
+  --color-fd-border: var(--line);
+  --color-fd-primary: var(--brand-link);
+  --color-fd-primary-foreground: var(--bg);
+  --color-fd-accent: var(--brand-tint);
+  --color-fd-accent-foreground: var(--ink);
+  --color-fd-ring: var(--brand-link);
+  --color-fd-overlay: rgb(20 17 30 / 45%);
+  background: var(--bg);
   scrollbar-gutter: stable;
 }
 
-html:has(body[data-scroll-locked]) {
+:root:has(.kindred-docs):has(body[data-scroll-locked]) {
   scrollbar-gutter: auto;
 }
 
-#nd-docs-layout {
-  --fd-sidebar-width: 200px !important;
-  grid-template-columns: 0px var(--fd-sidebar-col) minmax(0, 1fr) var(--fd-toc-width) 0px !important;
+.kindred-docs {
+  min-height: 100svh;
+  color: var(--ink);
+  font-family: var(--font-sans);
 }
 
-#nd-sidebar p {
-  font-size: 0.6875rem !important;
-  font-weight: 700 !important;
-  letter-spacing: 0.06em !important;
-  text-transform: uppercase !important;
-  opacity: 0.45 !important;
+.kindred-docs #nd-sidebar {
+  --color-fd-muted-foreground: var(--ink-2);
+  --color-fd-secondary: var(--surface);
+  background: var(--sidebar-surface);
+  border-inline-end: 0;
 }
 
-/* Kindred warm/earthy light theme */
-.light, [data-theme="light"], :root {
-  --color-fd-primary: #c9551c !important;
-  --color-fd-primary-foreground: #fff !important;
-  --color-fd-background: #fbf4e7 !important;
-  --color-fd-card: #f3efe8 !important;
-  --color-fd-border: rgba(74, 40, 26, .12) !important;
-  --color-fd-muted-foreground: #7d553f !important;
-  --color-fd-foreground: #2a201b !important;
+.kindred-docs #nd-sidebar p {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink-2);
 }
 
-/* Kindred warm/earthy dark theme */
-.dark, [data-theme="dark"] {
-  --color-fd-primary: #c9551c !important;
-  --color-fd-primary-foreground: #fff !important;
-  --color-fd-background: #1a1410 !important;
-  --color-fd-card: #221c16 !important;
-  --color-fd-border: #3d2e22 !important;
-  --color-fd-muted-foreground: #7d553f !important;
-  --color-fd-foreground: #f0e8e0 !important;
+.kindred-docs #nd-sidebar a[data-active="true"] {
+  background: var(--brand-tint);
+  color: var(--brand-link);
+  font-weight: 600;
+}
+
+.kindred-docs #nd-page h1 {
+  font-size: clamp(1.75rem, 4vw, 2.375rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+}
+
+.kindred-docs .prose {
+  --tw-prose-body: var(--ink-2);
+  --tw-prose-headings: var(--ink);
+  --tw-prose-links: var(--brand-link);
+  line-height: 1.7;
+}
+
+:root[data-theme="dark"] .kindred-docs .shiki:not(.not-fumadocs-codeblock *) code span,
+:root[data-theme="dark"] .kindred-docs code.shiki:not(.not-fumadocs-code *) span {
+  color: var(--shiki-dark);
+  font-style: var(--shiki-dark-font-style);
+}
+
+.kindred-docs-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  color: var(--ink-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.kindred-docs-wordmark {
+  display: block;
+  width: clamp(5.375rem, 18vw, 7rem);
+  height: auto;
+}
+
+.kindred-docs-brand [data-mark-theme="dark"],
+:root[data-theme="dark"] .kindred-docs-brand [data-mark-theme="light"] {
+  display: none;
+}
+
+:root[data-theme="dark"] .kindred-docs-brand [data-mark-theme="dark"] {
+  display: block;
+}
+
+.kindred-docs-brand > span {
+  padding-inline-start: 0.625rem;
+  border-inline-start: 1px solid var(--line);
 }

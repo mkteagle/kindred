@@ -52,7 +52,7 @@ export default function DuplicatesPage() {
   if (!isAdmin) {
     return (
       <main className="kx-page" style={{ maxWidth: 1080 }}>
-        <h1 className="kx-title">The same moment, twice.</h1>
+        <h1 className="kx-title">Duplicates</h1>
         <KxEmpty
           title="Admins only."
           body="Deciding what to keep changes the library for everyone in the house, so it is kept to the people who own it."
@@ -64,7 +64,7 @@ export default function DuplicatesPage() {
 
   return (
     <main className="kx-page" style={{ maxWidth: 1080 }}>
-      <h1 className="kx-title">The same moment, twice.</h1>
+      <h1 className="kx-title">Duplicates</h1>
       <p className="kx-lede">
         Near-identical frames found by hash and by look. Nothing is deleted until you say so —
         admins only.

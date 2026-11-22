@@ -33,14 +33,16 @@ export function SyncProgress() {
         <span className="kx-mono">
           {fmt.format(busiest.done)}
           {busiest.total !== null && ` of ${fmt.format(busiest.total)}`}
-          {busiest.percent !== null && ` · ${busiest.percent}%`}
+          {busiest.percent !== null ? ` · ${busiest.percent}%` : " · counting total"}
           {busiest.eta && ` · ${busiest.eta} left`}
           {others > 0 && ` · ${others} other ${others === 1 ? "job" : "jobs"} running`}
         </span>
       </span>
-      <span className="kx-syncbanner-bar" aria-hidden="true">
-        <span style={busiest.percent === null ? undefined : { width: `${busiest.percent}%` }} />
-      </span>
+      {busiest.percent !== null && (
+        <span className="kx-syncbanner-bar" aria-hidden="true">
+          <span style={{ width: `${busiest.percent}%` }} />
+        </span>
+      )}
       <span className="kx-syncbanner-arrow" aria-hidden="true">→</span>
     </Link>
   );

@@ -191,11 +191,11 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
         continuedBackup = nil
     }
 
-    func scheduleBackgroundSync() {
+    func scheduleBackgroundSync(after delay: TimeInterval = 15 * 60) {
         let request = BGProcessingTaskRequest(identifier: Self.backgroundTaskId)
         request.requiresNetworkConnectivity = true
         request.requiresExternalPower = false
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: delay)
 
         do {
             try BGTaskScheduler.shared.submit(request)
@@ -204,9 +204,30 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
         }
     }
 
+    func resumeBackupInForeground() {
+        Task { @MainActor in
+            guard UIApplication.shared.applicationState == .active,
+                  !DemoDataProvider.shared.isActive, canUploadNow else { return }
+            _ = await FlickrUploader.shared.resumeQueuedUploads()
+        }
+    }
+
+    func continueQueuedBackup() {
+        guard !FlickrUploader.shared.isPaused else { return }
+        if UIApplication.shared.applicationState == .active {
+            resumeBackupInForeground()
+        } else {
+            scheduleBackgroundSync(after: 0)
+        }
+    }
+
     private func handleBackgroundTask(_ task: BGProcessingTask) {
         let syncTask = Task { @MainActor in
             if FlickrUploader.shared.isPaused { return true }
+            if FlickrUploader.shared.isUploading {
+                scheduleBackgroundSync()
+                return true
+            }
             if autoSyncEnabled {
                 scheduleBackgroundSync()
                 await syncNewPhotos()

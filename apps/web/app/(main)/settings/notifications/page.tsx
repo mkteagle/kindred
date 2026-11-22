@@ -107,7 +107,7 @@ export default function NotificationSettingsPage() {
     <div className="ns-layout">
       {/* Left rail */}
       <main className="ns-main">
-        <h2 className="ns-h2">Notifications</h2>
+        <h2 className="kx-setting-title">Notifications</h2>
         <p className="ns-lede">
           Choose what we tell you and how. Everything syncs to your iPhone, your iPad, and the web &mdash; change it once.
         </p>
@@ -134,7 +134,7 @@ export default function NotificationSettingsPage() {
 
         {/* Quiet hours section */}
         <div className="ns-section">
-          <h2 className="ns-section-title">Quiet hours</h2>
+          <h3 className="ns-section-title">Quiet hours</h3>
           <div className="ns-card">
             <div className="ns-quiet-row">
               <div className="ns-cat-info">
@@ -155,7 +155,7 @@ export default function NotificationSettingsPage() {
           return (
             <div className="ns-section" key={section.id}>
               <div className="ns-section-heading">
-                <h2 className="ns-section-title">{section.label}</h2>
+                <h3 className="ns-section-title">{section.label}</h3>
                 {section.adminOnly && <span className="ns-admin-pill">ADMIN</span>}
               </div>
               <div className="ns-card">

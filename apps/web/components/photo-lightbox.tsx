@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -17,14 +18,15 @@ import { JUNK_LABELS, refreshLibraryVisibility, type JunkReason } from "@/lib/li
 import { BACKEND, fmt } from "@/lib/constants";
 import { useFavorites } from "@/components/kx/favorites";
 import { OptimizedPhoto } from "@/components/optimized-photo";
-import { imageWidth, loadedThumbnail, photoImageUrl, prefetchImage, thumbnailAspect } from "@/lib/image-delivery";
-import { HeartIcon } from "@/components/kx/icons";
+import { loadedThumbnail, photoImageUrl, prefetchImage, viewerImageUrl } from "@/lib/image-delivery";
+import { ChevronLeftIcon, CloseIcon, HeartIcon } from "@/components/kx/icons";
 
 /* ── Types ──────────────────────────────────────────────────────────── */
 
 export interface LightboxPhoto {
   photo_id: string;
   thumb_url: string;
+  thumbnail_url?: string;
   flickr_url?: string;
   photo_url?: string;
   photo_title?: string;
@@ -49,6 +51,7 @@ interface LightboxContextValue {
 
 interface PhotoMetadata {
   photo_id: string;
+  uploaded_by?: string | null;
   date_taken?: string | null;
   latitude?: number;
   longitude?: number;
@@ -208,18 +211,21 @@ function PhotoLightboxOverlay({
   const { isAdmin } = useUser();
   const { isFavorite, toggle: toggleFavorite } = useFavorites();
   const favorited = isFavorite(photoId);
-  const [infoOpen, setInfoOpen] = useState(true);
+  const [infoOpen, setInfoOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [mediaResult, setMediaResult] = useState<{ url: string; loaded: boolean }>();
+  const [detailPhotoId, setDetailPhotoId] = useState<string>();
   const [retry, setRetry] = useState<{ photoId: string; attempt: number }>();
   const [moreOpen, setMoreOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
-  const imageAreaRef = useRef<HTMLDivElement>(null);
-  const [previewBox, setPreviewBox] = useState({ width: 0, height: 0, scale: 1 });
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const infoToggleRef = useRef<HTMLButtonElement>(null);
+  const titleId = useId();
+  const infoId = useId();
   const thumbStripRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
   const shareRef = useRef<HTMLDivElement>(null);
@@ -264,11 +270,24 @@ function PhotoLightboxOverlay({
     staleTime: 10 * 60 * 1000,
   });
 
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
+
+  const closeInfo = () => {
+    setInfoOpen(false);
+    infoToggleRef.current?.focus();
+  };
+
   // Reset state on photo change
   useEffect(() => {
     setZoom(1);
     setPanOffset({ x: 0, y: 0 });
     setRetry(undefined);
+    setDetailPhotoId(undefined);
     setMoreOpen(false);
     setShareOpen(false);
     setCopySuccess(false);
@@ -300,9 +319,6 @@ function PhotoLightboxOverlay({
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
       switch (e.key) {
-        case "Escape":
-          onClose();
-          break;
         case "ArrowLeft":
           if (hasPrev) onGoTo(index - 1);
           break;
@@ -327,22 +343,11 @@ function PhotoLightboxOverlay({
         case "i":
           setInfoOpen((v) => !v);
           break;
-        case "h":
-          // Heart toggle — placeholder, no backend endpoint yet
-          break;
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [onClose, onGoTo, index, hasPrev, hasNext]);
-
-  // Prevent body scroll when lightbox is open
-  useEffect(() => {
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, []);
+  }, [onGoTo, index, hasPrev, hasNext]);
 
   // Zoom on click
   const handleImageClick = useCallback(() => {
@@ -461,89 +466,63 @@ function PhotoLightboxOverlay({
     return groups;
   }, [detections]);
 
-  // Keep the sizing inputs stable while metadata and filmstrip images arrive.
-  const { cachedThumb, aspect } = useMemo(() => ({
-    cachedThumb: loadedThumbnail(photoId),
-    aspect: thumbnailAspect(photoId),
-  }), [photoId]);
-  const previewPixels = useCallback((ratio?: number) => {
-    const width = ratio ? Math.min(previewBox.width, previewBox.height * ratio) : previewBox.width;
-    return imageWidth(width * previewBox.scale);
-  }, [previewBox]);
-  const previewWidth = previewBox.width > 0 && previewBox.height > 0 ? previewPixels(aspect) : 0;
-  // JPEG is cheaper to encode on a cold NAS request. Use the same URL for prefetches.
-  const imageUrl = previewWidth ? photoImageUrl(photoId, previewWidth, "jpeg") : "";
-  const thumbUrl = cachedThumb || photoImageUrl(photoId, 320);
+  const cachedThumb = useMemo(() => loadedThumbnail(photoId), [photoId]);
+  const thumbUrl = cachedThumb || currentPhoto?.thumbnail_url || photoImageUrl(photoId, 320);
   const isVideo = currentPhoto?.media_kind === "video";
   // Videos stream the NAS original; the poster is the cached frame ffmpeg cut.
   const videoUrl = `${BACKEND}/photos/${photoId}/local?variant=original`;
   const posterUrl = `${BACKEND}/photos/${photoId}/local?variant=thumb`;
-  const mediaUrl = isVideo ? videoUrl : imageUrl;
+  const mediaUrl = isVideo ? videoUrl : viewerImageUrl(photoId);
   const attempt = retry?.photoId === photoId ? retry.attempt : 0;
   const requestUrl = attempt && mediaUrl ? `${mediaUrl}&retry=${attempt}` : mediaUrl;
   const imageLoaded = mediaResult?.url === requestUrl && mediaResult.loaded;
   const imageError = mediaResult?.url === requestUrl && !mediaResult.loaded;
-
-  useLayoutEffect(() => {
-    const area = imageAreaRef.current;
-    if (!area) return;
-    const measure = () => {
-      const box = area.getBoundingClientRect();
-      const style = window.getComputedStyle(area);
-      const width = box.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-      const height = box.height - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
-      const scale = Math.min(window.devicePixelRatio || 1, 3);
-      setPreviewBox((previous) =>
-        previous.width === width && previous.height === height && previous.scale === scale
-          ? previous
-          : { width, height, scale },
-      );
-    };
-    const observer = new ResizeObserver(measure);
-    observer.observe(area);
-    window.addEventListener("resize", measure);
-    measure();
-    return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
-  }, []);
+  const detailLoaded = detailPhotoId === photoId;
+  const detailRequested = !isVideo && imageLoaded && (zoom > 1 || detailLoaded);
+  const photoTransform = {
+    transform: `scale(${zoom}) translate(${panOffset.x / zoom}px, ${panOffset.y / zoom}px)`,
+    transition: dragging ? "none" : "transform 0.2s ease",
+  };
 
   useEffect(() => {
-    if (!imageLoaded || !previewWidth) return;
+    if (!imageLoaded) return;
     const controller = new AbortController();
-    for (const offset of [1, -1, 2, -2]) {
+    for (const offset of [1, -1]) {
       const photo = photos[index + offset];
       if (photo && photo.media_kind !== "video") {
-        const width = previewPixels(thumbnailAspect(photo.photo_id));
-        void prefetchImage(photoImageUrl(photo.photo_id, width, "jpeg"), controller.signal);
+        void prefetchImage(viewerImageUrl(photo.photo_id), controller.signal);
       }
     }
     return () => controller.abort();
-  }, [imageLoaded, previewWidth, previewPixels, index, photos]);
+  }, [imageLoaded, index, photos]);
+
+  const title = currentPhoto?.photo_title || detections?.photo_title || (isVideo ? "Untitled video" : "Untitled photo");
 
   return (
-    <div
-      className="lb-overlay"
+    <dialog
+      ref={dialogRef}
+      className={`kx kx-lightbox${infoOpen ? " has-info" : ""}`}
+      aria-labelledby={titleId}
+      onCancel={event => {
+        event.preventDefault();
+        if (shareOpen || moreOpen) {
+          setShareOpen(false);
+          setMoreOpen(false);
+          return;
+        }
+        onClose();
+      }}
       onMouseUp={handleMouseUp}
       onMouseMove={handleMouseMove}
     >
-      {/* ── Top bar ─────────────────────────────────────────── */}
-      <div className="lb-topbar">
-        <button className="lb-close" onClick={onClose} aria-label="Close" title="Close (Esc)">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
+      <header className="lb-topbar">
+        <button className="lb-close" onClick={onClose} aria-label="Close" title="Back to library">
+          <ChevronLeftIcon size={20} />
         </button>
-
-        {total > 0 && (
-          <span className="lb-counter">
-            {fmt.format(index + 1)} / {fmt.format(total)}
-          </span>
-        )}
-
-        <span className="lb-title">
-          {currentPhoto?.photo_title || detections?.photo_title || ""}
-        </span>
-
+        <div className="lb-heading">
+          <h2 id={titleId} className="lb-title">{title}</h2>
+          {total > 1 && <span className="lb-counter">{fmt.format(index + 1)} of {fmt.format(total)}</span>}
+        </div>
         <div className="lb-actions">
           {/* Share */}
           <div className="lb-action-wrap" ref={shareRef}>
@@ -551,6 +530,7 @@ function PhotoLightboxOverlay({
               className="lb-action-btn"
               onClick={() => { setShareOpen(!shareOpen); setMoreOpen(false); }}
               aria-label="Share"
+              aria-expanded={shareOpen}
               title="Share"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -566,28 +546,28 @@ function PhotoLightboxOverlay({
                   </svg>
                   {copySuccess ? "Copied!" : "Copy private link"}
                 </button>
-                <button className="lb-popover-row" onClick={handleDownload}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
-                  Download original
-                </button>
               </div>
             )}
           </div>
 
-          {/* Download */}
-          <button className="lb-action-btn" onClick={handleDownload} aria-label="Download" title="Download original">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
+          <button
+            className={`lb-action-btn${favorited ? " is-active" : ""}`}
+            onClick={() => toggleFavorite(photoId)}
+            aria-label="Favorite"
+            aria-pressed={favorited}
+            title={favorited ? "Remove from favorites" : "Add to favorites"}
+          >
+            <HeartIcon size={18} filled={favorited} />
           </button>
 
           {/* Info toggle */}
           <button
             className={`lb-action-btn ${infoOpen ? "is-active" : ""}`}
+            ref={infoToggleRef}
             onClick={() => setInfoOpen(!infoOpen)}
             aria-label="Info"
+            aria-expanded={infoOpen}
+            aria-controls={infoOpen ? infoId : undefined}
             title="Toggle info (I)"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -601,14 +581,21 @@ function PhotoLightboxOverlay({
               className="lb-action-btn"
               onClick={() => { setMoreOpen(!moreOpen); setShareOpen(false); }}
               aria-label="More"
+              aria-expanded={moreOpen}
               title="More actions"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" />
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <circle cx="5" cy="12" r="2.65" /><circle cx="12" cy="12" r="2.65" /><circle cx="19" cy="12" r="2.65" />
               </svg>
             </button>
             {moreOpen && (
               <div className="lb-popover">
+                <button className="lb-popover-row" onClick={handleDownload}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Download original
+                </button>
                 {currentPhoto?.flickr_url && (
                   <a
                     href={currentPhoto.flickr_url}
@@ -635,126 +622,147 @@ function PhotoLightboxOverlay({
             )}
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* ── Prev arrow ──────────────────────────────────────── */}
-      {hasPrev && (
-        <button
-          className="lb-arrow lb-arrow-prev"
-          onClick={() => onGoTo(index - 1)}
-          aria-label="Previous photo"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </button>
-      )}
+      <div className="lb-viewer">
+        <div className="lb-canvas">
+          {/* ── Prev arrow ──────────────────────────────────────── */}
+          {hasPrev && (
+            <button
+              className="lb-arrow lb-arrow-prev"
+              onClick={() => onGoTo(index - 1)}
+              aria-label="Previous photo"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+            </button>
+          )}
 
-      {/* ── Next arrow ──────────────────────────────────────── */}
-      {hasNext && (
-        <button
-          className={`lb-arrow lb-arrow-next ${infoOpen ? "lb-arrow-next-shifted" : ""}`}
-          onClick={() => onGoTo(index + 1)}
-          aria-label="Next photo"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
-        </button>
-      )}
+          {/* ── Next arrow ──────────────────────────────────────── */}
+          {hasNext && (
+            <button
+              className="lb-arrow lb-arrow-next"
+              onClick={() => onGoTo(index + 1)}
+              aria-label="Next photo"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
+          )}
 
-      {/* ── Main image ──────────────────────────────────────── */}
-      <div
-        ref={imageAreaRef}
-        className={`lb-image-area ${infoOpen ? "lb-image-area-with-info" : ""}`}
-        onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        style={{ cursor: zoom > 1 ? (dragging ? "grabbing" : "grab") : "zoom-in" }}
-      >
-        {/* Video: a real player, with zoom and pan deliberately left out —
-            they fight the transport controls and mean nothing for playback. */}
-        {isVideo && (
-          <video
-            key={requestUrl}
-            className="lb-main-video"
-            src={requestUrl}
-            poster={posterUrl}
-            controls
-            autoPlay
-            playsInline
-            preload="metadata"
-            onLoadedData={() => setMediaResult({ url: requestUrl, loaded: true })}
-            onError={() => setMediaResult({ url: requestUrl, loaded: false })}
-            onClick={(e) => e.stopPropagation()}
-          />
-        )}
-
-        {!isVideo && (
-          <div className="lb-photo-stage">
-            {!imageLoaded && (
-              <img src={thumbUrl} alt="" className="lb-placeholder" draggable={false} />
-            )}
-            {requestUrl && (
-              <img
+          {/* ── Main image ──────────────────────────────────────── */}
+          <div
+            className="lb-image-area"
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            style={isVideo ? undefined : { cursor: zoom > 1 ? (dragging ? "grabbing" : "grab") : "zoom-in" }}
+          >
+            {/* Video: a real player, with zoom and pan deliberately left out —
+                they fight the transport controls and mean nothing for playback. */}
+            {isVideo && (
+              <video
                 key={requestUrl}
+                className="lb-main-video"
                 src={requestUrl}
-                fetchPriority="high"
-                decoding="async"
-                alt={currentPhoto?.photo_title || ""}
-                className={`lb-main-image ${imageLoaded ? "is-loaded" : ""}`}
-                onLoad={() => setMediaResult({ url: requestUrl, loaded: true })}
+                poster={posterUrl}
+                controls
+                autoPlay
+                playsInline
+                preload="metadata"
+                onLoadedData={() => setMediaResult({ url: requestUrl, loaded: true })}
                 onError={() => setMediaResult({ url: requestUrl, loaded: false })}
-                onClick={handleImageClick}
-                draggable={false}
-                style={{
-                  transform: `scale(${zoom}) translate(${panOffset.x / zoom}px, ${panOffset.y / zoom}px)`,
-                  transition: dragging ? "none" : "transform 0.2s ease",
-                }}
+                onClick={(e) => e.stopPropagation()}
               />
             )}
-          </div>
-        )}
 
-        {/* Loading caption */}
-        {!imageLoaded && !imageError && (
-          <div className="lb-loading-caption">
-            <span className="lb-loading-dot" />
-            Loading preview...
-          </div>
-        )}
-        {imageError && <div className="lb-loading-caption" role="alert">
-          Could not load this photo. <button onClick={() => setRetry({ photoId, attempt: attempt + 1 })}>Retry</button>
-        </div>}
+            {!isVideo && (
+              <div className="lb-photo-stage">
+                {!imageLoaded && (
+                  <img src={thumbUrl} alt="" className="lb-placeholder" referrerPolicy="no-referrer" draggable={false} />
+                )}
+                {requestUrl && (
+                  <img
+                    key={requestUrl}
+                    src={requestUrl}
+                    fetchPriority="high"
+                    decoding="async"
+                    alt={currentPhoto?.photo_title || ""}
+                    className={`lb-main-image ${imageLoaded && !detailLoaded ? "is-loaded" : ""}`}
+                    onLoad={() => setMediaResult({ url: requestUrl, loaded: true })}
+                    onError={() => setMediaResult({ url: requestUrl, loaded: false })}
+                    onClick={handleImageClick}
+                    draggable={false}
+                    style={photoTransform}
+                  />
+                )}
+                {detailRequested && (
+                  <img
+                    key={photoId}
+                    src={viewerImageUrl(photoId, true)}
+                    decoding="async"
+                    alt=""
+                    aria-hidden="true"
+                    className={`lb-main-image ${detailLoaded ? "is-loaded" : ""}`}
+                    onLoad={() => setDetailPhotoId(photoId)}
+                    onClick={handleImageClick}
+                    draggable={false}
+                    style={photoTransform}
+                  />
+                )}
+              </div>
+            )}
 
-        {/* Zoom indicator */}
-        {zoom > 1 && (
-          <div className="lb-zoom-chip">
-            {zoom.toFixed(1)}x &middot; click to reset
+            {/* Loading caption */}
+            {!imageLoaded && !imageError && (
+              <div className="lb-loading-caption">
+                <span className="lb-loading-dot" />
+                Loading preview...
+              </div>
+            )}
+            {imageError && <div className="lb-loading-caption" role="alert">
+              Could not load this photo. <button onClick={() => setRetry({ photoId, attempt: attempt + 1 })}>Retry</button>
+            </div>}
+
+            {/* Zoom indicator */}
+            {zoom > 1 && (
+              <div className="lb-zoom-chip">
+                {zoom.toFixed(1)}x &middot; click to reset
+              </div>
+            )}
+          </div>
+
+        </div>
+        {/* ── Thumb strip ─────────────────────────────────────── */}
+        {total > 1 && (
+          <div className="lb-thumb-strip" ref={thumbStripRef} aria-label="Filmstrip">
+            {photos.map((p, i) => (
+              <button
+                key={p.photo_id}
+                className={`lb-thumb ${i === index ? "is-active" : ""}`}
+                onClick={() => onGoTo(i)}
+                aria-label={`${p.media_kind === "video" ? "Video" : "Photo"} ${i + 1}`}
+                aria-current={i === index ? "true" : undefined}
+              >
+                <OptimizedPhoto photoId={p.photo_id} video={p.media_kind === "video"} thumbnailUrl={p.thumbnail_url} />
+              </button>
+            ))}
           </div>
         )}
       </div>
 
       {/* ── Side meta panel ─────────────────────────────────── */}
       {infoOpen && (
-        <aside className="lb-info-panel">
-          {/* Kind, title and the compact meta block the redesign leads with.
-              What used to be the "when" and "where" sections lives here. */}
-          <div className="lb-info-head">
-            <div>
-              <span className="lb-info-kind">{isVideo ? "Video" : "Photo"}</span>
-              <h3 className="lb-info-title">
-                {currentPhoto?.photo_title || detections?.photo_title || "Untitled"}
-              </h3>
-            </div>
-            <button className="lb-info-close" onClick={onClose} aria-label="Close">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
+        <aside className="lb-info-panel" id={infoId} aria-label="Photo details">
+          <header className="lb-info-head">
+            <h3 className="lb-info-title">Details</h3>
+            <button className="lb-info-close" onClick={closeInfo} aria-label="Close details">
+              <CloseIcon size={16} />
             </button>
-          </div>
+          </header>
 
           <div className="lb-info-meta">
             {(metadata?.date_taken || currentPhoto?.date_taken) && (
@@ -769,6 +777,7 @@ function PhotoLightboxOverlay({
               </span>
             )}
             {metadata?.location_name && <span>{metadata.location_name}</span>}
+            {metadata?.uploaded_by && <span>Uploaded by {metadata.uploaded_by}</span>}
             {metadata?.width && metadata?.height && (
               <span>
                 {metadata.width} × {metadata.height}
@@ -892,39 +901,9 @@ function PhotoLightboxOverlay({
             </section>
           )}
 
-          <div className="lb-info-footer">
-            <button className="lb-info-share" onClick={handleCopyLink}>
-              {copySuccess ? "Link copied" : "Share"}
-            </button>
-            {/* Per member, not per household: this is one person's shortlist
-                of their own library. */}
-            <button
-              className={`lb-info-fav ${favorited ? "is-on" : ""}`.trim()}
-              aria-pressed={favorited}
-              onClick={() => toggleFavorite(photoId)}
-            >
-              <HeartIcon filled={favorited} />
-              {favorited ? "Favorited" : "Favorite"}
-            </button>
-          </div>
         </aside>
       )}
 
-      {/* ── Thumb strip ─────────────────────────────────────── */}
-      {total > 1 && (
-        <div className={`lb-thumb-strip ${infoOpen ? "lb-thumb-strip-with-info" : ""}`} ref={thumbStripRef}>
-          {photos.map((p, i) => (
-            <button
-              key={p.photo_id}
-              className={`lb-thumb ${i === index ? "is-active" : ""}`}
-              onClick={() => onGoTo(i)}
-              aria-label={`Photo ${i + 1}`}
-            >
-              <OptimizedPhoto photoId={p.photo_id} video={p.media_kind === "video"} />
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    </dialog>
   );
 }

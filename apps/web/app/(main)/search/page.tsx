@@ -52,6 +52,7 @@ function SearchContent() {
   const urlQuery = searchParams.get("q");
   const lastUrlQuery = useRef<string | null | undefined>(urlQuery === null ? null : undefined);
   const inputRef = useRef<HTMLInputElement>(null);
+  const resultsEnd = useRef<HTMLDivElement>(null);
   const focusOnArrival = searchParams.get("focus") === "1";
   const { query: input, debouncedQuery: debouncedQ, setQuery: setInput, commitQuery } = useKxSearch();
   const { searchOpen } = useKxUi();
@@ -164,9 +165,20 @@ function SearchContent() {
   })), [catalog.data]);
   const results = captureBrowse ? catalogResults : textResults.results;
   const error = captureBrowse ? catalog.isError : textResults.error;
-  const retry = captureBrowse ? catalog.refetch : textResults.retry;
+  const { fetchNextPage } = catalog;
+  const retry = captureBrowse ? (catalog.isFetchNextPageError ? fetchNextPage : catalog.refetch) : textResults.retry;
   const searching = enabled && (settling || !queryReady || (captureBrowse ? catalog.isLoading : textResults.loading));
   const showResults = ready && results.length > 0;
+  const canLoadNextPage = showResults && captureBrowse && catalog.hasNextPage && !catalog.isFetching && !error;
+  useEffect(() => {
+    const target = resultsEnd.current;
+    if (!target || !canLoadNextPage) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) void fetchNextPage({ cancelRefetch: false });
+    }, { root: target.closest(".kx-content"), rootMargin: "0px 0px 600px" });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [canLoadNextPage, fetchNextPage]);
   useEffect(() => {
     if (ready && !searching && !error && debouncedQ) {
       rememberSearch(debouncedQ);
@@ -299,9 +311,13 @@ function SearchContent() {
             </button>)}
           </div>
         </section>)}
-        {captureBrowse && catalog.hasNextPage && <button className="kx-button" disabled={catalog.isFetchingNextPage} onClick={() => void catalog.fetchNextPage()}>
-          {catalog.isFetchingNextPage ? "Loading…" : "Load more"}
-        </button>}
+        {captureBrowse && catalog.isFetchingNextPage && (
+          <div className="kx-library-loading" role="status">
+            <span className="kx-spinner-ring" aria-hidden="true" />
+            Loading more results…
+          </div>
+        )}
+        {captureBrowse && catalog.hasNextPage && <div ref={resultsEnd} aria-hidden="true" style={{ height: 1 }} />}
       </>}
     </>
   );

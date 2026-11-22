@@ -4,7 +4,7 @@ import Link from "next/link";
 import { VirtualPhotoRows } from "./virtual-photo-rows";
 import { ChevronDownIcon, NavIcon, SearchIcon, ZoomInIcon, ZoomOutIcon } from "./icons";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { BACKEND, fmt } from "@/lib/constants";
 import { useLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
@@ -19,6 +19,21 @@ type Page = { photos: LibraryPhoto[]; next_cursor: string | null };
 
 /** Movement in px before a mouse-down turns into a marquee sweep. */
 const DRAG_THRESHOLD = 8;
+
+function yearStops(years: number[], selected: number | null) {
+  const last = years.length - 1;
+  let indices = years.map((_, index) => index);
+  if (years.length > 7) {
+    const current = selected === null ? -1 : years.indexOf(selected);
+    const center = Math.min(last - 2, Math.max(2, current));
+    indices = current <= 1 ? [0, 1, Math.floor(last / 2), last]
+      : [0, center - 1, center, center + 1, last];
+  }
+  return indices.map((index, position) => ({
+    year: years[index],
+    gapBefore: position > 0 && index > indices[position - 1] + 1,
+  }));
+}
 
 interface Marquee {
   left: number;
@@ -55,10 +70,13 @@ export function ChronologicalLibrary({ timeline = false, albumId, junkOnly = fal
    * which reads as the scrubber simply not working.
    */
   const [seekYear, setSeekYear] = useState<number | null>(null);
+  const [visibleYear, setVisibleYear] = useState<number | null>(null);
   const [media, setMedia] = useState("all");
   const [grain, setGrain] = useState<"days" | "months" | "years">(timeline ? "months" : "days");
   const [dateTo, setDateTo] = useState("");
   const [dateOpen, setDateOpen] = useState(false);
+  const yearPicker = useRef<HTMLSelectElement>(null);
+  const yearRail = useRef<HTMLElement>(null);
   const [layoutOpen, setLayoutOpen] = useState(false);
 
   const { data, error, isPending, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } =
@@ -66,7 +84,7 @@ export function ChronologicalLibrary({ timeline = false, albumId, junkOnly = fal
       queryKey: ["library-mosaic", media, seekYear, dateTo, albumId, junkOnly],
       initialPageParam: null as string | null,
       queryFn: async ({ pageParam, signal }) => {
-        const params = new URLSearchParams({ sort: "newest", media, limit: "96" });
+        const params = new URLSearchParams({ sort: "newest", media, limit: "96", signed_thumbnails: "true" });
         if (junkOnly) params.set("junk", "only");
         if (pageParam) params.set("cursor", pageParam as string);
         if (albumId) params.set("album_id", albumId);
@@ -107,6 +125,7 @@ export function ChronologicalLibrary({ timeline = false, albumId, junkOnly = fal
       photos.map((photo) => ({
         photo_id: photo.photo_id,
         thumb_url: thumbUrl(photo),
+        thumbnail_url: photo.thumbnail_url,
         photo_title: photo.photo_title,
         date_taken: photo.date_taken,
         media_kind: photo.media_kind,
@@ -140,9 +159,65 @@ export function ChronologicalLibrary({ timeline = false, albumId, junkOnly = fal
     return seen;
   }, [yearRows, sections]);
 
+  const activeYear = isPending ? seekYear : visibleYear;
+  const railStops = useMemo(() => {
+    const available = activeYear !== null && !years.includes(activeYear)
+      ? [...years, activeYear].sort((a, b) => b - a)
+      : years;
+    return yearStops(available, activeYear);
+  }, [years, activeYear]);
+  const showRail = !albumId && railStops.length > 0;
+
+  useLayoutEffect(() => {
+    const rail = yearRail.current;
+    const body = rail?.parentElement;
+    const scroller = body?.closest<HTMLElement>(".kx-content");
+    if (!rail || !body || !scroller) return;
+    const desktop = window.matchMedia("(width > 900px)");
+    const edgeInset = 12;
+    let frame = 0;
+    let lastHeight = -1;
+    const fitRail = () => {
+      frame = 0;
+      if (!desktop.matches) return;
+      const gridTop = body.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      const height = Math.max(0, Math.floor(scroller.clientHeight - Math.max(edgeInset, gridTop) - edgeInset));
+      if (height === lastHeight) return;
+      lastHeight = height;
+      rail.style.setProperty("--year-rail-height", `${height}px`);
+    };
+    const schedule = () => {
+      if (desktop.matches && !frame) frame = requestAnimationFrame(fitRail);
+    };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(scroller);
+    observer.observe(body);
+    // The date controls and status banner can move the grid independently of scrolling.
+    const main = body.closest("main");
+    if (main) observer.observe(main);
+    scroller.addEventListener("scroll", schedule, { passive: true });
+    fitRail();
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      scroller.removeEventListener("scroll", schedule);
+    };
+  }, [showRail]);
+
+  const showYearPicker = () => {
+    setDateOpen(true);
+    requestAnimationFrame(() => yearPicker.current?.focus());
+  };
+
   const seekToYear = useCallback((year: number) => {
     setDateTo("");
     setSeekYear(year);
+    scrollToTop();
+  }, [scrollToTop]);
+
+  const clearDate = useCallback(() => {
+    setDateTo("");
+    setSeekYear(null);
     scrollToTop();
   }, [scrollToTop]);
 
@@ -310,13 +385,13 @@ export function ChronologicalLibrary({ timeline = false, albumId, junkOnly = fal
       </div>
       {dateOpen && <div className="kx-date-filter">
         <label>Jump to date <input className="kx-input" type="date" value={dateTo} onChange={e => { setSeekYear(null); setDateTo(e.target.value); scrollToTop(); }} /></label>
-        {years.length > 0 && <label>Jump to year <select className="kx-input" value={seekYear ?? ""} onChange={event => {
+        {years.length > 0 && <label>Jump to year <select ref={yearPicker} className="kx-input" value={seekYear ?? ""} onChange={event => {
           if (event.target.value) seekToYear(Number(event.target.value));
         }}>
           <option value="">Choose a year</option>
           {years.map(year => <option key={year} value={year}>{year}</option>)}
         </select></label>}
-        {(dateTo || seekYear) && <button className="kx-button" onClick={() => { setDateTo(""); setSeekYear(null); }}>Show all dates</button>}
+        {(dateTo || seekYear) && <button className="kx-button" onClick={clearDate}>Show all dates</button>}
       </div>}
 
 
@@ -324,6 +399,7 @@ export function ChronologicalLibrary({ timeline = false, albumId, junkOnly = fal
         <div className="kx-mosaic-column" ref={columnRef} onMouseDown={onColumnMouseDown}>
           <VirtualPhotoRows sections={sections} selected={selected} selecting={selecting}
             onSelectDay={selectDay} onTileClick={onTileClick} registerTile={registerTile}
+            onVisibleYear={setVisibleYear}
             dayLabels={grain === "days" ? dayLabels : undefined}
             hasNextPage={hasNextPage} fetching={isFetchingNextPage} error={Boolean(error)}
             fetchNextPage={() => void fetchNextPage()}
@@ -346,7 +422,12 @@ export function ChronologicalLibrary({ timeline = false, albumId, junkOnly = fal
               onRetry={() => void (photos.length ? fetchNextPage() : refetch())}
             />
           )}
-          {isFetchingNextPage && <KxSkeletonGrid count={6} />}
+          {isFetchingNextPage && (
+            <div className="kx-library-loading" role="status">
+              <span className="kx-spinner-ring" aria-hidden="true" />
+              Loading more items…
+            </div>
+          )}
           {/* An explicit control as well as the observer: infinite scroll fails
               silently if the sentinel never enters the viewport. */}
           {hasNextPage && !isFetchingNextPage && (
@@ -359,8 +440,30 @@ export function ChronologicalLibrary({ timeline = false, albumId, junkOnly = fal
           {!hasNextPage && photos.length > 0 && <p className="kx-status">That&rsquo;s everything.</p>}
 
         </div>
-
-
+        {showRail && (
+          <nav ref={yearRail} className="kx-scrubber" aria-label="Jump to year">
+            <button className="kx-year-all" type="button" onClick={clearDate} title="Show all dates">
+              All
+            </button>
+            <ol>
+              {railStops.map(({ year, gapBefore }) => (
+                <Fragment key={year}>
+                  {gapBefore && <li>
+                    <button className="kx-year-gap" type="button" onClick={showYearPicker} aria-label="Choose another year" title="Choose another year">
+                      <span aria-hidden="true">…</span>
+                    </button>
+                  </li>}
+                  <li>
+                    <button type="button" aria-current={activeYear === year ? "true" : undefined} onClick={() => seekToYear(year)}>
+                      <span className="kx-year-marker" aria-hidden="true" />
+                      <span>{year}</span>
+                    </button>
+                  </li>
+                </Fragment>
+              ))}
+            </ol>
+          </nav>
+        )}
       </div>
 
       <KxSelectBar />

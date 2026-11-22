@@ -1,10 +1,15 @@
 {
   "framework": "fastapi",
   "rewrites": [
+    { "source": "/health/backup", "destination": "https://nas-api.kindredphotos.app/health/backup" },
     { "source": "/photos/upload", "destination": "https://nas-api.kindredphotos.app/photos/upload" },
     { "source": "/uploads/:path*", "destination": "https://nas-api.kindredphotos.app/uploads/:path*" },
     { "source": "/phone-backups/:path*", "destination": "https://nas-api.kindredphotos.app/phone-backups/:path*" },
-    { "source": "/photos/:photoId/local", "destination": "https://nas-api.kindredphotos.app/photos/:photoId/local" },
+    {
+      "source": "/photos/:photoId/local",
+      "missing": [{ "type": "query", "key": "variant", "value": "thumb" }],
+      "destination": "https://nas-api.kindredphotos.app/photos/:photoId/local"
+    },
     {
       "source": "/photos/:photoId/image",
       "has": [{ "type": "query", "key": "size", "value": "o" }],

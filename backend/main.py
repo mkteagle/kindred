@@ -38,6 +38,7 @@ from albums import album_slug, unique_album_slug
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 FLICKR_API_KEY = os.environ.get("FLICKR_API_KEY", "")
+FLICKR_USER_AGENT = "Kindred/1.0"
 FLICKR_SECRET = os.environ.get("FLICKR_SECRET", "")
 FLICKR_OAUTH_TOKEN = os.environ.get("FLICKR_OAUTH_TOKEN", "")
 FLICKR_OAUTH_SECRET = os.environ.get("FLICKR_OAUTH_SECRET", "")
@@ -3238,10 +3239,7 @@ async def _phone_flickr_worker() -> None:
             creds = await asyncio.to_thread(get_flickr_credentials)
             if creds and creds.get("verified"):
                 lock_conn = await asyncio.to_thread(get_db)
-                lock_conn.autocommit = True
-                with lock_conn.cursor() as cursor:
-                    cursor.execute("SELECT pg_try_advisory_lock(%s)", (4_921_733_109,))
-                    locked = cursor.fetchone()[0]
+                locked = await asyncio.to_thread(_claim_phone_flickr_worker, lock_conn)
                 if locked and await _mirror_next_phone_photo(creds):
                     delay = 1
         except Exception as exc:
@@ -3250,6 +3248,17 @@ async def _phone_flickr_worker() -> None:
             if lock_conn:
                 lock_conn.close()
         await asyncio.sleep(delay)
+
+
+def _claim_phone_flickr_worker(conn) -> bool:
+    # pgvector registration starts a transaction. Keep autocommit unchanged
+    # and finish that transaction after taking the session-level lock.
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT pg_try_advisory_lock(%s)", (4_921_733_109,))
+        locked = cursor.fetchone()[0]
+    conn.commit()
+    return locked
+
 
 
 @app.on_event("startup")
@@ -3479,7 +3488,7 @@ async def _upload_to_flickr(
                 upload_url,
                 data=flickr_params,
                 files=files,
-                headers={"Authorization": auth_header},
+                headers=_flickr_headers(auth_header),
             )
 
     if resp.status_code not in range(200, 300):
@@ -3586,7 +3595,9 @@ def start_resumable_upload(
 async def append_resumable_upload_chunk(
     upload_id: str,
     request: FastAPIRequest,
+    background_tasks: BackgroundTasks,
     offset: int = Query(..., ge=0),
+    finalize: bool = Query(False),
     user=Depends(get_current_user),
 ):
     """Append one bounded chunk at the exact server-confirmed offset."""
@@ -3639,29 +3650,31 @@ async def append_resumable_upload_chunk(
                 )
             except ChunkAppendError as exc:
                 raise HTTPException(409, str(exc))
-            status = "ready" if next_offset == int(row["byte_size"]) else "pending"
+            complete = next_offset == int(row["byte_size"])
+            status = "pending"
+            if complete:
+                status = "finalizing" if finalize else "ready"
             cur.execute(
                 """
                 UPDATE upload_sessions
                 SET received_bytes = %s, status = %s, last_error = NULL,
                     updated_at = now(), expires_at = now() + interval '7 days'
                 WHERE id = %s
-                RETURNING id, status, received_bytes
+                RETURNING *
                 """,
                 (next_offset, status, upload_id),
             )
             updated = cur.fetchone()
         conn.commit()
-        return {
-            "upload_id": str(updated["id"]),
-            "status": updated["status"],
-            "next_offset": int(updated["received_bytes"]),
-        }
     except Exception:
         conn.rollback()
         raise
     finally:
         conn.close()
+
+    if updated["status"] == "finalizing":
+        background_tasks.add_task(_finalize_resumable_upload, upload_id, dict(updated))
+    return _resumable_session_response(updated)
 
 
 async def _finalize_resumable_upload(upload_id: str, row: dict) -> None:
@@ -3832,8 +3845,10 @@ async def upload_photo(
     filename = photo.filename or "upload.jpg"
     if not title:
         title = os.path.splitext(filename)[0]
-    creds = get_flickr_credentials()
-    if not creds and not (PHOTO_STORAGE_ROOT and (privacy == "family" or Path(filename).suffix.lower() in VIDEO_EXTENSIONS)):
+    is_video = Path(filename).suffix.lower() in VIDEO_EXTENSIONS
+    deferred_mirror = privacy == "family" or is_video
+    creds = await asyncio.to_thread(get_flickr_credentials) if album or not deferred_mirror else None
+    if not creds and not deferred_mirror:
         raise HTTPException(503, "Connect the household Flickr account to use this upload mode")
 
     # Spool the upload to a tempfile in chunks, enforcing the size limit as we go.
@@ -3872,10 +3887,10 @@ async def upload_photo(
             # Flickr mirror carries the same date the catalog now holds.
             taken_at_unix = nas_copy["taken_at_unix"]
             latitude, longitude = nas_copy["latitude"], nas_copy["longitude"]
-        if nas_copy and Path(filename).suffix.lower() in VIDEO_EXTENSIONS:
-            photo_id = _existing_flickr_copy(nas_copy['kindred_photo_id'])
+        if nas_copy and is_video:
+            photo_id = await asyncio.to_thread(_existing_flickr_copy, nas_copy['kindred_photo_id'])
             if not photo_id:
-                _queue_video(nas_copy, title, description, privacy, taken_at_unix, latitude, longitude)
+                await asyncio.to_thread(_queue_video, nas_copy, title, description, privacy, taken_at_unix, latitude, longitude)
             album_result = None
             if album:
                 album_result = await _add_photo_to_album_everywhere(
@@ -3887,14 +3902,14 @@ async def upload_photo(
                         album_id=str(album['id']) if album else None, album=album_result)
         if nas_copy and privacy == "family":
             kindred_id = nas_copy["kindred_photo_id"]
-            flickr_id = _existing_flickr_copy(kindred_id)
+            flickr_id = await asyncio.to_thread(_existing_flickr_copy, kindred_id)
             album_result = None
             if album:
                 album_result = await _add_photo_to_album_everywhere(
                     album, kindred_id, flickr_id, filename, creds or {}, user.get("user_id"),
                 )
             if not flickr_id:
-                _queue_phone_photo_mirror(kindred_id)
+                await asyncio.to_thread(_queue_phone_photo_mirror, kindred_id)
             return dict(
                 photo_id=flickr_id, kindred_photo_id=kindred_id, status="ok",
                 nas_status="available", flickr_status="available" if flickr_id else "pending",
@@ -6270,6 +6285,12 @@ def clear_all(admin=Depends(require_admin)):
 
 # ── Feature 1: Photo metadata from Flickr ────────────────────────────────────
 
+def _flickr_headers(authorization: str) -> dict[str, str]:
+    # Flickr's edge returned 502 to the default HTTPX user agent on the NAS.
+    return {"Authorization": authorization, "User-Agent": FLICKR_USER_AGENT}
+
+
+
 def _flickr_oauth_sign(url: str, params: dict, creds: dict | None = None, method: str = "GET") -> dict:
     """Sign a Flickr API request using OAuth 1.0a.
     creds: { oauth_token, oauth_secret, user_id } — from get_flickr_credentials()
@@ -6353,11 +6374,11 @@ async def flickr_api(params: dict, creds: dict | None = None, *,
             async with httpx.AsyncClient(timeout=timeout) as client:
                 if method.upper() == "POST":
                     response = await client.post(
-                        FLICKR_REST, data=payload, headers={"Authorization": auth_header})
+                        FLICKR_REST, data=payload, headers=_flickr_headers(auth_header))
                 else:
                     query = urllib.parse.urlencode(payload)
                     response = await client.get(
-                        f"{FLICKR_REST}?{query}", headers={"Authorization": auth_header})
+                        f"{FLICKR_REST}?{query}", headers=_flickr_headers(auth_header))
             status = response.status_code
             try:
                 data = response.json()
@@ -6693,13 +6714,14 @@ def get_library_discovery(user=Depends(get_current_user)):
 
 
 @app.get("/library/photos")
-def get_library_photos(sort: str = "newest",
+def get_library_photos(response: Response, sort: str = "newest",
                        media: str = Query("all", description="all, photo, or video"),
                        cursor: str | None = Query(None, description="next_cursor from the previous page"),
                        date_from: str | None = Query(None, description="ISO date, inclusive"),
                        date_to: str | None = Query(None, description="ISO date, inclusive"),
                        min_duration: float | None = Query(None, ge=0, description="Seconds; videos only"),
                        album_id: str | None = Query(None), junk: JunkMode = "default",
+                       signed_thumbnails: bool = False,
                        limit: int = Query(48, ge=1, le=100), user=Depends(get_current_user)):
     from library_api import gallery
     if album_id:
@@ -6707,9 +6729,17 @@ def get_library_photos(sort: str = "newest",
             album_id = str(uuid.UUID(album_id))
         except ValueError:
             raise HTTPException(400, "Invalid album ID")
-    return gallery(db_query, sort, limit, media=media, cursor=cursor,
+    thumbnail_bucket = os.environ.get("KINDRED_R2_BUCKET") if signed_thumbnails else None
+    page = gallery(db_query, sort, limit, media=media, cursor=cursor,
                    date_from=date_from, date_to=date_to, min_duration=min_duration, album_id=album_id,
-                   junk="all" if album_id and junk == "default" else junk, viewer_id=user.get("user_id"))
+                   junk="all" if album_id and junk == "default" else junk, viewer_id=user.get("user_id"),
+                   thumbnail_bucket=thumbnail_bucket)
+    if thumbnail_bucket:
+        from r2_thumbnails import attach_published_urls
+
+        attach_published_urls(page["photos"])
+        response.headers["Cache-Control"] = "private, no-store"
+    return page
 
 
 class JunkSettingsPatch(BaseModel):

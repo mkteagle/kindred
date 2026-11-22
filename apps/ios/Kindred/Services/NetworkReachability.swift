@@ -12,13 +12,25 @@ final class NetworkReachability {
     /// True when the path is unmetered. Optimistic before the first update, so
     /// a launch-time upload is never blocked by a monitor that has not spoken.
     private(set) var isUnmetered = true
+    private(set) var backupConnection = "unknown"
+    private(set) var isConstrained = false
 
     private let monitor = NWPathMonitor()
 
     private init() {
         monitor.pathUpdateHandler = { [weak self] path in
             let unmetered = !path.isExpensive && !path.isConstrained
-            Task { @MainActor in self?.isUnmetered = unmetered }
+            let connection: String
+            if path.status != .satisfied { connection = "offline" }
+            else if path.usesInterfaceType(.cellular) { connection = "cellular" }
+            else if path.usesInterfaceType(.wifi) { connection = "wifi" }
+            else { connection = "other" }
+            let constrained = path.isConstrained
+            Task { @MainActor in
+                self?.isUnmetered = unmetered
+                self?.backupConnection = connection
+                self?.isConstrained = constrained
+            }
         }
         monitor.start(queue: DispatchQueue(label: "com.kindlingsignal.kindred.reachability"))
     }

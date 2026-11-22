@@ -9850,12 +9850,10 @@ button.kx-avatar { cursor: pointer; }
   .kx-themetoggle { display: none; }
 }
 
-/* ── Library: day sections, mosaic, year scrubber ────────────────────── */
+/* ── Library: day sections and mosaic ───────────────────────────────── */
 
 .kx-library-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 58px;
-  gap: 8px;
 }
 
 /* The marquee is positioned against this column, and text selection would
@@ -9971,38 +9969,6 @@ button.kx-avatar { cursor: pointer; }
   background: rgba(204, 127, 97, .13);
 }
 
-.kx-scrubber {
-  position: sticky;
-  top: 78px;
-  align-self: start;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 0;
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--ink-3);
-}
-
-.kx-scrubber button {
-  padding: 5px 8px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: center;
-  cursor: pointer;
-}
-
-.kx-scrubber button:hover { color: var(--ink); }
-
-.kx-scrubber button.is-active {
-  background: var(--accent);
-  color: var(--on-accent);
-  font-weight: 600;
-}
-
 /* ── Floating select bars ────────────────────────────────────────────── */
 
 .kx-floatbar {
@@ -10084,9 +10050,6 @@ button.kx-avatar { cursor: pointer; }
 }
 
 @media (max-width: 900px) {
-  /* The scrubber needs a column of its own; below this width there isn't one. */
-  .kx-library-body { grid-template-columns: minmax(0, 1fr); }
-  .kx-scrubber { display: none; }
   .kx-dayhead { top: 57px; }
   .kx-floatbar { flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 32px); }
 }
@@ -10836,12 +10799,12 @@ body:has(.kx) .lb-overlay {
   --rail-fill: rgba(35, 40, 31, .1);
 }
 
-body:has(.kx) .lb-main-video {
+body:has(.kx) .lb-overlay .lb-main-video {
   border-radius: 4px;
   box-shadow: 0 40px 120px rgba(0, 0, 0, .6);
 }
 
-body:has(.kx) .lb-arrow {
+body:has(.kx) .lb-overlay .lb-arrow {
   width: 42px;
   height: 42px;
   display: grid;
@@ -10852,11 +10815,11 @@ body:has(.kx) .lb-arrow {
   color: #f1f1ec;
 }
 
-body:has(.kx) .lb-arrow:hover {
+body:has(.kx) .lb-overlay .lb-arrow:hover {
   background: rgba(241, 241, 236, .14);
 }
 
-body:has(.kx) .lb-info-panel {
+body:has(.kx) .lb-overlay .lb-info-panel {
   width: 300px;
   padding: 22px 22px 30px;
   display: flex;
@@ -10918,7 +10881,7 @@ body:has(.kx) .lb-info-panel {
   color: var(--rail-ink-3);
 }
 
-body:has(.kx) .lb-info-label {
+body:has(.kx) .lb-overlay .lb-info-label {
   margin: 0 0 10px;
   font-family: var(--mono);
   font-size: 10px;
@@ -10928,7 +10891,7 @@ body:has(.kx) .lb-info-label {
   color: var(--rail-ink-3);
 }
 
-body:has(.kx) .lb-person-chip {
+body:has(.kx) .lb-overlay .lb-person-chip {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -10941,14 +10904,14 @@ body:has(.kx) .lb-person-chip {
   color: var(--rail-ink);
 }
 
-body:has(.kx) .lb-person-chip-img {
+body:has(.kx) .lb-overlay .lb-person-chip-img {
   width: 22px;
   height: 22px;
   border-radius: 999px;
   object-fit: cover;
 }
 
-body:has(.kx) .lb-tag-chip {
+body:has(.kx) .lb-overlay .lb-tag-chip {
   padding: 5px 10px;
   border: 0;
   border-radius: 999px;
@@ -11004,18 +10967,18 @@ body:has(.kx) .lb-tag-chip {
 }
 
 /* The rail runs the full height of the stage rather than floating inside it. */
-body:has(.kx) .lb-info-panel {
+body:has(.kx) .lb-overlay .lb-info-panel {
   top: 0;
   bottom: 0;
 }
 
-body:has(.kx) .lb-image-area { padding: 44px; }
-body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
+body:has(.kx) .lb-overlay .lb-image-area { padding: 44px; }
+body:has(.kx) .lb-overlay .lb-image-area-with-info { padding-right: 344px; }
 
 /* Below the drawer breakpoint the viewer goes single column and the rail
    becomes a bottom sheet. */
 @media (max-width: 900px) {
-  body:has(.kx) .lb-info-panel {
+  body:has(.kx) .lb-overlay .lb-info-panel {
     top: auto;
     left: 0;
     right: 0;
@@ -11026,8 +10989,8 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
     border-top: 1px solid rgba(241, 241, 236, .1);
   }
 
-  body:has(.kx) .lb-image-area,
-  body:has(.kx) .lb-image-area-with-info {
+  body:has(.kx) .lb-overlay .lb-image-area,
+  body:has(.kx) .lb-overlay .lb-image-area-with-info {
     padding: 70px 16px 48vh;
   }
 }
@@ -11141,10 +11104,10 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
 .kx-banner {
   display: flex;
   align-items: center;
-  gap: 13px;
-  padding: 13px 16px;
+  gap: 9px;
+  padding: 8px 11px;
   border: 1px solid var(--line-2);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--fill-1);
 }
 
@@ -11164,7 +11127,7 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
 }
 
 .kx-banner-copy strong {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--ink);
 }
@@ -12296,12 +12259,6 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
 
 .kx-sync-link:hover { color: var(--amber); }
 
-/* "All" resets a year seek back to the whole library. */
-.kx-scrubber-all {
-  font-weight: 700;
-  letter-spacing: .04em;
-}
-
 /* Theme-swapped brand marks, anywhere on the page.
    The .kx-brand rules above are the same idea scoped to the shell; these cover
    the screens that have not been ported into it yet. */
@@ -12731,14 +12688,14 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
 .kx-pipelines {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  margin: 28px 0 0;
+  gap: 10px;
+  margin: 18px 0 0;
   padding: 0;
   list-style: none;
 }
 
 .kx-pipeline {
-  padding: 16px 18px;
+  padding: 10px 12px;
   border: 1px solid var(--line-2);
   border-radius: 12px;
   background: var(--fill-1);
@@ -12749,12 +12706,12 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .kx-pipeline-head strong {
   font-family: var(--display);
-  font-size: 17px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--ink);
 }
@@ -12764,7 +12721,7 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
 .kx-pipeline-track {
   position: relative;
   overflow: hidden;
-  height: 8px;
+  height: 5px;
   border-radius: 999px;
   background: var(--fill-3);
 }
@@ -12796,7 +12753,7 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 10px;
+  margin-top: 6px;
   font-size: 11px;
   color: var(--ink-3);
 }
@@ -12900,12 +12857,12 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) clamp(64px, 14vw, 160px) auto;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   flex: none;
-  margin: 12px var(--kx-content-inset-end, 24px) 8px var(--kx-content-inset-start, 24px);
-  padding: 12px 16px;
+  margin: 6px var(--kx-content-inset-end, 24px) 4px var(--kx-content-inset-start, 24px);
+  padding: 6px 11px;
   border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line));
-  border-radius: 14px;
+  border-radius: 10px;
   background: color-mix(in srgb, var(--accent) 7%, var(--surface));
   color: inherit;
   text-decoration: none;
@@ -12927,16 +12884,17 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
 .kx-syncbanner-copy {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
+  line-height: 1.35;
 }
 
-.kx-syncbanner-copy strong { font-size: 13px; font-weight: 600; }
-.kx-syncbanner-copy .kx-mono { font-size: 11px; color: var(--ink-3); }
+.kx-syncbanner-copy strong { font-size: 12px; font-weight: 600; }
+.kx-syncbanner-copy .kx-mono { font-size: 11px; letter-spacing: .02em; color: var(--ink-3); }
 
 .kx-syncbanner-bar {
   overflow: hidden;
-  height: 5px;
+  height: 4px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 15%, var(--surface));
 }
@@ -12954,11 +12912,8 @@ body:has(.kx) .lb-image-area-with-info { padding-right: 344px; }
 .kx-syncbanner-bar span[style] { animation: none; }
 
 @media (max-width: 520px) {
-  .kx-syncbanner { grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px 10px; }
-  .kx-syncbanner-pulse { grid-area: 1 / 1; }
-  .kx-syncbanner-copy { grid-area: 1 / 2; }
-  .kx-syncbanner-arrow { grid-area: 1 / 3; }
-  .kx-syncbanner-bar { grid-area: 2 / 2 / 3 / 4; }
+  .kx-syncbanner { position: relative; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; padding-bottom: 8px; }
+  .kx-syncbanner-bar { position: absolute; bottom: 2px; inset-inline: 10px; height: 3px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

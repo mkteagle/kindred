@@ -16,7 +16,7 @@ import {
 export default function StatesReferencePage() {
   return (
     <main className="kx-page" style={{ maxWidth: 1000 }}>
-      <h1 className="kx-title" style={{ fontSize: 40 }}>
+      <h1 className="kx-title">
         Empty, loading, broken.
       </h1>
       <p className="kx-lede">Not a product screen — the states every grid and panel needs.</p>

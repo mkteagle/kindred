@@ -20,6 +20,9 @@ struct KindredApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     init() {
+        let cache = URLCache.shared
+        if cache.currentDiskUsage > 0 { cache.removeAllCachedResponses() }
+        cache.diskCapacity = 0
         configureAppearance()
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--ui-test-home") {
@@ -30,6 +33,7 @@ struct KindredApp: App {
         Analytics.configure()
         SyncManager.shared.configure()
         Task {
+            await FlickrUploader.shared.cleanupAbandonedStagingFiles()
             let server = await APIClient.shared.currentBaseURL()
             await OAuthHelper.loadConfig(from: server)
         }
@@ -103,6 +107,7 @@ struct RootView: View {
     @State private var session = SessionManager.shared
     @State private var pairing = PairingCoordinator.shared
     @State private var hasSeenOnboarding = UserDefaults.standard.bool(forKey: "hasSeenOnboarding")
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         content
@@ -132,6 +137,9 @@ struct RootView: View {
         if session.isAuthenticated {
             ContentView()
                 .id(session.currentUser?.id)
+                .onChange(of: scenePhase, initial: true) { _, phase in
+                    if phase == .active { SyncManager.shared.resumeBackupInForeground() }
+                }
                 .task {
                     // Skip network refresh in demo mode
                     guard !DemoDataProvider.shared.isActive else { return }

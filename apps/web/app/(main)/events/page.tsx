@@ -202,7 +202,7 @@ export default function EventsPage() {
 
   return (
     <main className="kx-page">
-      <h1 className="kx-title">Days that clustered on their own.</h1>
+      <h1 className="kx-title">Events</h1>
       <p className="kx-lede">
         Photos taken close together in time and place, grouped without anyone naming them. Name one
         and it becomes the day&rsquo;s title.
