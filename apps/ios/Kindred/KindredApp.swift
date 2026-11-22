@@ -30,12 +30,9 @@ struct KindredApp: App {
             return
         }
         #endif
-        Analytics.configure()
         SyncManager.shared.configure()
         Task {
             await FlickrUploader.shared.cleanupAbandonedStagingFiles()
-            let server = await APIClient.shared.currentBaseURL()
-            await OAuthHelper.loadConfig(from: server)
         }
     }
 
@@ -46,13 +43,7 @@ struct KindredApp: App {
                 .onOpenURL { url in
                     guard url.scheme?.lowercased() == "kindred" else { return }
                     Task { @MainActor in
-                        // Pairing and the Flickr OAuth callback share the
-                        // scheme, so dispatch on the host rather than handing
-                        // every kindred:// URL to Flickr.
-                        if PairingCoordinator.shared.handle(url: url) { return }
-                        if url.host?.lowercased() == "oauth-callback" {
-                            FlickrAuth.shared.handleCallback(url: url)
-                        }
+                        _ = PairingCoordinator.shared.handle(url: url)
                     }
                 }
         }

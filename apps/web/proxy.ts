@@ -19,6 +19,7 @@ export function proxy(request: NextRequest) {
     pathname === "/demo" ||
     pathname.startsWith("/demo/") ||
     pathname === "/login" ||
+    pathname === "/pair" ||
     pathname.startsWith("/join") ||
     pathname.startsWith("/reset") ||
     pathname === "/privacy" ||

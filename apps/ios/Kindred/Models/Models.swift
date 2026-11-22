@@ -185,14 +185,6 @@ struct TriggerScanResponse: Codable {
     let count: Int?
 }
 
-// MARK: - User
-
-struct FlickrUser: Codable {
-    let userId: String
-    let username: String
-    let fullname: String
-}
-
 // MARK: - Category
 
 enum ClusterCategory: String, CaseIterable, Identifiable {

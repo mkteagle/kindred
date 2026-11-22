@@ -62,11 +62,13 @@ final class SessionManager {
     private(set) var isAuthenticated = false
     private(set) var currentUser: UserInfo?
     private(set) var sessionToken: String?
+    private(set) var serverURL = PairingService.storedServerURL()
 
     private let tokenKey = "kindred_session_token"
     private let userKey = "kindred_session_user"
     private let expiryKey = "kindred_session_expiry"
     private var unauthorizedObserver: NSObjectProtocol?
+    private var authenticating = false
 
     private init() {
         loadStoredSession()
@@ -86,7 +88,7 @@ final class SessionManager {
     private func loadStoredSession() {
         guard let token = KeychainHelper.loadString(forKey: tokenKey) else { return }
 
-        if token == "demo" {
+        guard token != "demo", let boundServer = PairingService.serverForSavedSession() else {
             clearStoredSession()
             return
         }
@@ -100,6 +102,10 @@ final class SessionManager {
         }
 
         self.sessionToken = token
+        self.serverURL = boundServer
+        PairingService.rememberServerURL(boundServer)
+        KeychainHelper.saveString(boundServer, forKey: PairingService.sessionServerURLKey)
+        Analytics.configure(server: boundServer)
         self.isAuthenticated = true
         if let user: UserInfo = KeychainHelper.loadCodable(forKey: userKey) {
             self.currentUser = user
@@ -110,6 +116,8 @@ final class SessionManager {
         self.sessionToken = token
         self.currentUser = user
         self.isAuthenticated = true
+        guard token != "demo", let serverURL else { return }
+        KeychainHelper.saveString(serverURL, forKey: PairingService.sessionServerURLKey)
         KeychainHelper.saveString(token, forKey: tokenKey)
         KeychainHelper.saveCodable(user, forKey: userKey)
         if let expiresAt {
@@ -126,6 +134,7 @@ final class SessionManager {
         KeychainHelper.delete(key: tokenKey)
         KeychainHelper.delete(key: userKey)
         KeychainHelper.delete(key: expiryKey)
+        KeychainHelper.delete(key: PairingService.sessionServerURLKey)
     }
 
     private static func parseServerDate(_ value: String) -> Date? {
@@ -137,7 +146,45 @@ final class SessionManager {
 
     // MARK: - Login
 
+    enum ConnectionError: LocalizedError {
+        case invalidServer, serverRequired, signOutRequired, busy
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidServer: "Enter your Kindred server’s HTTPS address."
+            case .serverRequired: "Choose your household server first."
+            case .signOutRequired: "Sign out before connecting to another household."
+            case .busy: "Another sign-in is in progress."
+            }
+        }
+    }
+
+    func authenticate<T>(_ operation: () async throws -> T) async throws -> T {
+        guard !isAuthenticated else { throw ConnectionError.signOutRequired }
+        guard !authenticating else { throw ConnectionError.busy }
+        authenticating = true
+        defer { authenticating = false }
+        return try await operation()
+    }
+
+    func selectServer(_ address: String) async throws {
+        try await authenticate {
+            guard let resolved = PairingService.normaliseServer(address) else {
+                throw ConnectionError.invalidServer
+            }
+            await APIClient.shared.setSessionToken(nil, serverURL: resolved)
+            PairingService.rememberServerURL(resolved)
+            serverURL = resolved
+        }
+    }
+
     func login(username: String, password: String) async throws {
+        try await authenticate {
+            try await passwordLogin(username: username, password: password)
+        }
+    }
+
+    private func passwordLogin(username: String, password: String) async throws {
         if Self.matchesAppReviewCredentials(username: username, password: password) {
             DemoDataProvider.shared.isActive = true
             let reviewUser = UserInfo(
@@ -150,6 +197,7 @@ final class SessionManager {
             return
         }
 
+        guard let serverURL else { throw ConnectionError.serverRequired }
         let body = ["username": username, "password": password]
         let response: AuthResponse = try await APIClient.shared.postPublic("/auth/login", body: body)
 
@@ -163,7 +211,8 @@ final class SessionManager {
         await restoreSession(
             token: response.session.token,
             user: response.user,
-            expiresAt: response.session.expires_at
+            expiresAt: response.session.expires_at,
+            serverURL: serverURL
         )
     }
 
@@ -178,18 +227,22 @@ final class SessionManager {
     // MARK: - Register (join via invite code)
 
     func register(inviteCode: String, username: String, displayName: String, password: String) async throws {
-        let body: [String: String] = [
-            "invite_code": inviteCode,
-            "username": username,
-            "display_name": displayName,
-            "password": password,
-        ]
-        let response: AuthResponse = try await APIClient.shared.postPublic("/auth/register", body: body)
-        await restoreSession(
-            token: response.session.token,
-            user: response.user,
-            expiresAt: response.session.expires_at
-        )
+        try await authenticate {
+            guard let serverURL else { throw ConnectionError.serverRequired }
+            let body = [
+                "invite_code": inviteCode,
+                "username": username,
+                "display_name": displayName,
+                "password": password,
+            ]
+            let response: AuthResponse = try await APIClient.shared.postPublic("/auth/register", body: body)
+            await restoreSession(
+                token: response.session.token,
+                user: response.user,
+                expiresAt: response.session.expires_at,
+                serverURL: serverURL
+            )
+        }
     }
 
     // MARK: - Refresh (sync latest user data from server)
@@ -218,14 +271,22 @@ final class SessionManager {
     func restoreSession(token: String, user: UserInfo, expiresAt: String? = nil, serverURL: String? = nil) async {
         // Mounting the signed-in UI immediately starts authenticated requests.
         await APIClient.shared.setSessionToken(token == "demo" ? nil : token, serverURL: serverURL)
-        if let serverURL { PairingService.rememberServerURL(serverURL) }
+        if let serverURL {
+            self.serverURL = serverURL
+            PairingService.rememberServerURL(serverURL)
+            if token != "demo" { Analytics.configure(server: serverURL) }
+        }
         storeSession(token: token, user: user, expiresAt: expiresAt)
     }
 
     func login(with provider: HostedSocialSignIn.Provider) async throws {
-        let account = try await HostedSocialSignIn.shared.signIn(with: provider)
-        DemoDataProvider.shared.deactivate()
-        await restoreSession(token: account.session.token, user: account.user, expiresAt: account.session.expires_at)
+        try await authenticate {
+            guard let serverURL else { throw ConnectionError.serverRequired }
+            let account = try await HostedSocialSignIn.shared.signIn(with: provider)
+            DemoDataProvider.shared.deactivate()
+            await restoreSession(token: account.session.token, user: account.user,
+                                 expiresAt: account.session.expires_at, serverURL: serverURL)
+        }
     }
 
     /// Update stored user info without changing the session token (e.g. after avatar change)
@@ -238,6 +299,7 @@ final class SessionManager {
 
     func logout() {
         FlickrUploader.shared.pauseBackup()
+        Analytics.stop()
         clearStoredSession()
         Task {
             await APIClient.shared.setSessionToken(nil)

@@ -6,8 +6,7 @@ import SwiftUI
 /// codes get read down a phone line, and a person on a video call can just say
 /// the eight characters.
 struct PairDeviceView: View {
-    /// Supplied when the screen was opened by a `kindred://pair` link, in which
-    /// case there is nothing to scan or type — claim it straight away.
+    /// Supplied when the screen was opened by a `kindred://pair` link.
     var initialPairing: PairingService.Pairing?
 
     @Environment(\.dismiss) private var dismiss
@@ -16,6 +15,8 @@ struct PairDeviceView: View {
     @State private var typedServer = ""
     @State private var mode: Mode = .scanning
     @State private var status: Status = .idle
+    @State private var pendingPairing: PairingService.Pairing?
+    @State private var confirmingPairing = false
     @FocusState private var codeFieldFocused: Bool
 
     enum Mode { case scanning, typing }
@@ -38,7 +39,16 @@ struct PairDeviceView: View {
             .navigationTitle("Add this device")
             .task {
                 guard let initialPairing, status == .idle else { return }
-                await claim(initialPairing)
+                confirm(initialPairing)
+            }
+            .confirmationDialog(
+                "Connect to this Kindred server?", isPresented: $confirmingPairing,
+                titleVisibility: .visible, presenting: pendingPairing
+            ) { pairing in
+                Button("Connect") { Task { await claim(pairing) } }
+                Button("Cancel", role: .cancel) { pendingPairing = nil }
+            } message: { pairing in
+                Text(pairing.serverURL ?? PairingService.storedServerURL() ?? "")
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -93,7 +103,7 @@ struct PairDeviceView: View {
 
             PairingScannerView(
                 onCode: { scanned in
-                    guard status != .working else { return }
+                    guard status != .working, !confirmingPairing else { return }
                     handle(scanned)
                 },
                 onFailure: { message in
@@ -182,13 +192,29 @@ struct PairDeviceView: View {
             status = .failed("That doesn't look like a Kindred pairing code.")
             return
         }
-        // A typed server overrides whatever the code carried, so a household on
-        // a LAN address can pair without its public tunnel.
-        if let typed = PairingService.normaliseServer(server) {
+        if let server, !server.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard let typed = PairingService.normaliseServer(server) else {
+                status = .failed("Enter your Kindred server’s HTTPS address.")
+                return
+            }
             pairing = PairingService.Pairing(serverURL: typed, code: pairing.code)
         }
 
-        Task { await claim(pairing) }
+        if server == nil {
+            confirm(pairing)
+        } else {
+            Task { await claim(pairing) }
+        }
+    }
+
+    private func confirm(_ pairing: PairingService.Pairing) {
+        guard pairing.serverURL != nil || PairingService.storedServerURL() != nil else {
+            status = .failed(PairingService.PairingError.noServer.localizedDescription)
+            mode = .typing
+            return
+        }
+        pendingPairing = pairing
+        confirmingPairing = true
     }
 
     private func claim(_ pairing: PairingService.Pairing) async {

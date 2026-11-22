@@ -8,9 +8,11 @@ import "./mobile-setup.css";
 interface PairingCode {
   id: string;
   url: string;
+  code: string;
   server_url: string;
   display_code: string;
   expires_in_seconds: number;
+  browserUrl?: string;
 }
 
 interface PairingStatus {
@@ -29,6 +31,7 @@ export function PairDeviceForm() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showClassic, setShowClassic] = useState(false);
 
   async function createCode() {
     setCreating(true);
@@ -46,7 +49,11 @@ export function PairDeviceForm() {
       }
       setStatus(null);
       setCopied(false);
-      setCode(data);
+      setShowClassic(false);
+      const browserUrl = window.location.protocol === "https:"
+        ? `${window.location.origin}/pair#${new URLSearchParams({ server: data.server_url, code: data.code })}`
+        : undefined;
+      setCode({ ...data, browserUrl });
       setRemaining(data.expires_in_seconds);
     } catch {
       setError("Could not reach the server.");
@@ -124,12 +131,12 @@ export function PairDeviceForm() {
       )}
 
       {code && !status?.claimed && (
-        <div className="kx-pair-code-card">
+        <div className="kx-pair-code-card ph-no-capture">
           <div className="kx-pair-qr">
             {expired ? (
               <span>Code expired</span>
             ) : (
-              <QRCodeSVG value={code.url} size={172} level="M" marginSize={4} title="Pairing QR code" />
+              <QRCodeSVG value={showClassic ? code.url : code.browserUrl ?? code.url} size={172} level="M" marginSize={4} title="Pairing QR code" />
             )}
           </div>
 
@@ -140,6 +147,9 @@ export function PairDeviceForm() {
               </button>
             ) : (
               <>
+                <p className="kx-pair-label">
+                  {showClassic || !code.browserUrl ? "Scan this code in Kindred." : "Scan with your iPhone Camera or in Kindred."}
+                </p>
                 <div>
                   <p className="kx-pair-label">Or enter this code in the app</p>
                   <p className="kx-pair-code">{code.display_code}</p>
@@ -153,6 +163,11 @@ export function PairDeviceForm() {
                     </button>
                   </div>
                 </div>
+                {code.browserUrl && (
+                  <button className="kx-button" type="button" onClick={() => setShowClassic(!showClassic)}>
+                    {showClassic ? "Show Camera-compatible code" : "Show code for older Kindred versions"}
+                  </button>
+                )}
                 <p className="kx-pair-expiration">Expires in <span>{formatCountdown(remaining)}</span></p>
               </>
             )}

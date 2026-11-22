@@ -5,14 +5,13 @@ description: Connect the Kindred iOS app to your self-hosted backend.
 
 ## Setup
 
-The Kindred iOS app connects to your self-hosted backend. On first launch, you'll need to configure:
+Set `PUBLIC_API_URL` and `PUBLIC_WEB_URL` to your installation’s HTTPS addresses. Sign in to Kindred on the web and open **Mobile setup**. On the iPhone, choose **Scan a pairing code** and confirm the server address to sign in.
 
-1. **Backend URL** — The URL of your Kindred backend (e.g. `https://api.your-domain.com`)
-2. **API Key** — The same API key configured in your backend's `.env`
+You can also choose **Enter server address** and sign in with a household account or join with an invitation. The household owner connects Flickr from the web integration settings.
 
 ## Config endpoint
 
-Your backend exposes a public config endpoint at `/app-config` that the iOS app uses to verify the connection and discover available features:
+The public `/app-config` endpoint reports the server’s capabilities:
 
 ```bash
 curl https://api.your-domain.com/app-config
@@ -29,8 +28,8 @@ curl https://api.your-domain.com/app-config
     "vehicle_detection": true
   },
   "auth": {
-    "method": "api_key",
-    "header": "X-API-Key"
+    "method": "session",
+    "header": "X-Session-Token"
   }
 }
 ```
@@ -39,16 +38,10 @@ This endpoint requires no authentication.
 
 ## Authentication
 
-All other API requests require the `X-API-Key` header:
-
-```
-X-API-Key: your-api-key-here
-```
-
-The iOS app stores this securely in the device Keychain.
+The server issues each signed-in device a session tied to its household account. The iOS app stores that session in the device Keychain. Keep Flickr credentials and the web-to-API key on the server.
 
 ## Troubleshooting
 
 - **Connection failed** — Verify your backend URL is accessible from the internet. Check firewall rules.
-- **401 Unauthorized** — Verify your API key matches the one in `backend/.env`.
+- **401 Unauthorized** — Sign in again or create a new pairing code on your household’s server.
 - **SSL errors** — Ensure your backend has a valid HTTPS certificate (use Caddy for automatic HTTPS).

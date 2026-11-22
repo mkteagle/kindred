@@ -3,19 +3,19 @@ import AuthenticationServices
 
 struct LoginView: View {
     @State private var session = SessionManager.shared
-    @State private var flickrAuth = FlickrAuth.shared
     @State private var username = ""
     @State private var password = ""
     @State private var authError: String?
     @State private var isLoggingIn = false
-    @State private var isFlickrLoggingIn = false
-    @State private var hostedSocialAvailable = false
+    @State private var showServerSetup = false
     @State private var signingInWith: HostedSocialSignIn.Provider?
     @State private var showJoin = false
-    @State private var isDemoLoading = false
-    @State private var demoError: String?
 
-    // Demo mode (offline — no network)
+    private var hostedSocialAvailable: Bool {
+        session.serverURL.map(HostedSocialSignIn.supports) ?? false
+    }
+
+    private var authenticating: Bool { isLoggingIn || signingInWith != nil }
 
     var body: some View {
         ZStack {
@@ -36,138 +36,101 @@ struct LoginView: View {
                         .accessibilityHidden(true)
 
                     // Welcome text
-                    Text("Welcome back.")
+                    Text(session.serverURL == nil ? "Connect your library" : "Welcome back")
                         .font(.display(26, weight: .bold))
                         .foregroundStyle(KindredTheme.ash)
                         .padding(.top, 18)
 
-                    Text("Sign in to your household.")
+                    Text(session.serverURL ?? "Scan a pairing code or enter the address of your Kindred server.")
+                        .accessibilityIdentifier("login.serverAddress")
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
                         .font(.kindredBody)
                         .foregroundStyle(KindredTheme.pine)
                         .padding(.top, 6)
 
-                    if hostedSocialAvailable {
-                        VStack(spacing: 10) {
-                            providerButton(.google, title: "Continue with Google", icon: "g.circle.fill")
-                            providerButton(.apple, title: "Sign in with Apple", icon: "apple.logo")
+                    if session.serverURL != nil {
+                        if hostedSocialAvailable {
+                            VStack(spacing: 10) {
+                                providerButton(.google, title: "Continue with Google", icon: "g.circle.fill")
+                                providerButton(.apple, title: "Sign in with Apple", icon: "apple.logo")
+                            }
+                            .padding(.horizontal, 24)
+                            .padding(.top, 25)
+                            Text("Or sign in with a password")
+                                .font(.kindredCaption)
+                                .foregroundStyle(KindredTheme.mist)
+                                .padding(.top, 20)
+                        }
+
+                        // Form
+                        VStack(spacing: 12) {
+                            // Email / Username
+                            kindredInput(label: "EMAIL", placeholder: "username", text: $username)
+                                .textContentType(.username)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+
+                            // Password
+                            kindredSecureInput(label: "PASSWORD", text: $password)
                         }
                         .padding(.horizontal, 24)
-                        .padding(.top, 25)
-                        Text("Or sign in with a password")
-                            .font(.kindredCaption)
-                            .foregroundStyle(KindredTheme.mist)
-                            .padding(.top, 20)
-                    }
+                        .padding(.top, hostedSocialAvailable ? 14 : 28)
 
-                    // Form
-                    VStack(spacing: 12) {
-                        // Email / Username
-                        kindredInput(label: "EMAIL", placeholder: "username", text: $username)
-                            .textContentType(.username)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
+                        // Sign in button
+                        KindredButton(
+                            title: "Sign in",
+                            style: .primary,
+                            isFullWidth: true,
+                            isLoading: isLoggingIn
+                        ) {
+                            login()
+                        }
+                        .disabled(authenticating || username.isEmpty || password.isEmpty)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 20)
 
-                        // Password
-                        kindredSecureInput(label: "PASSWORD", text: $password)
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.top, hostedSocialAvailable ? 14 : 28)
-
-                    // Sign in button
-                    KindredButton(
-                        title: "Sign in",
-                        style: .primary,
-                        isFullWidth: true,
-                        isLoading: isLoggingIn
-                    ) {
-                        login()
-                    }
-                    .disabled(isLoggingIn || signingInWith != nil || username.isEmpty || password.isEmpty)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 20)
 
                     if let error = authError {
                         Text(error)
                             .font(.kindredCaption)
                             .foregroundStyle(KindredTheme.rosehip)
+                            .padding(.horizontal, 24)
                             .padding(.top, 8)
                     }
 
-                    // Pairing: a self-hosted household's server is not at the
-                    // default address, and its members should not have to know
-                    // the URL. Offered before the Flickr path because for a
-                    // self-hoster it is the only one that works.
-                    Button {
+                    KindredButton(
+                        title: "Scan a pairing code",
+                        style: session.serverURL == nil ? .primary : .ghost,
+                        isFullWidth: true
+                    ) {
                         PairingCoordinator.shared.isPresenting = true
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "qrcode.viewfinder")
-                            Text("Scan a pairing code")
-                        }
-                        .font(.kindredBody)
-                        .foregroundStyle(KindredTheme.pine)
                     }
+                    .disabled(authenticating)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 18)
+
+                    Button(session.serverURL == nil ? "Enter server address" : "Change server") {
+                        showServerSetup = true
+                    }
+                    .font(.kindredBody)
+                    .foregroundStyle(KindredTheme.pine)
+                    .disabled(authenticating)
                     .padding(.top, 16)
 
-                    // Divider
-                    HStack(spacing: 10) {
-                        Rectangle().fill(KindredTheme.line).frame(height: 1)
-                        Text("OR")
-                            .font(.kindredMicro)
-                            .tracking(1.4)
-                            .foregroundStyle(KindredTheme.mist)
-                        Rectangle().fill(KindredTheme.line).frame(height: 1)
+                    if session.serverURL != nil {
+                        Button("Join with an invite code") { showJoin = true }
+                            .font(.kindredCaption)
+                            .foregroundStyle(KindredTheme.pine)
+                            .disabled(authenticating)
+                            .padding(.top, 16)
+                    } else {
+                        Link("Set up a Kindred server", destination: URL(string: "https://github.com/mkteagle/kindred#self-hosting-guide")!)
+                            .font(.kindredCaption)
+                            .foregroundStyle(KindredTheme.pine)
+                            .padding(.top, 16)
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 22)
-
-                    // Flickr button
-                    Button {
-                        flickrLogin()
-                    } label: {
-                        HStack(spacing: 8) {
-                            if isFlickrLoggingIn {
-                                ProgressView().tint(KindredTheme.ash)
-                            } else {
-                                // Flickr brand swatch
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(LinearGradient(
-                                        colors: [Color(hex: 0x0063DC), Color(hex: 0xFF0084)],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    ))
-                                    .frame(width: 14, height: 14)
-                            }
-                            Text("Continue with Flickr")
-                                .font(.kindredButtonSM)
-                                .foregroundStyle(KindredTheme.ash)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background(KindredTheme.card)
-                        .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusSM))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: KindredTheme.radiusSM)
-                                .stroke(KindredTheme.lineDark, lineWidth: 1)
-                        )
-                    }
-                    .disabled(isFlickrLoggingIn || signingInWith != nil)
-                    .padding(.horizontal, 24)
-
-                    // Join link
-                    Button {
-                        showJoin = true
-                    } label: {
-                        HStack(spacing: 4) {
-                            Text("New to Kindred?")
-                                .foregroundStyle(KindredTheme.pine)
-                            Text("Join with code")
-                                .fontWeight(.bold)
-                                .foregroundStyle(KindredTheme.ember)
-                        }
-                        .font(.kindredCaption)
-                    }
-                    .padding(.top, 18)
 
                     // Demo mode
                     Button {
@@ -185,16 +148,9 @@ struct LoginView: View {
                         .background(KindredTheme.forest.opacity(0.08))
                         .clipShape(RoundedRectangle(cornerRadius: KindredTheme.radiusSM))
                     }
-                    .disabled(isDemoLoading)
+                    .disabled(authenticating)
                     .padding(.horizontal, 24)
                     .padding(.top, 12)
-
-                    if let demoError {
-                        Text(demoError)
-                            .font(.kindredCaption)
-                            .foregroundStyle(KindredTheme.rosehip)
-                            .padding(.top, 4)
-                    }
 
                     Spacer().frame(height: 40)
                 }
@@ -206,8 +162,13 @@ struct LoginView: View {
         .sheet(isPresented: $showJoin) {
             JoinView()
         }
-        .task {
-            hostedSocialAvailable = HostedSocialSignIn.supports(server: await APIClient.shared.currentBaseURL())
+        .sheet(isPresented: $showServerSetup) {
+            ServerAddressView(currentAddress: session.serverURL)
+        }
+        .onChange(of: session.serverURL) {
+            username = ""
+            password = ""
+            authError = nil
         }
     }
 
@@ -232,7 +193,7 @@ struct LoginView: View {
             .overlay(RoundedRectangle(cornerRadius: KindredTheme.buttonRadius).strokeBorder(KindredTheme.lineDark))
         }
         .buttonStyle(.plain)
-        .disabled(signingInWith != nil || isLoggingIn || isFlickrLoggingIn)
+        .disabled(authenticating)
     }
 
     private func signIn(with provider: HostedSocialSignIn.Provider) {
@@ -303,42 +264,80 @@ struct LoginView: View {
         Task {
             do {
                 try await session.login(username: username, password: password)
+            } catch APIClient.APIError.httpError(401) {
+                authError = "Invalid username or password."
             } catch {
-                authError = "Invalid username or password"
+                authError = error.localizedDescription
             }
             isLoggingIn = false
         }
     }
 
     private func tryDemo() {
-        // Activate offline demo mode — no network calls at all
-        let demo = DemoDataProvider.shared
-        demo.isActive = true
-        let fakeUser = demo.getMe()
-        Task { await session.restoreSession(token: "demo", user: fakeUser) }
-    }
-
-    private func flickrLogin() {
-        isFlickrLoggingIn = true
-        authError = nil
         Task {
             do {
-                try await flickrAuth.authenticate()
-                let body: [String: String] = [
-                    "flickr_user_id": flickrAuth.user?.userId ?? "",
-                    "flickr_oauth_token": flickrAuth.oauthToken,
-                    "flickr_oauth_secret": flickrAuth.oauthTokenSecret,
-                ]
-                let response: AuthResponse = try await APIClient.shared.postPublic("/auth/flickr-login", body: body)
-                await session.restoreSession(
-                    token: response.session.token,
-                    user: response.user,
-                    expiresAt: response.session.expires_at
-                )
+                try await session.authenticate {
+                    let demo = DemoDataProvider.shared
+                    demo.isActive = true
+                    await session.restoreSession(token: "demo", user: demo.getMe())
+                }
             } catch {
-                authError = "Flickr login failed: \(error.localizedDescription)"
+                authError = error.localizedDescription
             }
-            isFlickrLoggingIn = false
+        }
+    }
+
+}
+
+private struct ServerAddressView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var address: String
+    @State private var error: String?
+    @State private var saving = false
+
+    init(currentAddress: String?) {
+        _address = State(initialValue: currentAddress ?? "")
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("https://photos.example.com", text: $address)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                } header: {
+                    Text("Server address")
+                } footer: {
+                    Text("Use the HTTPS API address shown in Mobile setup on your Kindred server.")
+                }
+                if let error {
+                    Text(error).foregroundStyle(KindredTheme.rosehip)
+                }
+            }
+            .navigationTitle("Connect to a server")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Continue") {
+                        saving = true
+                        Task {
+                            defer { saving = false }
+                            do {
+                                try await SessionManager.shared.selectServer(address)
+                                dismiss()
+                            } catch {
+                                self.error = error.localizedDescription
+                            }
+                        }
+                    }
+                    .disabled(saving || address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
         }
     }
 }

@@ -5,9 +5,8 @@ import UIKit
 
 /// Joins this device to a self-hosted Kindred server using a pairing code.
 ///
-/// A household's server lives at an address only its owner knows, behind their
-/// own tunnel. Rather than typing that address and a password on a phone, the
-/// web app shows a code carrying both; this exchanges it for a real session.
+/// The web app provides the household's address and a one-time code that
+/// this device exchanges for a session on that server.
 ///
 /// The parsing is deliberately separate from the network call so the awkward
 /// part — what a scanned string might actually contain — can be reasoned about
@@ -22,6 +21,29 @@ enum PairingService {
     /// Where the server address is remembered between launches. Not a secret —
     /// the session token is what is sensitive, and that lives in the Keychain.
     static let serverURLKey = "kindred_server_url"
+    static let sessionServerURLKey = "kindred_session_server_url"
+    // Used only to migrate a session created before server selection existed.
+    private static let legacyServerURL = "https://api.kindredphotos.app"
+
+    static func serverForSavedSession() -> String? {
+        if let bound = KeychainHelper.loadString(forKey: sessionServerURLKey) {
+            return normaliseServer(bound)
+        }
+        return storedServerURL() ?? legacyServerURL
+    }
+
+    private final class NoAuthenticationRedirects: NSObject, URLSessionTaskDelegate {
+        func urlSession(
+            _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+            newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void
+        ) {
+            completionHandler(nil)
+        }
+    }
+
+    static let authenticationSession = URLSession(
+        configuration: .ephemeral, delegate: NoAuthenticationRedirects(), delegateQueue: nil
+    )
 
     struct Pairing: Equatable {
         let serverURL: String?
@@ -31,6 +53,7 @@ enum PairingService {
     enum PairingError: LocalizedError {
         case invalidCode
         case noServer
+        case serverMismatch
         case rejected(String)
         case network(String)
 
@@ -40,6 +63,8 @@ enum PairingService {
                 return "That doesn't look like a pairing code."
             case .noServer:
                 return "This code didn't include a server address. Enter it manually."
+            case .serverMismatch:
+                return "The pairing code and server address don’t match. Generate a new code on that server."
             case .rejected(let reason):
                 return reason
             case .network(let reason):
@@ -63,25 +88,40 @@ enum PairingService {
         normalise(raw).count == codeLength
     }
 
-    /// Read a scanned string. Accepts the `kindred://pair?server=…&code=…` URL
-    /// the QR encodes, and also a bare code, so a person can type one by hand.
+    /// Read a Kindred setup link or a code someone entered by hand.
     static func parse(_ scanned: String) -> Pairing? {
         let trimmed = scanned.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
-        if let components = URLComponents(string: trimmed),
-           components.scheme?.lowercased() == "kindred" {
-            let items = components.queryItems ?? []
-            let code = normalise(items.first { $0.name == "code" }?.value ?? "")
-            guard code.count == codeLength else { return nil }
-            let server = items.first { $0.name == "server" }?.value?
-                .trimmingCharacters(in: .whitespaces)
-            return Pairing(serverURL: normaliseServer(server), code: code)
+        if let components = URLComponents(string: trimmed), let scheme = components.scheme?.lowercased() {
+            if scheme == "kindred", components.host?.lowercased() == "pair", components.path.isEmpty {
+                return parseLinkItems(components.queryItems ?? [])
+            }
+            guard scheme == "https", components.host?.isEmpty == false,
+                  components.user == nil, components.password == nil,
+                  components.path == "/pair", components.query == nil,
+                  let fragment = components.percentEncodedFragment,
+                  let fields = URLComponents(string: "?" + fragment)?.queryItems
+            else { return nil }
+            return parseLinkItems(fields)
         }
 
+        guard trimmed.uppercased().allSatisfy({ alphabet.contains($0) || $0 == "-" || $0.isWhitespace })
+        else { return nil }
         let bare = normalise(trimmed)
         guard bare.count == codeLength else { return nil }
         return Pairing(serverURL: nil, code: bare)
+    }
+
+    private static func parseLinkItems(_ items: [URLQueryItem]) -> Pairing? {
+        let codes = items.filter { $0.name == "code" }
+        let servers = items.filter { $0.name == "server" }
+        guard codes.count == 1, servers.count == 1,
+              let code = codes.first?.value?.uppercased(),
+              code.count == codeLength, code.allSatisfy(alphabet.contains),
+              let server = normaliseServer(servers.first?.value)
+        else { return nil }
+        return Pairing(serverURL: server, code: code)
     }
 
     /// Accept what someone would actually type for a server: bare hostnames
@@ -89,12 +129,24 @@ enum PairingService {
     static func normaliseServer(_ raw: String?) -> String? {
         guard var value = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
               !value.isEmpty else { return nil }
-        if !value.lowercased().hasPrefix("http://") && !value.lowercased().hasPrefix("https://") {
+        if !value.contains("://") {
             value = "https://" + value
         }
-        while value.hasSuffix("/") { value.removeLast() }
-        guard let url = URL(string: value), url.host != nil else { return nil }
-        return value
+        guard var parts = URLComponents(string: value), let scheme = parts.scheme?.lowercased(),
+              let host = parts.host?.lowercased(), !host.isEmpty,
+              parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil
+        else { return nil }
+        #if DEBUG
+        let isLocalFixture = scheme == "http" && ["localhost", "127.0.0.1", "[::1]", "::1"].contains(host)
+        #else
+        let isLocalFixture = false
+        #endif
+        guard scheme == "https" || isLocalFixture else { return nil }
+        parts.scheme = scheme
+        parts.host = host
+        if scheme == "https" && parts.port == 443 { parts.port = nil }
+        while parts.path.hasSuffix("/") { parts.path.removeLast() }
+        return parts.url?.absoluteString
     }
 
     // MARK: - Claiming
@@ -124,6 +176,14 @@ enum PairingService {
     /// would have got from typing a password, without anyone having typed one.
     @MainActor
     static func claim(_ pairing: Pairing, deviceName: String = defaultDeviceName()) async throws {
+        let session = SessionManager.shared
+        try await session.authenticate {
+            try await exchange(pairing, deviceName: deviceName, session: session)
+        }
+    }
+
+    @MainActor
+    private static func exchange(_ pairing: Pairing, deviceName: String, session: SessionManager) async throws {
         guard let server = pairing.serverURL ?? storedServerURL() else {
             throw PairingError.noServer
         }
@@ -142,7 +202,7 @@ enum PairingService {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await authenticationSession.data(for: request)
         } catch {
             throw PairingError.network("Couldn't reach \(server). Check the address and your network.")
         }
@@ -160,11 +220,9 @@ enum PairingService {
         }
 
         let claim = try JSONDecoder().decode(ClaimResponse.self, from: data)
-        let resolved = normaliseServer(claim.server_url) ?? server
+        guard normaliseServer(claim.server_url) == server else { throw PairingError.serverMismatch }
 
-        // Switch the server and token together before updating the signed-in UI.
-        FlickrUploader.shared.pauseBackup()
-        await SessionManager.shared.restoreSession(
+        await session.restoreSession(
             token: claim.session.token,
             user: UserInfo(
                 id: claim.user.id,
@@ -173,14 +231,14 @@ enum PairingService {
                 role: claim.user.role ?? "member"
             ),
             expiresAt: claim.session.expires_at,
-            serverURL: resolved
+            serverURL: server
         )
     }
 
     // MARK: - Remembering the server
 
     static func storedServerURL() -> String? {
-        UserDefaults.standard.string(forKey: serverURLKey)
+        normaliseServer(UserDefaults.standard.string(forKey: serverURLKey))
     }
 
     static func rememberServerURL(_ url: String) {

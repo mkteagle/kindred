@@ -108,8 +108,11 @@ enum Analytics {
         "transfer_ms", "finalize_ms", "icloud_fetch_ms", "outcome", "response_wait_ms", "callback_wait_ms"
     ]
 
-    static func configure() {
-        guard let token = Bundle.main.object(forInfoDictionaryKey: "KindredPostHogProjectToken") as? String,
+    @MainActor private static var configured = false
+
+    @MainActor static func configure(server: String) {
+        guard !configured, HostedSocialSignIn.supports(server: server),
+              let token = Bundle.main.object(forInfoDictionaryKey: "KindredPostHogProjectToken") as? String,
               token.hasPrefix("phc_"),
               let host = Bundle.main.object(forInfoDictionaryKey: "KindredPostHogHost") as? String,
               URL(string: host)?.scheme == "https" else { return }
@@ -131,6 +134,13 @@ enum Analytics {
             return event
         }
         PostHogSDK.shared.setup(config)
+        configured = true
+    }
+
+    @MainActor static func stop() {
+        guard configured else { return }
+        PostHogSDK.shared.close()
+        configured = false
     }
 
     static func backupDiagnostic(_ stage: BackupStage, failure: BackupFailure, attemptID: UUID = UUID()) {

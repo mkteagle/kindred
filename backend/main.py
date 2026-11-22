@@ -47,8 +47,8 @@ HOUSEHOLD_FLICKR_USER_ID = os.environ.get("KINDRED_HOUSEHOLD_FLICKR_USER_ID", ""
 SCAN_SECRET = os.environ.get("SCAN_SECRET", "")
 API_KEY = os.environ.get("API_KEY", "")
 PHOTO_STORAGE_ROOT = os.environ.get("PHOTO_STORAGE_ROOT", "")
-PUBLIC_API_URL = os.environ.get("PUBLIC_API_URL", "https://api.kindredphotos.app").rstrip("/")
-PUBLIC_WEB_URL = os.environ.get("PUBLIC_WEB_URL", "https://kindredphotos.app").rstrip("/")
+PUBLIC_API_URL = os.environ.get("PUBLIC_API_URL", "http://localhost:8000").rstrip("/")
+PUBLIC_WEB_URL = os.environ.get("PUBLIC_WEB_URL", "http://localhost:3000").rstrip("/")
 # Local language model. Absent by default: the compose service sits behind
 # the "llm" profile, and every caller treats it as optional.
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "").rstrip("/")
@@ -711,7 +711,7 @@ def health():
 
 @app.get("/app-config")
 def get_app_config():
-    """Public config endpoint for mobile app setup. No auth required."""
+    """Publish client capabilities. Provider credentials stay on the server."""
     rows = db_query("SELECT COUNT(*) as cnt FROM users")
     setup_complete = rows[0]["cnt"] > 0 if rows else False
     return {
@@ -720,7 +720,6 @@ def get_app_config():
         "setup_complete": setup_complete,
         "features": {
             "flickr_integration": bool(FLICKR_API_KEY),
-            "flickr_connected": bool(get_flickr_credentials()),
             "face_detection": True,
             "pet_detection": True,
             "vehicle_detection": True,
@@ -729,10 +728,6 @@ def get_app_config():
             "method": "session",
             "header": "X-Session-Token",
         },
-        "flickr": {
-            "consumer_key": FLICKR_API_KEY,
-            "consumer_secret": FLICKR_SECRET,
-        } if FLICKR_API_KEY else None,
     }
 
 

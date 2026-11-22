@@ -34,7 +34,6 @@
 		22710726DDC8A22C39ED891A /* LibraryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75624B60EA72F46C3E8B46D /* LibraryModels.swift */; };
 		2513BEDFC832F942FA1B6B53 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2CFFDD84FAC3858C33E1C1C /* Theme.swift */; };
 		2C18EA1AF63B964EAD6425C9 /* kid-festive.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 8568CF64807BD12D912BFA05 /* kid-festive.jpg */; };
-		30E69353AFBDD5C25A4CDB5F /* FlickrAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAC1F337CB9BB5B39A0E999E /* FlickrAuth.swift */; };
 		34EC19BF2182F99AF571496E /* family-campfire-2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 58F95A5845A45A5F221DAD73 /* family-campfire-2.jpg */; };
 		37A7C2575C3612BABFC39C52 /* IBMPlexMono-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 15BEF9B23D2B5ACF9D0D95FE /* IBMPlexMono-Medium.ttf */; };
 		38C0F186E4A7482D7F87931F /* GalleryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D4135C09891F19C26113B83 /* GalleryViewModel.swift */; };
@@ -51,7 +50,6 @@
 		513241A3D05938F4F0086D52 /* SessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06451EBFF28F5757EA24B1B0 /* SessionManager.swift */; };
 		5188E7A16AB2BEE086DA51A6 /* family-campervan.jpg in Resources */ = {isa = PBXBuildFile; fileRef = F07C814C961E707496F77489 /* family-campervan.jpg */; };
 		5219963192E31A525143BFB6 /* family-campfire-1.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 037D82CFD8601A0CEF37D6E4 /* family-campfire-1.jpg */; };
-		52BA97F3D598F9A1CDBC7F2D /* OAuthHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7509439126E8BDE1ED220CC6 /* OAuthHelper.swift */; };
 		559B99D4CFB9D6C267246ADF /* InstrumentSans-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0E424FAD35D76D994BC377F8 /* InstrumentSans-Medium.ttf */; };
 		5856D9C9817788982D3AA8CA /* clusters_vehicles.json in Resources */ = {isa = PBXBuildFile; fileRef = CC43770F5B384754F9EE126F /* clusters_vehicles.json */; };
 		5B31F9103F020BF6C9AE7ADC /* ScrollOffsetReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2454ECC3B3C788B033775FE /* ScrollOffsetReader.swift */; };
@@ -208,7 +206,6 @@
 		6EF1C52C36723F04B026C247 /* ClusterSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClusterSheets.swift; sourceTree = "<group>"; };
 		725EAD4D4E0DE71E6EFB8132 /* family-holiday-2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "family-holiday-2.jpg"; sourceTree = "<group>"; };
 		72D103FAE68C4054EE71D11A /* family-camper-lights.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "family-camper-lights.jpg"; sourceTree = "<group>"; };
-		7509439126E8BDE1ED220CC6 /* OAuthHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthHelper.swift; sourceTree = "<group>"; };
 		776F85584ADFADA9DD5079BB /* Kindred.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Kindred.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7A03C9159F12E36DFA870856 /* family-evening.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "family-evening.jpg"; sourceTree = "<group>"; };
 		7E44FBEA814FE0DC127644C8 /* landscape-mountain.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "landscape-mountain.jpg"; sourceTree = "<group>"; };
@@ -266,7 +263,6 @@
 		E6AC3A2C82F854AF664C1CFB /* KindredScreenshots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KindredScreenshots.swift; sourceTree = "<group>"; };
 		E75624B60EA72F46C3E8B46D /* LibraryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryModels.swift; sourceTree = "<group>"; };
 		E898ECA7F5ED008399694073 /* IBMPlexMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexMono-Regular.ttf"; sourceTree = "<group>"; };
-		EAC1F337CB9BB5B39A0E999E /* FlickrAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlickrAuth.swift; sourceTree = "<group>"; };
 		EB9184DD896C0DF8A9ED6BC4 /* landscape-forest.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "landscape-forest.jpg"; sourceTree = "<group>"; };
 		EEE262BA5C4A4B97272B2F0F /* BackgroundUploadSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundUploadSession.swift; sourceTree = "<group>"; };
 		F07C814C961E707496F77489 /* family-campervan.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "family-campervan.jpg"; sourceTree = "<group>"; };
@@ -477,12 +473,10 @@
 				EEE262BA5C4A4B97272B2F0F /* BackgroundUploadSession.swift */,
 				83377ACE597628C84A28BD70 /* DemoDataProvider.swift */,
 				43390247C63FD9662ACA34C6 /* DemoDataProvider+Library.swift */,
-				EAC1F337CB9BB5B39A0E999E /* FlickrAuth.swift */,
 				A8CDA1E9F98FE735D3749D0C /* FlickrUploader.swift */,
 				436E630D09BC6B267BF169AB /* KeychainHelper.swift */,
 				4EB3CFB1E2B06258E1A50C8A /* MediaArchiveExporter.swift */,
 				C68E31CF76B86C1561B7B5B8 /* NetworkReachability.swift */,
-				7509439126E8BDE1ED220CC6 /* OAuthHelper.swift */,
 				8376D232BB981F393A7ECA5B /* PairingCoordinator.swift */,
 				532FF5FE8725DBC352AFA3FA /* PairingService.swift */,
 				B4DB0BBF98D5FE45C7410D3A /* PhotoLibraryManager.swift */,
@@ -768,7 +762,6 @@
 				BAF717758365C1F2A9B63336 /* DemoDataProvider+Library.swift in Sources */,
 				7B094ABE62FAB91411777709 /* DemoDataProvider.swift in Sources */,
 				3D966BFB4DF21AE8E4968A57 /* ExploreViewModel.swift in Sources */,
-				30E69353AFBDD5C25A4CDB5F /* FlickrAuth.swift in Sources */,
 				01FFC05E2AAB22D9C980AEFC /* FlickrUploader.swift in Sources */,
 				38C0F186E4A7482D7F87931F /* GalleryViewModel.swift in Sources */,
 				5DABDF4DB5C71C482CC755F9 /* HomeView.swift in Sources */,
@@ -788,7 +781,6 @@
 				C98BE16EE010490A1448D316 /* MosaicGrid.swift in Sources */,
 				0DE869183B7BB35DAB8EC1D4 /* NetworkReachability.swift in Sources */,
 				059D4CA621AC12983B1C81DB /* NotificationsView.swift in Sources */,
-				52BA97F3D598F9A1CDBC7F2D /* OAuthHelper.swift in Sources */,
 				DFD621A11A488BBCAE3835BB /* OnboardingView.swift in Sources */,
 				21FCBDABC3FFACB513A9DD1C /* PairDeviceView.swift in Sources */,
 				7D06DAC75B6E9E8ADA621783 /* PairingCoordinator.swift in Sources */,

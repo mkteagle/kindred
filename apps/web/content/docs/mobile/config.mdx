@@ -3,11 +3,15 @@ title: Mobile setup
 description: Connect the Kindred Photos iOS app to your household.
 ---
 
+The iOS app connects to a Kindred installation you or your household runs. For a new installation, set up your own PostgreSQL database, choose where originals are stored, and set `PUBLIC_API_URL` and `PUBLIC_WEB_URL` to your own HTTPS addresses. Create the owner account before exposing the server to the internet. If your household uses Flickr backup, the owner connects its Flickr account from the web settings. The app uploads to your Kindred server, which handles the Flickr copy.
+
+On a fresh install, choose **Scan a pairing code** or **Enter server address**. The app also has an offline demo with sample photos. If your household uses Google or Apple sign-in, you can sign in on that installation’s web app before creating a pairing code.
+
 ## Pair your iPhone
 
 1. Sign in to Kindred on the web. Open your account menu and select **Mobile setup**. You can also go to **Settings → Household → Pair a device**.
 2. Select **Create a pairing code**.
-3. Open Kindred on your iPhone. On the sign-in screen, tap **Scan a pairing code** and point the camera at the code on your computer.
+3. On the Kindred sign-in screen, choose **Scan a pairing code**. You can also scan from the iPhone Camera and choose **Open Kindred** when the setup page opens.
 4. The web page confirms when your device is paired.
 
 The code expires after 10 minutes and can be used once. Keep it private, since it signs the next device that claims it in to your Kindred account.

@@ -24,6 +24,73 @@ final class KindredScreenshots: XCTestCase {
         super.tearDown()
     }
 
+    @MainActor func testFreshInstallRequiresHouseholdServer() {
+        continueAfterFailure = false
+        app.terminate()
+        app.launchArguments = ["-kindred_server_url", " ", "-hasSeenOnboarding", "YES"]
+        app.launch()
+
+        let enterServer = app.buttons["Enter server address"]
+        XCTAssertTrue(enterServer.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Scan a pairing code"].exists)
+        XCTAssertTrue(app.buttons["Try the demo"].exists)
+        XCTAssertFalse(app.buttons["Sign in"].exists)
+        XCTAssertFalse(app.buttons["Continue with Google"].exists)
+
+        enterServer.tap()
+        let address = app.textFields["https://photos.example.com"]
+        XCTAssertTrue(address.waitForExistence(timeout: 5))
+        address.tap()
+        address.typeText("http://photos.example.com")
+        let next = app.buttons["Continue"]
+        next.tap()
+        XCTAssertTrue(app.staticTexts["Enter your Kindred server’s HTTPS address."].waitForExistence(timeout: 5))
+
+        app.buttons["Cancel"].tap()
+        enterServer.tap()
+        XCTAssertTrue(address.waitForExistence(timeout: 5))
+        address.tap()
+        address.typeText("photos.example.com")
+        next.tap()
+        XCTAssertTrue(app.buttons["Sign in"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["login.serverAddress"].label, "https://photos.example.com")
+        XCTAssertFalse(app.buttons["Continue with Google"].exists)
+        XCTAssertFalse(app.buttons["Continue with Flickr"].exists)
+    }
+
+    @MainActor func testPairingLinkConfirmsServerBeforeClaiming() throws {
+        continueAfterFailure = false
+        let fixture = try LibraryFixture()
+        let ready = expectation(description: "Pairing server is listening")
+        fixture.start { ready.fulfill() }
+        wait(for: [ready], timeout: 5)
+        let address = "http://127.0.0.1:\(try XCTUnwrap(fixture.port))"
+
+        app.terminate()
+        app.launchArguments = ["-hasSeenOnboarding", "YES"]
+        app.launch()
+        var link = URLComponents()
+        link.scheme = "kindred"
+        link.host = "pair"
+        link.queryItems = [URLQueryItem(name: "server", value: address), URLQueryItem(name: "code", value: "ABCD2345")]
+        app.open(try XCTUnwrap(link.url))
+
+        let confirm = app.buttons["Connect"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts[address].exists)
+        XCTAssertEqual(fixture.pairingClaims, 0)
+        confirm.tap()
+        XCTAssertTrue(app.staticTexts["Paired"].waitForExistence(timeout: 8))
+        XCTAssertEqual(fixture.pairingClaims, 1)
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.buttons["Library"].waitForExistence(timeout: 8))
+
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.buttons["Library"].waitForExistence(timeout: 8))
+        try signOutOfFixture()
+    }
+
     func testRedesignedLibraryAndViewer() {
         continueAfterFailure = false
         app.terminate()
@@ -629,6 +696,7 @@ private final class LibraryFixture {
     private var available = false
     private var requestedJPEG = false
     private var favoriteRequestCount = 0
+    private var pairingClaimCount = 0
     private var heldHomeRoutes: Set<HomeRoute> = []
     private var queuedHomeReplies: [HomeRoute: [(NWConnection, String)]] = [:]
     private let exerciseDateSearch: Bool
@@ -641,6 +709,7 @@ private final class LibraryFixture {
     var port: UInt16? { listener.port?.rawValue }
     var sawJPEG: Bool { queue.sync { requestedJPEG } }
     var favoriteRequests: Int { queue.sync { favoriteRequestCount } }
+    var pairingClaims: Int { queue.sync { pairingClaimCount } }
     var requestedNovemberPageTwo: Bool { queue.sync { sawNovemberPageTwo } }
     var requestedNovemberVideos: Bool { queue.sync { sawNovemberVideos } }
     var originalsRequested: Set<String> { queue.sync { originalRequests } }
@@ -739,6 +808,9 @@ private final class LibraryFixture {
         let role = isAdmin ? "admin" : "member"
         let user = #"{"id":"fixture", "username":"fixture-user", "display_name":"Fixture User", "role":"\#(role)"}"#
         switch target {
+        case "/public/pairing/claim":
+            pairingClaimCount += 1
+            return json(#"{"server_url":"http://127.0.0.1:\#(port ?? 0)","user":\#(user),"session":{"token":"\#(token)","expires_at":"2099-11-21T00:00:00Z"}}"#)
         case "/auth/login":
             return json(#"{"user":\#(user),"session":{"token":"\#(token)","expires_at":"2099-11-21T00:00:00Z"}}"#)
         case "/app-config", "/health":

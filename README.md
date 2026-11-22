@@ -128,7 +128,7 @@ Select two or more people and instantly see every photo where they appear togeth
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/kindlingsignal/kindred.git
+git clone https://github.com/mkteagle/kindred.git
 cd kindred
 ```
 
@@ -144,6 +144,8 @@ Required environment variables:
 | Variable | Description |
 |---|---|
 | `DATABASE_URL` | PostgreSQL connection string (must have pgvector) |
+| `PUBLIC_API_URL` | Your installation’s HTTPS API address, used for mobile pairing |
+| `PUBLIC_WEB_URL` | Your installation’s HTTPS website address, used for share links |
 | `FLICKR_API_KEY` | Your Flickr API key |
 | `FLICKR_SECRET` | Your Flickr API secret |
 | `FLICKR_OAUTH_TOKEN` | OAuth token from Flickr auth flow |
@@ -168,25 +170,28 @@ Open `http://your-server/docs` and call the `/auth/setup` endpoint to create the
 
 ```bash
 cd apps/web
-npm install
+pnpm install --frozen-lockfile
 ```
 
 Create a `.env.local` file:
 
 ```
-NEXT_PUBLIC_API_URL=http://your-server
+BACKEND_URL=http://your-server:8000
+NEXT_PUBLIC_APP_URL=https://photos.example.com
 ```
 
 ```bash
-npm run build
-npm start
+pnpm build
+pnpm start
 ```
 
 The web app runs on port 3000 by default.
 
 ### 6. iOS app
 
-Open `apps/ios/Kindred.xcodeproj` in Xcode. Update the server URL in the app settings when you first launch. Build and run on your device or simulator.
+Set `PUBLIC_API_URL` and `PUBLIC_WEB_URL` to your installation’s HTTPS addresses. Set up the first owner before exposing the server to the internet. In Kindred on the web, sign in and open **Mobile setup**, then scan the one-time code from the iOS app. To sign in with a password or use an invitation on iOS, choose **Enter server address** and use the same API address.
+
+The household owner manages Flickr from the web integration settings. Each installation uses its own database and storage credentials.
 
 ### 7. Trigger the first scan
 

@@ -14,13 +14,14 @@ actor APIClient {
     }()
 
     private init() {
-        baseURL = PairingService.storedServerURL() ?? "https://api.kindredphotos.app"
-        Self.publicBaseURL = baseURL
-        // Load session token from Keychain on init
-        if let token = KeychainHelper.loadString(forKey: "kindred_session_token"), token != "demo" {
+        baseURL = PairingService.storedServerURL() ?? ""
+        if let token = KeychainHelper.loadString(forKey: "kindred_session_token"), token != "demo",
+           let server = PairingService.serverForSavedSession() {
+            baseURL = server
             self.sessionToken = token
             Self.publicSessionToken = token
         }
+        Self.publicBaseURL = baseURL
     }
 
     func setSessionToken(_ token: String?, serverURL: String? = nil) {
@@ -55,7 +56,7 @@ actor APIClient {
 
     private func request<T: Decodable>(_ path: String, method: String = "GET", body: Data? = nil,
                                        timeout: TimeInterval = 30) async throws -> T {
-        guard let url = URL(string: "\(baseURL)\(path)") else {
+        guard !baseURL.isEmpty, let url = URL(string: "\(baseURL)\(path)") else {
             throw APIError.invalidURL
         }
 
@@ -93,7 +94,7 @@ actor APIClient {
     // MARK: - Public request (no auth required, used for login/register)
 
     func postPublic<B: Encodable, R: Decodable>(_ path: String, body: B) async throws -> R {
-        guard let url = URL(string: "\(baseURL)\(path)") else {
+        guard !baseURL.isEmpty, let url = URL(string: "\(baseURL)\(path)") else {
             throw APIError.invalidURL
         }
         var req = URLRequest(url: url)
@@ -102,7 +103,7 @@ actor APIClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.timeoutInterval = 30
 
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await PairingService.authenticationSession.data(for: req)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.invalidResponse
         }
