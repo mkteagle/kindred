@@ -1,7 +1,7 @@
 "use client";
 
 import { SyncProgress } from "@/components/sync-progress";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useUser } from "@/lib/use-user";
 import type { User } from "@/types";
@@ -36,11 +36,23 @@ function isBareRoute(pathname: string): boolean {
 function ShellFrame({ user, children }: { user: User | null; children: React.ReactNode }) {
   const { tile, loose, railCollapsed, searchOpen, setSearchOpen, uploadOpen, setUploadOpen, exitSelect } = useKxUi();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const drawerTrigger = useRef<HTMLButtonElement>(null);
+  const drawerClose = useRef<HTMLButtonElement>(null);
   const pathname = usePathname();
 
-  // ⌘/Ctrl+K from anywhere; Esc leaves select mode and closes the drawer.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const trigger = drawerTrigger.current;
+    drawerClose.current?.focus({ preventScroll: true });
+    return () => trigger?.focus({ preventScroll: true });
+  }, [drawerOpen]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (drawerOpen) {
+        if (e.key === "Escape" && !e.defaultPrevented) setDrawerOpen(false);
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         const field = pathname === "/search" && document.querySelector<HTMLInputElement>("#kx-library-search");
@@ -48,14 +60,11 @@ function ShellFrame({ user, children }: { user: User | null; children: React.Rea
         else setSearchOpen(true);
         return;
       }
-      if (e.key === "Escape") {
-        setDrawerOpen(false);
-        exitSelect();
-      }
+      if (e.key === "Escape") exitSelect();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [pathname, searchOpen, setSearchOpen, exitSelect]);
+  }, [drawerOpen, pathname, searchOpen, setSearchOpen, exitSelect]);
 
   useEffect(() => {
     setDrawerOpen(false);
@@ -63,7 +72,7 @@ function ShellFrame({ user, children }: { user: User | null; children: React.Rea
   }, [pathname, exitSelect]);
 
   useEffect(() => {
-    const mobile = window.matchMedia("(width <= 640px)");
+    const mobile = window.matchMedia("(max-width: 640px)");
     const closeDrawer = () => { if (!mobile.matches) setDrawerOpen(false); };
     mobile.addEventListener("change", closeDrawer);
     return () => mobile.removeEventListener("change", closeDrawer);
@@ -75,12 +84,12 @@ function ShellFrame({ user, children }: { user: User | null; children: React.Rea
       style={{ ["--tile" as string]: `${tile}px`, ["--gap" as string]: loose ? "12px" : "8px" }}
     >
       <LiveLibraryUpdates enabled={!!user?.loggedIn} />
-      <KxSidebar user={user} open={drawerOpen} onNavigate={() => setDrawerOpen(false)} />
+      <KxSidebar user={user} open={drawerOpen} closeButtonRef={drawerClose} onClose={() => setDrawerOpen(false)} />
       {drawerOpen && (
-        <button className="kx-drawer-scrim" aria-label="Close navigation" onClick={() => setDrawerOpen(false)} />
+        <button type="button" className="kx-drawer-scrim" aria-hidden="true" tabIndex={-1} onClick={() => setDrawerOpen(false)} />
       )}
-      <div className="kx-content">
-        <KxTopbar user={user} drawerOpen={drawerOpen} onOpenDrawer={() => setDrawerOpen(true)} />
+      <div className="kx-content" inert={drawerOpen}>
+        <KxTopbar user={user} drawerOpen={drawerOpen} drawerTrigger={drawerTrigger} onOpenDrawer={() => setDrawerOpen(true)} />
         <SyncProgress />
         {children}
       </div>

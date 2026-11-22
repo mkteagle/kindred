@@ -212,20 +212,17 @@ body:has(.kx) { background:#f7f7f3; }
 
 /* The library owns its viewport; only the content pane scrolls the photos. */
 body:has(.kx-shell) { overflow:hidden; }
-.kx-shell { height:100dvh; min-height:0; overflow:hidden; }
-.kx-content { height:100dvh; min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior-y:contain; scrollbar-gutter:stable; position:relative; }
+.kx-shell { height:100vh; height:100dvh; grid-template-rows:minmax(0,1fr); overflow:hidden; }
+.kx-content { min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior-y:contain; scrollbar-gutter:stable; position:relative; }
 .kx-content > .kx-page { flex:0 0 auto; }
 .kx-topbar { flex-shrink:0; }
-.kx-sidebar { position:relative; height:100dvh; min-height:0; overflow:hidden; }
+.kx-sidebar { min-height:0; overflow:visible; }
 .kx-brandbar,.kx-sidebar-account { flex-shrink:0; }
 .kx-sidebar-scroll { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; display:flex; flex-direction:column; gap:14px; scrollbar-width:thin; scrollbar-color:var(--line) transparent; }
 .kx-sidebar-scroll > * { flex-shrink:0; }
 .kx-sidebar-account { margin-top:0; }
 @media(width > 640px) { :is(:root[data-sidebar="collapsed"] .kx-shell, .kx-shell.is-compact) .kx-sidebar-account { margin-top:0; } }
-@media(max-width:640px) {
-  .kx-sidebar { position:fixed; width:250px; }
-  .kx-mobile-account { display:block; }
-}
+.kx-drawer-scrim, .kx-iconbutton.kx-drawer-close { display:none; }
 .kx-folder-breadcrumbs { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:24px 0 8px; }
 .kx-folder-breadcrumbs > span { display:flex; align-items:center; gap:10px; color:var(--ink-3); }
 .kx-folder-breadcrumbs button { background:none; border:0; color:var(--accent); font-size:13px; cursor:pointer; padding:4px 0; }
@@ -251,8 +248,6 @@ body:has(.kx-shell) { overflow:hidden; }
 .kx-album-cover { height:170px; background:#eeeaf8; color:#6554c0; display:grid; place-items:center; margin-bottom:18px; }
 .kx-album-card:nth-child(3n+2) .kx-album-cover { background:#e1f0eb; color:#208576; }.kx-album-card:nth-child(3n+3) .kx-album-cover { background:#fbe9e3; color:#b36b54; }
 .kx-album-card > strong { font-family:var(--display); font-size:16px; padding:0 18px; }.kx-album-card > small { color:var(--ink-3); font-size:12px; margin-top:8px; padding:0 18px; }.kx-album-card > p { padding:0 18px; color:var(--ink-3); font-size:12px; }
-/* Account popovers can extend over the content; only the navigation region clips. */
-.kx-sidebar { overflow:visible; }
 .kx-discovery-progress {
   display: flex;
   flex-direction: column;
@@ -839,11 +834,58 @@ body:has(.kx-shell) { overflow:hidden; }
   .kx-task-surface .inbox-side { width:auto; }
 }
 @media (max-width:640px) {
+  .kx-shell { grid-template-columns:minmax(0,1fr); }
+  .kx-content { scrollbar-gutter:auto; }
+  .kx-sidebar {
+    position:fixed;
+    inset:0 auto auto 0;
+    z-index:50;
+    width:min(280px, calc(100% - 48px));
+    height:100%;
+    height:100dvh;
+    box-sizing:border-box;
+    padding:max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    gap:10px;
+    transform:translateX(-100%);
+    visibility:hidden;
+    transition:transform .24s var(--ease-rise), visibility 0s .24s;
+    box-shadow:var(--shadow-popover);
+  }
+  .kx-sidebar.is-open { transform:none; visibility:visible; transition-delay:0s; }
+  .kx-sidebar .kx-brandbar { justify-content:space-between; gap:8px; }
+  .kx-sidebar .kx-brand .kx-wordmark { width:138px; }
+  .kx-sidebar-scroll { scrollbar-width:none; }
+  .kx-sidebar-scroll .kx-navrow:focus-visible { outline-offset:-2px; }
+  .kx-sidebar-account { padding:10px 4px 0; }
+  .kx-sidebar-account .kx-menu { max-width:calc(100vw - 44px); }
+  .kx-drawer-scrim {
+    display:block;
+    position:fixed;
+    inset:0;
+    z-index:45;
+    border:0;
+    background:var(--scrim-dialog);
+    touch-action:none;
+    animation:kx-fade .16s ease both;
+  }
+  .kx-navtip, .kx-search-page .kx-kbd { display:none; }
+  .kx-mobile-account { display:block; }
+  .kx-iconbutton:is(.kx-drawer-toggle, .kx-drawer-close) { display:grid; width:44px; height:44px; flex:none; }
+  .kx-shell button.kx-avatar { min-width:44px; min-height:44px; }
   .kx-shell :is(.kx-library-page, .kx-people-page, .kx-search-page, .kx-settings-page) { padding-top:14px; }
   .kx-shell :is(.kx-button, .kx-chip, .kx-navrow, .kx-searchtrigger, .kx-library-search, .kx-people-search, .kx-searchfield, .kx-settings-nav a, .kx-setting-row) { min-height:44px; }
-  .kx-shell :is(.kx-searchfield, .kx-people-search) input { font-size:16px; }
+  .kx-shell :is(.kx-searchfield, .kx-people-search, .kx-date-filter) input { font-size:16px; }
   .kx-task-surface .button, .kx-managed-view .card-actions .button, .kx-managed-view .edit-row .button { min-height:44px; }
   .kx-drawer-bar { display:flex; min-height:54px; justify-content:space-between; }
+  .kx-library-filters, .kx-library-filters .kx-chiprow { justify-content:flex-start; gap:6px; }
+  .kx-library-filters .kx-chip { padding-inline:10px; }
+  .kx-library-total { margin-inline-start:auto; }
+  .kx-tile-size .kx-iconbutton { width:44px; height:44px; }
+  .kx-album-cards { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+  .kx-album-cover { height:auto; aspect-ratio:4 / 3; margin-bottom:10px; }
+  .kx-album-card > :is(strong, small, p) { padding-inline:12px; overflow-wrap:anywhere; }
+  .kx-people-page .kx-reviewbanner { flex-wrap:wrap; }
+  .kx-people-page .kx-reviewbanner-copy { min-width:min(180px, 70%); }
   .kx-people-page .kx-peoplegrid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px 12px; }
   .kx-people-page .kx-personcard-name { font-size:14px; }
   .kx-people-page .kx-personcard-count { font-size:12px; }

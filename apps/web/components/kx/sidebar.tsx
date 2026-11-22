@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { KeyboardEvent, Ref } from "react";
 import type { User } from "@/types";
 import { KxUserMenu, displayNameOf } from "./user-menu";
 import { useStorageStatus } from "./use-library";
 import { BrandMark, BrandWordmark } from "@/components/brand-mark";
-import { LIBRARY_ICON_PATHS, NavIcon, SidebarIcon } from "./icons";
+import { CloseIcon, LIBRARY_ICON_PATHS, NavIcon, SidebarIcon } from "./icons";
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, SIDEBAR_WIDTH_KEY } from "./sidebar-script";
 import { useKxUi } from "./ui-state";
 
@@ -210,7 +211,23 @@ function NavRow({
   );
 }
 
-export function KxSidebar({ user, open, onNavigate }: { user: User | null; open: boolean; onNavigate: () => void }) {
+function keepFocusInDrawer(event: KeyboardEvent<HTMLElement>) {
+  if (event.key !== "Tab" || event.defaultPrevented) return;
+  const stops = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("a[href], button:not([disabled])"))
+    .filter(element => element.tabIndex >= 0 && element.getClientRects().length > 0);
+  const first = stops[0];
+  const last = stops.at(-1);
+  if (event.shiftKey ? event.target !== first : event.target !== last) return;
+  event.preventDefault();
+  (event.shiftKey ? last : first)?.focus();
+}
+
+export function KxSidebar({ user, open, closeButtonRef, onClose }: {
+  user: User | null;
+  open: boolean;
+  closeButtonRef: Ref<HTMLButtonElement>;
+  onClose: () => void;
+}) {
   const { data: storage } = useStorageStatus(false);
   const pathname = usePathname();
   const { railCollapsed } = useKxUi();
@@ -238,18 +255,24 @@ export function KxSidebar({ user, open, onNavigate }: { user: User | null; open:
   }, [railCollapsed, open, pathname]);
 
   return (
-    <aside
+    <div
       className={`kx-sidebar ${open ? "is-open" : ""}`}
       id="kx-sidebar"
-      onScroll={hideTip}
+      role={open ? "dialog" : "complementary"}
+      aria-modal={open || undefined}
+      aria-label={open ? "Navigation" : undefined}
+      onKeyDown={open ? keepFocusInDrawer : undefined}
     >
       {!railCollapsed && <SidebarResizeHandle />}
       <div className="kx-brandbar">
         <BrandLockup />
         <RailToggle />
+        <button type="button" className="kx-iconbutton kx-drawer-close" ref={closeButtonRef} aria-label="Close navigation" onClick={onClose}>
+          <CloseIcon size={20} />
+        </button>
       </div>
 
-      <div className="kx-sidebar-scroll">
+      <div className="kx-sidebar-scroll" onScroll={hideTip}>
       <nav className="kx-navgroup" aria-label="Library">
         {LIBRARY_ROWS.map((row) => (
           <NavRow
@@ -260,7 +283,7 @@ export function KxSidebar({ user, open, onNavigate }: { user: User | null; open:
             active={isActive(row.href)}
             wide={false}
             collapsed={railCollapsed}
-            onNavigate={onNavigate}
+            onNavigate={onClose}
             onShowTip={showTip}
             onHideTip={hideTip}
           />
@@ -300,7 +323,7 @@ export function KxSidebar({ user, open, onNavigate }: { user: User | null; open:
                 active={isActive(row.href)}
                 wide
                 collapsed={railCollapsed}
-                onNavigate={onNavigate}
+                onNavigate={onClose}
                 onShowTip={showTip}
                 onHideTip={hideTip}
               />
@@ -326,6 +349,6 @@ export function KxSidebar({ user, open, onNavigate }: { user: User | null; open:
           {tip.label}
         </div>
       )}
-    </aside>
+    </div>
   );
 }

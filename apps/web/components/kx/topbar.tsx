@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import type { Ref } from "react";
 import type { User } from "@/types";
 import { MenuIcon, MoonIcon, SearchIcon, SunIcon } from "./icons";
 import { useTheme } from "./theme";
@@ -28,10 +29,12 @@ function ThemeToggle() {
 export function KxTopbar({
   user,
   drawerOpen,
+  drawerTrigger,
   onOpenDrawer,
 }: {
   user: User | null;
   drawerOpen: boolean;
+  drawerTrigger: Ref<HTMLButtonElement>;
   onOpenDrawer: () => void;
 }) {
   const pathname = usePathname();
@@ -44,6 +47,8 @@ export function KxTopbar({
   return (
     <header className={`kx-topbar${pageOwnsHeader ? " kx-drawer-bar" : ""}`}>
       <button
+        ref={drawerTrigger}
+        type="button"
         className="kx-iconbutton kx-drawer-toggle"
         onClick={onOpenDrawer}
         aria-label="Open navigation"

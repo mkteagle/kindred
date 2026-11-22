@@ -360,7 +360,7 @@ export function ChronologicalLibrary({ timeline = false, albumId, junkOnly = fal
       </div>
       {junkOnly && <p className="kx-setting-description">Automatically marked photos. A household owner can keep individual photos from the photo viewer.</p>}
       <div className="kx-library-filters">
-        <div className="kx-chiprow" role="group" aria-label="Media type">
+        <div className="kx-chiprow" role="group" aria-label="Library filters">
           {!junkOnly && [["all", "All media"], ["photo", "Photos"], ["video", "Videos"]].map(([value, label]) => (
             <button key={value} className={`kx-chip ${media === value ? "is-active" : ""}`} aria-pressed={media === value} onClick={() => { setMedia(value); scrollToTop(); }}>{label}</button>
           ))}
@@ -372,12 +372,12 @@ export function ChronologicalLibrary({ timeline = false, albumId, junkOnly = fal
             <NavIcon d="M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z" size={16} />
             <ChevronDownIcon />
           </button>
+          {!albumId && !timeline && !junkOnly && <Link className="kx-chip" href="/gallery/junk">Junk</Link>}
           {layoutOpen && <div className="kx-tile-size" role="group" aria-label="Adjust tile size">
             <button className="kx-iconbutton" onClick={zoomOut} disabled={tile <= TILE_MIN} aria-label="Smaller tiles"><ZoomOutIcon /></button>
             <button className="kx-iconbutton" onClick={zoomIn} disabled={tile >= TILE_MAX} aria-label="Bigger tiles"><ZoomInIcon /></button>
           </div>}
         </div>
-        {!albumId && !timeline && !junkOnly && <Link className="kx-chip" href="/gallery/junk">Junk</Link>}
         {totalItems !== undefined && !timeline && <span className="kx-library-total">{fmt.format(totalItems)} items</span>}
         {timeline && <div className="kx-grain" role="group" aria-label="Group timeline">
           {(["years", "months", "days"] as const).map(value => <button key={value} className={grain === value ? "is-active" : ""} aria-pressed={grain === value} onClick={() => setGrain(value)}>{value[0].toUpperCase() + value.slice(1)}</button>)}

@@ -9405,19 +9405,10 @@ button.kx-avatar { cursor: pointer; }
 
 /* ── Sidebar ─────────────────────────────────────────────────────────── */
 
-/* `position: sticky` makes the rail its own stacking context, and it is the
-   first child of the shell grid — so with `z-index: auto` the content column
-   paints over anything the rail puts outside its own box, however high that
-   thing's own z-index (which is what buried the collapsed-rail tooltips under
-   the page title). 25 lifts the rail just clear of the page and the topbar
-   (20), and stays under the user menu (30), the select bar (40), the drawer
-   scrim (45) and every dialog (70+). */
+/* The rail stacks above the topbar (20) so its tooltips stay visible. */
 .kx-sidebar {
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 25;
-  height: 100vh;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 26px;
@@ -9613,10 +9604,6 @@ button.kx-avatar { cursor: pointer; }
   :is(:root[data-sidebar="collapsed"] .kx-shell, .kx-shell.is-compact) .kx-sidebar {
     padding-left: 8px;
     padding-right: 8px;
-    /* Horizontal only: the wordmark and the row labels must not bleed out of
-       the 64px rail mid-transition, but a short viewport still has to be able
-       to scroll fifteen icons. */
-    overflow-x: hidden;
   }
 
   :is(:root[data-sidebar="collapsed"] .kx-shell, .kx-shell.is-compact) .kx-sidebar > .kx-sync {
@@ -9807,45 +9794,9 @@ button.kx-avatar { cursor: pointer; }
 .kx-menu-item:hover { background: var(--fill-2); }
 .kx-menu-item svg { flex: none; }
 
-/* ── Responsive: the icon rail becomes a drawer on phones ─────────────── */
-
-.kx-drawer-scrim { display: none; }
-
 @media (max-width: 640px) {
-  .kx-shell { grid-template-columns: minmax(0, 1fr); }
-
-  .kx-sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    z-index: 50;
-    width: 262px;
-    transform: translateX(-100%);
-    visibility: hidden;
-    transition: transform .24s var(--ease-rise), visibility .24s;
-    box-shadow: var(--shadow-popover);
-  }
-
-  .kx-sidebar.is-open { transform: none; visibility: visible; transition-delay: 0s; }
-  .kx-navtip { display: none; }
-
-  .kx-drawer-scrim {
-    display: block;
-    position: fixed;
-    inset: 0;
-    z-index: 45;
-    border: 0;
-    background: var(--scrim-dialog);
-    animation: kx-fade .16s ease both;
-  }
-
-  .kx-drawer-toggle { display: grid; }
-
   .kx-page { padding: 20px 16px 80px; }
   .kx-title { font-size: 34px; }
-}
-
-@media (max-width: 640px) {
   .kx-topbar { padding: 10px 16px; gap: 10px; }
   .kx-themetoggle { display: none; }
 }
