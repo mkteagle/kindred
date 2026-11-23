@@ -15,7 +15,7 @@ import { KxSelectBar } from "@/components/kx/select-bar";
 import { useLibraryDayLabels } from "@/components/kx/day-labels";
 import { formatDuration, groupByDay, thumbUrl, type LibraryPhoto } from "@/components/kx/photos";
 
-type Page = { photos: LibraryPhoto[]; next_cursor: string | null };
+type Page = { photos: LibraryPhoto[]; next_cursor: string | null; thumbnailScope?: string };
 
 /** Movement in px before a mouse-down turns into a marquee sweep. */
 const DRAG_THRESHOLD = 8;
@@ -84,14 +84,15 @@ export function ChronologicalLibrary({ timeline = false, albumId, junkOnly = fal
       queryKey: ["library-mosaic", media, seekYear, dateTo, albumId, junkOnly],
       initialPageParam: null as string | null,
       queryFn: async ({ pageParam, signal }) => {
-        const params = new URLSearchParams({ sort: "newest", media, limit: "96", signed_thumbnails: "true" });
+        const params = new URLSearchParams({ sort: "newest", media, limit: "96" });
         if (junkOnly) params.set("junk", "only");
         if (pageParam) params.set("cursor", pageParam as string);
         if (albumId) params.set("album_id", albumId);
         if (dateTo || seekYear) params.set("date_to", dateTo || `${seekYear}-12-31`);
         const response = await fetch(`${BACKEND}/library/photos?${params}`, { signal });
         if (!response.ok) throw new Error("The library could not be loaded.");
-        return response.json();
+        const page: Page = await response.json();
+        return { ...page, thumbnailScope: response.headers.get("X-Kindred-Thumbnail-Scope") ?? undefined };
       },
       getNextPageParam: (page) => page.next_cursor ?? undefined,
     });
@@ -397,7 +398,8 @@ export function ChronologicalLibrary({ timeline = false, albumId, junkOnly = fal
 
       <div className="kx-library-body">
         <div className="kx-mosaic-column" ref={columnRef} onMouseDown={onColumnMouseDown}>
-          <VirtualPhotoRows sections={sections} selected={selected} selecting={selecting}
+          <VirtualPhotoRows key={data?.pages[0]?.thumbnailScope} sections={sections} selected={selected} selecting={selecting}
+            thumbnailScope={data?.pages[0]?.thumbnailScope}
             onSelectDay={selectDay} onTileClick={onTileClick} registerTile={registerTile}
             onVisibleYear={setVisibleYear}
             dayLabels={grain === "days" ? dayLabels : undefined}

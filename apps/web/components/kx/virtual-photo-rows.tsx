@@ -20,7 +20,7 @@ interface PhotoRow {
 
 /** Virtualize rows rather than entire days: a single day can contain 50,000 items. */
 export function VirtualPhotoRows({ sections, selected, selecting, onSelectDay, onTileClick, registerTile,
-  dayLabels, hasNextPage, fetching, error, fetchNextPage, onVisibleYear,
+  thumbnailScope, dayLabels, hasNextPage, fetching, error, fetchNextPage, onVisibleYear,
 }: {
   sections: DaySection[];
   selected: ReadonlySet<string>;
@@ -28,6 +28,7 @@ export function VirtualPhotoRows({ sections, selected, selecting, onSelectDay, o
   onSelectDay: (ids: string[]) => void;
   onTileClick: (photo: LibraryPhoto) => void;
   registerTile: (id: string, node: HTMLElement | null) => void;
+  thumbnailScope?: string;
   dayLabels?: Map<string, DayLabel>;
   hasNextPage: boolean;
   fetching: boolean;
@@ -135,7 +136,7 @@ export function VirtualPhotoRows({ sections, selected, selecting, onSelectDay, o
               aria-pressed={selecting ? selected.has(photo.photo_id) : undefined}
               aria-label={photo.photo_title || (photo.media_kind === "video" ? "Open video" : "Open photo")}
               onClick={() => onTileClick(photo)}>
-              <OptimizedPhoto photoId={photo.photo_id} video={photo.media_kind === "video"} thumbnailUrl={photo.thumbnail_url}
+              <OptimizedPhoto photoId={photo.photo_id} video={photo.media_kind === "video"} thumbnailScope={thumbnailScope}
                 priority={priority} onSettled={onThumbnailSettled} />
               {selected.has(photo.photo_id) && <span className="kx-selected-mark" aria-hidden="true">✓</span>}
               {photo.junk_reason && <span className="kx-tile-video">{JUNK_LABELS[photo.junk_reason]}</span>}

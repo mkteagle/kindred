@@ -10,21 +10,23 @@ export type ThumbnailPriority = "visible" | "nearby" | "deferred" | "automatic";
 /** Display a bounded thumbnail with one fallback to Kindred's delivery route. */
 export function OptimizedPhoto({
   photoId, video = false, alt = "", className, thumbnailUrl,
-  priority = "automatic", onSettled,
+  priority = "automatic", onSettled, thumbnailScope,
 }: {
   photoId: string;
   video?: boolean;
   alt?: string;
   className?: string;
   thumbnailUrl?: string;
+  thumbnailScope?: string;
   priority?: ThumbnailPriority;
   onSettled?: (id: string) => void;
 }) {
   const [failedDirect, setFailedDirect] = useState<string[]>([]);
   const [result, setResult] = useState<{ photoId: string; url: string; loaded: boolean }>();
   const virtualized = priority !== "automatic";
+  const decodedId = `${thumbnailScope ?? ""}:${photoId}`;
   const [snapshot, setSnapshot] = useState(() => {
-    const bitmap = virtualized ? decodedThumbnail(photoId) : undefined;
+    const bitmap = virtualized ? decodedThumbnail(decodedId) : undefined;
     return bitmap && { bitmap, width: bitmap.width, height: bitmap.height };
   });
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -40,8 +42,8 @@ export function OptimizedPhoto({
     }
     context.drawImage(bitmap, 0, 0);
     drawn.current = true;
-    touchDecodedThumbnail(photoId, bitmap);
-  }, [snapshot, photoId]);
+    touchDecodedThumbnail(decodedId, bitmap);
+  }, [snapshot, decodedId]);
 
   useEffect(() => {
     if (snapshot && drawn.current) onSettled?.(photoId);
@@ -54,8 +56,9 @@ export function OptimizedPhoto({
     </span>;
   }
 
-  const fallback = thumbUrl({ photo_id: photoId, media_kind: video ? "video" : "photo" });
-  const remembered = loadedThumbnail(photoId, thumbnailUrl);
+  const base = thumbUrl({ photo_id: photoId, media_kind: video ? "video" : "photo" });
+  const fallback = thumbnailScope ? `${base}&preview=gallery&scope=${encodeURIComponent(thumbnailScope)}` : base;
+  const remembered = loadedThumbnail(photoId, virtualized ? fallback : thumbnailUrl);
   const preferred = [remembered, thumbnailUrl]
     .find(url => url && !failedDirect.includes(url) && thumbnailUrlIsFresh(url));
   const displayed = result?.photoId === photoId && result.loaded ? result.url : undefined;
@@ -85,7 +88,7 @@ export function OptimizedPhoto({
           fetchPriority={priority === "visible" ? "high" : priority === "nearby" ? "low" : "auto"}
           decoding="async" draggable={false} referrerPolicy={url !== fallback ? "no-referrer" : undefined}
           onLoad={(event) => {
-            if (virtualized) void retainDecodedThumbnail(photoId, event.currentTarget);
+            if (virtualized) void retainDecodedThumbnail(decodedId, event.currentTarget);
             rememberThumbnail(photoId, thumbnailUrl || fallback, url);
             setResult({ photoId, url, loaded: true });
             onSettled?.(photoId);

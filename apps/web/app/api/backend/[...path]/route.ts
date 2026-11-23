@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { BACKEND_URL, CATALOG_BACKEND_URL, catalogRequest, isR2ThumbnailRedirect, isThumbnailRequest } from "@/lib/backend-url";
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/oauth";
 
 const API_KEY = process.env.API_KEY || "";
+const GALLERY_THUMBNAIL_CACHE = "private, max-age=86400";
 
 /**
  * Paths reachable without a Kindred session.
@@ -26,6 +28,25 @@ function isPublicPath(pathStr: string): boolean {
   return PUBLIC_PATHS.some((pattern) => pattern.test(pathStr));
 }
 
+function thumbnailScope(sessionToken: string) {
+  return createHash("sha256").update("kindred-gallery-thumbnail-v1\0").update(sessionToken).digest("base64url").slice(0, 22);
+}
+
+async function fetchThumbnailObject(location: string, req: NextRequest) {
+  const headers = new Headers();
+  const etag = req.headers.get("if-none-match");
+  if (etag) headers.set("If-None-Match", etag);
+  try {
+    const response = await fetch(location, { headers, cache: "no-store", redirect: "manual", signal: req.signal });
+    if (response.status === 304 || (response.status === 200 && response.headers.get("content-type") === "image/jpeg")) {
+      return response;
+    }
+    await response.body?.cancel();
+  } catch (error) {
+    if (req.signal.aborted) throw error;
+  }
+}
+
 async function handleRequest(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
@@ -40,6 +61,7 @@ async function handleRequest(
     const queryString = req.nextUrl.search;
     const thumbnail = req.method === "GET" && isThumbnailRequest(pathStr, req.nextUrl.searchParams);
     const previewQuery = req.nextUrl.searchParams;
+    const galleryThumbnail = thumbnail && previewQuery.get("preview") === "gallery";
     const viewerPreview = req.method === "GET" && /^photos\/[^/]+\/image$/.test(pathStr)
       && previewQuery.get("preview") === "viewer"
       && previewQuery.get("size") === "h" && previewQuery.get("format") === "jpeg"
@@ -64,6 +86,10 @@ async function handleRequest(
       // Refuse rather than fall back to the API key, which would authenticate
       // an anonymous caller to the backend as an admin.
       return NextResponse.json({ detail: "Authentication required" }, { status: 401 });
+    }
+
+    if (galleryThumbnail && (!session?.session_token || previewQuery.get("scope") !== thumbnailScope(session.session_token))) {
+      return NextResponse.json({ detail: "Invalid thumbnail session" }, { status: 403, headers: { "Cache-Control": "private, no-store" } });
     }
 
     if (!publicPath) {
@@ -121,21 +147,33 @@ async function handleRequest(
         backendResp = undefined;
       }
     }
+    const fromCatalog = !!backendResp;
     backendResp ??= await fetch(`${thumbnail ? BACKEND_URL : catalog || BACKEND_URL}${suffix}`, opts);
     if (thumbnail && backendResp.status === 307) {
       const location = backendResp.headers.get("location");
       if (!isR2ThumbnailRedirect(location)) {
         return NextResponse.json({ detail: "Invalid thumbnail location" }, { status: 502 });
       }
-      return new NextResponse(null, {
-        status: 307,
-        headers: {
-          Location: location!,
-          "Cache-Control": "private, max-age=120",
-          Vary: "Cookie",
-          "Referrer-Policy": "no-referrer",
-        },
-      });
+      if (!galleryThumbnail) {
+        return new NextResponse(null, {
+          status: 307,
+          headers: {
+            Location: location!,
+            "Cache-Control": "private, max-age=120",
+            Vary: "Cookie",
+            "Referrer-Policy": "no-referrer",
+          },
+        });
+      }
+      await backendResp.body?.cancel();
+      let image = await fetchThumbnailObject(location!, req);
+      if (!image && fromCatalog) {
+        const nas = await fetch(`${BACKEND_URL}${suffix}`, opts);
+        if (nas.status !== 307) image = nas;
+        else await nas.body?.cancel();
+      }
+      if (!image) return NextResponse.json({ detail: "Thumbnail unavailable" }, { status: 502 });
+      backendResp = image;
     }
 
     // Check if response is binary (image, etc.) — don't try to parse as JSON
@@ -152,11 +190,14 @@ async function handleRequest(
       // would be held in this process's memory in its entirety.
       const cacheViewerPreview = viewerPreview && (backendResp.status === 304 ||
         (backendResp.status === 200 && contentType.startsWith("image/jpeg")));
+      const cacheGalleryThumbnail = galleryThumbnail && (backendResp.status === 304 ||
+        (backendResp.status === 200 && /^image\/(?:jpeg|webp|png|avif)(?:;|$)/i.test(contentType)));
       const passthrough: Record<string, string> = {
-        "Content-Type": contentType,
-        "Cache-Control": cacheViewerPreview ? "private, max-age=300" :
+        "Cache-Control": galleryThumbnail ? (cacheGalleryThumbnail ? GALLERY_THUMBNAIL_CACHE : "private, no-store") :
+          cacheViewerPreview ? "private, max-age=300" :
           backendResp.headers.get("cache-control") || (thumbnail ? "private, no-store" : "private, max-age=3600"),
       };
+      if (contentType) passthrough["Content-Type"] = contentType;
       // Range answers are meaningless without these, and a 206 whose
       // Content-Range is dropped makes the player fail in confusing ways.
       for (const header of ["accept-ranges", "content-range", "content-length", "content-disposition", "etag", "vary", "x-content-type-options", "x-accel-buffering"]) {
@@ -173,9 +214,17 @@ async function handleRequest(
     }
 
     const data = await backendResp.json();
+    const responseHeaders = new Headers();
+    if (galleryThumbnail) responseHeaders.set("Cache-Control", "private, no-store");
+    if (pathStr === "library/photos") {
+      responseHeaders.set("Cache-Control", "private, no-store");
+      if (backendResp.ok && session?.session_token) {
+        responseHeaders.set("X-Kindred-Thumbnail-Scope", thumbnailScope(session.session_token));
+      }
+    }
     return NextResponse.json(data, {
       status: backendResp.status,
-      headers: pathStr === "library/photos" ? { "Cache-Control": "private, no-store" } : undefined,
+      headers: responseHeaders,
     });
   } catch (err) {
     return NextResponse.json(
