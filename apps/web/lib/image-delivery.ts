@@ -71,11 +71,22 @@ export function prefetchImage(url: string, signal: AbortSignal): Promise<boolean
   });
 }
 
-// Remember the thumbnail actually displayed, so opening a tile can reuse it.
-const displayed = new Map<string, string>();
-export function rememberThumbnail(id: string, url: string) {
-  displayed.delete(id);
-  displayed.set(id, url);
-  if (displayed.size > 200) displayed.delete(displayed.keys().next().value!);
+// Keep the working source across tile remounts. The browser caches the image bytes.
+const thumbnails = new Map<string, { requested: string; loaded: string }>();
+
+export function rememberThumbnail(id: string, requested: string, loaded: string) {
+  thumbnails.delete(id);
+  thumbnails.set(id, { requested, loaded });
+  if (thumbnails.size > 512) thumbnails.delete(thumbnails.keys().next().value!);
 }
-export function loadedThumbnail(id: string) { return displayed.get(id); }
+
+export function loadedThumbnail(id: string, requested?: string) {
+  const thumbnail = thumbnails.get(id);
+  if (requested === undefined || requested === thumbnail?.requested || requested === thumbnail?.loaded) {
+    return thumbnail?.loaded;
+  }
+}
+
+export function forgetThumbnail(id: string, url: string) {
+  if (thumbnails.get(id)?.loaded === url) thumbnails.delete(id);
+}

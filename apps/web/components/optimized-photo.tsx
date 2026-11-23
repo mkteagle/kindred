@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { loadedThumbnail, rememberThumbnail, thumbnailUrlIsFresh } from "@/lib/image-delivery";
+import { forgetThumbnail, loadedThumbnail, rememberThumbnail, thumbnailUrlIsFresh } from "@/lib/image-delivery";
 import { thumbUrl } from "@/components/kx/photos";
 
 export type ThumbnailPriority = "visible" | "nearby" | "deferred" | "automatic";
@@ -22,20 +22,21 @@ export function OptimizedPhoto({
   const [failedDirect, setFailedDirect] = useState<string[]>([]);
   const [result, setResult] = useState<{ photoId: string; url: string; loaded: boolean }>();
   const fallback = thumbUrl({ photo_id: photoId, media_kind: video ? "video" : "photo" });
-  const remembered = loadedThumbnail(photoId);
-  const direct = [remembered !== fallback ? remembered : undefined, thumbnailUrl]
+  const remembered = loadedThumbnail(photoId, thumbnailUrl);
+  const preferred = [remembered, thumbnailUrl]
     .find(url => url && !failedDirect.includes(url) && thumbnailUrlIsFresh(url));
   const displayed = result?.photoId === photoId && result.loaded ? result.url : undefined;
-  const url = displayed ?? direct ?? fallback;
+  const url = displayed ?? preferred ?? fallback;
   const resolved = result?.photoId === photoId && result.url === url;
   const loaded = resolved && result.loaded;
   const unavailable = resolved && !result.loaded;
-  const request = priority !== "deferred" || loaded;
-  const state = loaded ? "loaded" : unavailable ? "unavailable" : "loading";
+  const wasLoaded = loaded || (!unavailable && remembered === url);
+  const request = priority !== "deferred" || wasLoaded;
+  const state = wasLoaded ? "loaded" : unavailable ? "unavailable" : "loading";
 
   return (
     <span className="kx-photo-thumbnail" data-state={state}>
-      {!loaded && (
+      {!wasLoaded && (
         <span className="kx-photo-thumbnail-placeholder" aria-hidden="true"
           title={unavailable ? "Thumbnail unavailable" : undefined}>
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -51,11 +52,12 @@ export function OptimizedPhoto({
           fetchPriority={priority === "visible" ? "high" : priority === "nearby" ? "low" : "auto"}
           decoding="async" draggable={false} referrerPolicy={url !== fallback ? "no-referrer" : undefined}
           onLoad={() => {
-            rememberThumbnail(photoId, url);
+            rememberThumbnail(photoId, thumbnailUrl || fallback, url);
             setResult({ photoId, url, loaded: true });
             onSettled?.(photoId);
           }}
           onError={() => {
+            forgetThumbnail(photoId, url);
             if (url !== fallback) {
               setFailedDirect(failed => [...failed, url]);
               setResult(current => current?.url === url ? undefined : current);

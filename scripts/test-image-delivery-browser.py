@@ -1,5 +1,5 @@
 """Browser request regression using synthetic API responses; see docs/image-delivery.md."""
-import asyncio, json, os
+import asyncio, json, os, sys
 from io import BytesIO
 from urllib.parse import urlparse, parse_qs
 from PIL import Image
@@ -12,12 +12,17 @@ async def main():
         await context.add_cookies([{'name':'kindred_session', 'value':'fixture', 'url':'http://localhost:3109'}])
         page = await context.new_page()
         requests=[]; errors=[]
+        expired_requests = 0
         selected_id = None
         release_preview = asyncio.Event()
         page.on('pageerror', lambda error: errors.append(str(error)))
         photos=[dict(photo_id=str(i), photo_title=f'Photo {i}', date_taken='2026-08-20T12:00:00', media_kind='photo', duration_seconds=None) for i in range(200)]
         async def api(route):
+            nonlocal expired_requests
             url=route.request.url; path=urlparse(url).path
+            if path == '/api/fixture/expired-thumbnail':
+                expired_requests += 1
+                return await route.fulfill(status=403, headers={'Cache-Control': 'no-store'})
             if path.endswith('/image'):
                 query=parse_qs(urlparse(url).query); width=int(query.get('w',['4000'])[0]); requests.append(url)
                 if path.endswith(f'/photos/{selected_id}/image') and query.get('format') == ['jpeg']:
@@ -38,6 +43,37 @@ async def main():
             elif path.endswith('/favorites/count'): data={'count':0}
             else: data={}
             await route.fulfill(json=data)
+
+        async def verify_scroll_cache():
+            photos[0]['thumbnail_url'] = '/api/fixture/expired-thumbnail'
+            fixture = await browser.new_context(viewport={'width':1280,'height':800})
+            await fixture.add_cookies([{'name':'kindred_session', 'value':'fixture', 'url':'http://localhost:3109'}])
+            await fixture.add_init_script("Object.defineProperty(navigator, 'connection', {value:{saveData:true}})")
+            await fixture.route('**/api/**', api)
+            try:
+                gallery = await fixture.new_page()
+                await gallery.goto('http://localhost:3109/gallery')
+                tile = gallery.locator('[data-photo-id="0"]')
+                ready = """() => document.querySelector('[data-photo-id="0"] img')?.naturalWidth > 0"""
+                await gallery.wait_for_function(ready)
+                assert expired_requests == 1, expired_requests
+                scroller = gallery.locator('.kx-content')
+                await scroller.evaluate('(element) => element.scrollTop = 3000')
+                await tile.wait_for(state='detached')
+                await scroller.evaluate('(element) => element.scrollTop = 0')
+                await gallery.wait_for_function(ready)
+                assert expired_requests == 1, expired_requests
+                print(json.dumps({'expired_thumbnail_requests_after_remount':expired_requests}))
+            finally:
+                await fixture.close()
+                del photos[0]['thumbnail_url']
+                requests.clear()
+
+        await verify_scroll_cache()
+        if '--scroll-cache-only' in sys.argv[1:]:
+            await browser.close()
+            return
+
         await context.route('**/api/**',api)
         await page.goto('http://localhost:3109/gallery')
         await page.locator('.kx-tile').first.wait_for()
