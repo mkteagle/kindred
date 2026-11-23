@@ -150,7 +150,8 @@ private struct IndexingWorker: Decodable, Identifiable {
         case "waiting_for_discovery": return "Waiting for file catalog"
         case "waiting_for_previews": return "Waiting for thumbnails"
         case "waiting_for_capacity": return "Waiting for NAS"
-        case "reconciliation_needed": return "Needs attention"
+        case "waiting_for_flickr_match": return "Waiting for Flickr comparison"
+        case "reconciliation_needed", "needs_review", "failed": return "Needs attention"
         default: return running ? "Running" : "Waiting"
         }
     }

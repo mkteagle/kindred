@@ -1,0 +1,67 @@
+# Deploy with a dedicated Compose project and dedicated storage volumes.
+services:
+  database:
+    mem_limit: 512m
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: kindred_app_review
+      POSTGRES_USER: kindred_review
+      POSTGRES_PASSWORD: ${KINDRED_REVIEW_DB_PASSWORD:?Set a unique review database password}
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "kindred_review", "-d", "kindred_app_review"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+    restart: unless-stopped
+    networks: [database]
+
+  api:
+    cpus: 2
+    mem_limit: 2g
+    build: ../../backend
+    environment:
+      DATABASE_URL: postgresql://kindred_review:${KINDRED_REVIEW_DB_PASSWORD}@database:5432/kindred_app_review
+      KINDRED_APP_REVIEW: "1"
+      KINDRED_REVIEW_PASSWORD: ${KINDRED_REVIEW_PASSWORD:?Set a unique review login password}
+      KINDRED_HOUSEHOLD_NAME: App Review Library
+      PHOTO_STORAGE_ROOT: /review/originals
+      KINDRED_THUMBNAIL_ROOT: /review/thumbnails
+      PUBLIC_API_URL: ${KINDRED_REVIEW_API_URL:?Set the review-only HTTPS API address}
+    volumes:
+      - media:/review
+      - ./photos:/review-fixtures:ro
+    depends_on:
+      database:
+        condition: service_healthy
+    command:
+      - sh
+      - -ec
+      - |
+        python seed_app_review.py /review-fixtures
+        exec uvicorn main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "127.0.0.1:${KINDRED_REVIEW_PORT:-8180}:8000"
+    restart: unless-stopped
+    networks: [database, ingress]
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: [public]
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${KINDRED_REVIEW_TUNNEL_TOKEN:-}
+    restart: unless-stopped
+    depends_on: [api]
+    networks: [ingress]
+
+networks:
+  database:
+    internal: true
+  ingress:
+
+volumes:
+  database:
+  media:

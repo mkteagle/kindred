@@ -37,3 +37,7 @@ backups/
 
 # Private per-machine iOS diagnostic configuration.
 apps/ios/Diagnostics.local.xcconfig
+
+# Local App Store composition sources and contact sheet.
+screenshots/seeded-review/artwork/
+screenshots/seeded-review/preview.jpg

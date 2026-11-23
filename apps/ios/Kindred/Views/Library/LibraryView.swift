@@ -42,10 +42,17 @@ struct LibraryView: View {
             .kindredPaperBackground()
             .safeAreaInset(edge: .top, spacing: 0) {
                 if !gallery.isSelecting {
-                    KindredAppBar(actionIcon: "plus", actionLabel: "Add photos to the library") {
-                        showUpload = true
+                    if SessionManager.shared.isReadOnlyReview {
+                        KindredAppBar(actionIcon: "plus", actionLabel: "Try importing photos on this iPhone") {
+                            showUpload = true
+                        }
+                        .background(KindredTheme.bg)
+                    } else {
+                        KindredAppBar(actionIcon: "plus", actionLabel: "Add photos to the library") {
+                            showUpload = true
+                        }
+                        .background(KindredTheme.bg)
                     }
-                    .background(KindredTheme.bg)
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -63,7 +70,9 @@ struct LibraryView: View {
                 if photo.isVideo {
                     VideoPlayerView(video: photo)
                 } else {
-                    PhotoViewerView(photos: gallery.photos, initial: photo)
+                    PhotoViewerView(photos: gallery.photos, initial: photo) {
+                        Task { await gallery.reload() }
+                    }
                 }
             }
             .sheet(isPresented: $showAlbumPicker) {
@@ -75,7 +84,11 @@ struct LibraryView: View {
                 SelectedMediaReview(photos: gallery.selectedPhotos)
             }
             .sheet(isPresented: $showUpload) {
-                UploadSheetView()
+                if SessionManager.shared.isReadOnlyReview {
+                    ReviewPhotoImportView()
+                } else {
+                    UploadSheetView()
+                }
             }
         }
         .onChange(of: gallery.isSelecting) { _, selecting in

@@ -1,0 +1,2 @@
+ALTER TABLE albums ADD COLUMN IF NOT EXISTS cover_photo_id UUID
+    REFERENCES photos(id) ON DELETE SET NULL;

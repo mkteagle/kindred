@@ -129,7 +129,10 @@ struct RootView: View {
             ContentView()
                 .id(session.currentUser?.id)
                 .onChange(of: scenePhase, initial: true) { _, phase in
-                    if phase == .active { SyncManager.shared.resumeBackupInForeground() }
+                    if phase == .active {
+                        ReviewPhotoStore.shared.refresh()
+                        SyncManager.shared.resumeBackupInForeground()
+                    }
                 }
                 .task {
                     // Skip network refresh in demo mode

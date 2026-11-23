@@ -239,10 +239,14 @@ private struct HomeAlbumTile: View {
                 .lineLimit(1)
         }
         .accessibilityLabel(album.name)
-        .task(id: album.photo_count) {
+        .task(id: "\(albumID):\(album.cover_photo_id ?? ""):\(album.photo_count)") {
             guard album.photo_count > 0 else { cover = nil; return }
             if DemoDataProvider.shared.isActive {
                 cover = DemoDataProvider.shared.albumPage(id: albumID).photos.first
+            } else if let photoID = album.cover_photo_id {
+                cover = LibraryPhoto(photo_id: photoID, photo_title: nil, date_taken: nil,
+                                     media_kind: album.cover_media_kind, duration_seconds: nil,
+                                     flickr_url: nil, thumb_url: nil)
             } else if let page = try? await APIClient.shared.libraryPhotos(albumID: albumID, limit: 1),
                       !Task.isCancelled {
                 cover = page.photos.first

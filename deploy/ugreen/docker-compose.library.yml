@@ -17,7 +17,7 @@ x-library-worker: &library-worker
     # Defaults remain conservative; tune to measured disk behavior per installation.
     KINDRED_IO_HIGH: ${KINDRED_IO_HIGH:-40}
     KINDRED_IO_LOW: ${KINDRED_IO_LOW:-15}
-    KINDRED_PREVIEWS_FIRST: ${KINDRED_PREVIEWS_FIRST:-1}
+    KINDRED_NAS_INDEXING_PRIORITY: "1"
   volumes:
     - ${NAS_LIBRARY_SOURCE:?Set NAS_LIBRARY_SOURCE}:/data/library:ro
     - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/backend:/app/data
@@ -54,9 +54,47 @@ services:
 
   nas-recognition:
     <<: *library-worker
-    cpus: 4
+    cpus: ${KINDRED_RECOGNITION_CPUS:-4}
+    cpu_shares: 256
     mem_limit: 8g
+    environment:
+      <<: *library-environment
+      KINDRED_RECOGNITION_WORKERS: ${KINDRED_RECOGNITION_WORKERS:-2}
     command: [python, -u, /app/index_nas_watch.py]
+
+  flickr-original-match:
+    <<: *library-worker
+    profiles: [flickr-match]
+    cpus: 1
+    mem_limit: 768m
+    environment:
+      <<: *library-environment
+      FLICKR_API_KEY: ${FLICKR_API_KEY:-}
+      FLICKR_SECRET: ${FLICKR_SECRET:-}
+      KINDRED_HOUSEHOLD_FLICKR_USER_ID: ${KINDRED_HOUSEHOLD_FLICKR_USER_ID:-}
+    command: [python, -u, /app/flickr_match_worker.py, --watch, --albums-first]
+    volumes:
+      - ${NAS_LIBRARY_SOURCE:?Set NAS_LIBRARY_SOURCE}:/data/library:ro
+      - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/backend:/app/data
+      - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/photos:/data/photos:ro
+      - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/flickr-match:/app/flickr-match
+
+  flickr-nas-backup:
+    <<: *library-worker
+    profiles: [flickr-match]
+    cpus: 1
+    mem_limit: 768m
+    environment:
+      <<: *library-environment
+      FLICKR_API_KEY: ${FLICKR_API_KEY:-}
+      FLICKR_SECRET: ${FLICKR_SECRET:-}
+      KINDRED_HOUSEHOLD_FLICKR_USER_ID: ${KINDRED_HOUSEHOLD_FLICKR_USER_ID:-}
+    command: [python, -u, /app/flickr_nas_backup.py, --watch, --apply]
+    volumes:
+      - ${NAS_LIBRARY_SOURCE:?Set NAS_LIBRARY_SOURCE}:/data/library:ro
+      - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/backend:/app/data
+      - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/photos:/data/photos:ro
+      - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/flickr-backup:/app/flickr-backup
 
   r2-thumbnail-publisher:
     image: kindred-api:${KINDRED_REVISION:?Set KINDRED_REVISION}
@@ -75,8 +113,12 @@ services:
       - /app/data
       - --checkpoint
       - /app/publisher/thumbnails.sqlite
+      - --watch
+      - --status
+      - /app/status/r2-thumbnail-status.json
     volumes:
       - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/backend:/app/data:ro
+      - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/backend/worker-status:/app/status
       - ${KINDRED_DATA_ROOT:?Set KINDRED_DATA_ROOT}/r2-publisher:/app/publisher
     networks: [kindred-internal]
     logging:

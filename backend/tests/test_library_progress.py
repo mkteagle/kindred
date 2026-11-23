@@ -6,6 +6,23 @@ from library_progress import progress
 
 
 class ReconciliationTests(unittest.TestCase):
+    def test_cloud_workers_expose_progress_without_source_details(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            status = root / 'worker-status'
+            status.mkdir()
+            (status / 'flickr-match-status.json').write_text(json.dumps({
+                'running': True, 'completed': 4, 'remote_total': 9, 'matched': 2,
+                'owner_id': 'private account', 'source_path': '/private',
+            }))
+            (status / 'flickr-nas-backup-status.json').write_text('[]')
+            snapshot = progress(root)
+            self.assertEqual(snapshot['flickr_match']['remote_total'], 9)
+            self.assertEqual(snapshot['flickr_match']['matched'], 2)
+            self.assertNotIn('owner_id', snapshot['flickr_match'])
+            self.assertNotIn('source_path', snapshot['flickr_match'])
+            self.assertIsNone(snapshot['flickr_backup'])
+
     def test_only_matching_complete_audit_explains_exclusions(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d)

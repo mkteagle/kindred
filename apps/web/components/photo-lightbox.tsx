@@ -2,6 +2,8 @@
 
 import React, {
   createContext,
+  lazy,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -20,6 +22,8 @@ import { useFavorites } from "@/components/kx/favorites";
 import { OptimizedPhoto } from "@/components/optimized-photo";
 import { loadedThumbnail, photoImageUrl, prefetchImage, viewerImageUrl } from "@/lib/image-delivery";
 import { ChevronLeftIcon, CloseIcon, HeartIcon } from "@/components/kx/icons";
+
+const VideoGifDialog = lazy(() => import("./video-gif-dialog"));
 
 /* ── Types ──────────────────────────────────────────────────────────── */
 
@@ -222,7 +226,9 @@ function PhotoLightboxOverlay({
   const [moreOpen, setMoreOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [gifSelection, setGifSelection] = useState<{ photoId: string; start: number }>();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const infoToggleRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const infoId = useId();
@@ -231,6 +237,7 @@ function PhotoLightboxOverlay({
   const shareRef = useRef<HTMLDivElement>(null);
 
   const currentPhoto = photos[index] || null;
+  const gifEditor = gifSelection?.photoId === photoId ? gifSelection : undefined;
   const queryClient = useQueryClient();
   const keepPhoto = useMutation({
     mutationFn: async (id: string) => {
@@ -291,6 +298,7 @@ function PhotoLightboxOverlay({
     setMoreOpen(false);
     setShareOpen(false);
     setCopySuccess(false);
+    setGifSelection(undefined);
   }, [photoId]);
 
   // Scroll active thumb into view
@@ -315,6 +323,7 @@ function PhotoLightboxOverlay({
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (gifEditor) return;
       // Don't capture if a popover input is focused
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
@@ -347,7 +356,7 @@ function PhotoLightboxOverlay({
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [onGoTo, index, hasPrev, hasNext]);
+  }, [onGoTo, index, hasPrev, hasNext, gifEditor]);
 
   // Zoom on click
   const handleImageClick = useCallback(() => {
@@ -596,6 +605,20 @@ function PhotoLightboxOverlay({
                   </svg>
                   Download original
                 </button>
+                {isVideo && (
+                  <button className="lb-popover-row" onClick={() => {
+                    const video = videoRef.current;
+                    video?.pause();
+                    setGifSelection({ photoId, start: video?.currentTime ?? 0 });
+                    setMoreOpen(false);
+                  }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                      <rect x="3" y="5" width="18" height="14" rx="2" />
+                      <path d="m10 9 5 3-5 3z" />
+                    </svg>
+                    Create GIF
+                  </button>
+                )}
                 {currentPhoto?.flickr_url && (
                   <a
                     href={currentPhoto.flickr_url}
@@ -666,6 +689,7 @@ function PhotoLightboxOverlay({
             {isVideo && (
               <video
                 key={requestUrl}
+                ref={videoRef}
                 className="lb-main-video"
                 src={requestUrl}
                 poster={posterUrl}
@@ -904,6 +928,12 @@ function PhotoLightboxOverlay({
         </aside>
       )}
 
+      {isVideo && gifEditor && (
+        <Suspense fallback={<span role="status">Opening GIF editor…</span>}>
+          <VideoGifDialog src={requestUrl} title={title} initialStart={gifEditor.start}
+            onClose={() => setGifSelection(undefined)} />
+        </Suspense>
+      )}
     </dialog>
   );
 }

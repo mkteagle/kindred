@@ -5,24 +5,19 @@ description: How Kindred's components fit together.
 
 ## System overview
 
-```
-┌─────────────┐     ┌──────────────────────────┐     ┌──────────┐
-│  Flickr     │────▶│  Kindred Backend          │────▶│ PostgreSQL│
-│  (photos)   │     │  FastAPI + Docker          │     │ + pgvector│
-└─────────────┘     └──────────────────────────┘     └──────────┘
-                       │              │
-                       ▼              ▼
-                 ┌──────────┐  ┌──────────┐
-                 │  Web UI  │  │  iOS App  │
-                 │  Next.js │  │  SwiftUI  │
-                 └──────────┘  └──────────┘
-```
+The web and iOS apps send requests to the household's Kindred API. PostgreSQL
+with pgvector holds accounts, permissions, and the catalog. The NAS keeps
+originals and runs the indexers. Flickr can mirror supported uploads, and
+Cloudflare R2 can serve generated thumbnails when configured.
+
+The web, API, database, and original storage can all run on one NAS. Each
+installation configures its own addresses and storage credentials.
 
 ## Backend
 
 The backend is a single Python FastAPI service that handles:
 
-- **Photo scanning** — Fetches photos from Flickr, runs detection models
+- **Photo scanning** — Reads media from the installation’s configured sources and runs detection models
 - **Face detection** — InsightFace (ArcFace) at 960px resolution
 - **Pet/vehicle detection** — YOLOv8
 - **Embedding generation** — CLIP ViT-B-32 for text/image search
@@ -46,14 +41,12 @@ Next.js app that proxies all API requests through a server-side route (`/api/bac
 
 ## iOS app
 
-Native SwiftUI app that connects directly to the backend using the API key stored in the device Keychain.
+The iOS app stores a signed-in session for the server you paired with. In a
+default NAS installation, the app talks directly to that installation's API
+over HTTPS.
 
 ## Photo storage
 
-Kindred **never stores your photos**. Photos remain on Flickr. The backend only stores:
-
-- Metadata (titles, dates, locations)
-- Detection chips (small base64 face/object crops for display)
-- Embeddings (for search and clustering)
-
-If you delete the Kindred database, your photos on Flickr are unaffected.
+NAS originals, provider copies, and catalog data have separate lifecycles.
+Deleting a household in Kindred removes its accounts and catalog. The server
+operator manages the files held on the NAS, in R2, and in Flickr.

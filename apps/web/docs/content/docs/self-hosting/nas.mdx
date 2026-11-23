@@ -1,0 +1,34 @@
+---
+title: NAS setup
+description: Run Kindred on a Docker-capable NAS, with your own database and originals.
+---
+
+A Docker-capable NAS can run the web app, API, and PostgreSQL together. UGREEN UGOS is one example. Docker Compose also works on an always-on Linux computer. Choose a NAS with enough free space for the originals, thumbnails, model downloads, and database backups.
+
+## Start a private installation
+
+1. Clone [the repository](https://github.com/mkteagle/kindred) onto the NAS.
+2. Open `deploy/ugreen`. Copy `.env.example` to `.env`, replace the placeholder secrets, and leave `RAILWAY_DATABASE_URL` blank for local PostgreSQL. Use your own web and API HTTPS addresses. Leave `COMPOSE_PROFILES` and `CLOUDFLARE_TUNNEL_TOKEN` empty until your private setup works.
+3. Start the core services through UGOS **Docker → Project**, or run the following from the cloned repository.
+
+```sh
+cd deploy/ugreen
+docker compose up -d database api web
+docker compose exec api python bootstrap_owner.py owner --name "Household Owner"
+```
+
+The last command prompts for the owner's password. It only works on a fresh installation. Wait for the NAS storage pool to finish synchronizing before importing photos or enabling backups.
+
+## Reach Kindred from an iPhone
+
+Use your own HTTPS hostnames. For home-only access, put Kindred behind your private network or VPN and use an HTTPS hostname your iPhone can reach. For remote access, you can route the web and API through an HTTPS reverse proxy or a Cloudflare Tunnel. For the bundled Cloudflare Tunnel profile, route the web hostname to `http://web:3000` and the API hostname to `http://api:8000`. Keep PostgreSQL, file shares, and the NAS management panel private. Set `PUBLIC_WEB_URL` and `PUBLIC_API_URL` to the corresponding addresses in the NAS project and restart the affected services.
+
+Sign in to the web app and open **Settings → Household → Pair a device**. Scan the pairing code on iOS. The app reads and writes the catalog through your API.
+
+## Storage and optional services
+
+- **NAS** holds originals. Keep backups of the originals and PostgreSQL in a separate location.
+- **Flickr** can hold a second copy of supported uploads. Connect your household's account in web settings.
+- **Railway, Vercel, and R2** are optional. The Kindred installation used by the maintainer runs its original media and indexers on a NAS with a hybrid catalog and thumbnail setup. Home installs can run the core services together on a NAS.
+
+[Pair a device](/docs/mobile/config)

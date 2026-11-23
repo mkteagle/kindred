@@ -78,10 +78,12 @@ def connect():
     )
 
 
-def sync_catalog(checkpoint_path: Path, bucket: str, stopped: Event):
+def sync_catalog(checkpoint_path: Path, bucket: str, stopped: Event, can_work=None):
     cursor_path = checkpoint_path.with_suffix(".catalog.json")
     uri = f"{checkpoint_path.resolve().as_uri()}?mode=ro"
     while not stopped.is_set():
+        if can_work is not None and not can_work():
+            return
         try:
             with closing(sqlite3.connect(uri, uri=True, timeout=10)) as db, closing(connect()) as connection:
                 after = read_cursor(cursor_path, bucket)
@@ -89,6 +91,8 @@ def sync_catalog(checkpoint_path: Path, bucket: str, stopped: Event):
                 if not 0 <= after <= latest:
                     after = 0
                 while not stopped.is_set():
+                    if can_work is not None and not can_work():
+                        return
                     sequence = sync_batch(db, connection, bucket, after)
                     if sequence == after:
                         stopped.wait(10)

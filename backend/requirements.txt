@@ -6,6 +6,6 @@ pydantic==2.7.1
 psycopg2-binary==2.9.9
 bcrypt==4.2.0
 pgvector==0.3.6
-PyJWT==2.15.1
+PyJWT[crypto]==2.15.1
 webauthn==2.7.1
 boto3>=1.39,<2

@@ -132,5 +132,8 @@ def exchange_identity(assertion: str, secret: str, connect, create_session, curr
                 ON CONFLICT (provider, subject) DO UPDATE
                 SET email = COALESCE(EXCLUDED.email, user_identities.email)
             """, (claims['provider'], claims['sub'], str(user['id']), email))
+            if claims["provider"] == "apple" and claims.get("apple_refresh_token"):
+                from apple_account import save_token
+                save_token(cur, claims["sub"], claims["apple_refresh_token"], secret)
     uid = str(user['id'])
     return {'user': dict(user, id=uid), 'session': create_session(uid)}

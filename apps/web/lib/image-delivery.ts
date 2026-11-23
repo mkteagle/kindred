@@ -14,6 +14,19 @@ export function photoImageUrl(id: string, width: number, format: "auto" | "jpeg"
 export function viewerImageUrl(id: string, detail = false): string {
   return `${photoImageUrl(id, detail ? 2560 : 1280, "jpeg")}&preview=viewer`;
 }
+
+/** Gallery pages can remain open past the lifetime of an R2 signature. */
+export function thumbnailUrlIsFresh(url: string, now = Date.now()): boolean {
+  const query = new URLSearchParams(url.split("?")[1]);
+  const signatureTime = query.get("X-Amz-Date");
+  const lifetime = query.get("X-Amz-Expires");
+  if (signatureTime === null && lifetime === null) return true;
+  const time = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(signatureTime ?? "");
+  if (!time || !lifetime || !/^\d+$/.test(lifetime)) return false;
+  const [, year, month, day, hour, minute, second] = time;
+  const signedAt = Date.parse(`${year}-${month}-${day}T${hour}:${minute}:${second}Z`);
+  return signedAt + Number(lifetime) * 1000 > now + 10_000;
+}
 export function canPrefetch(): boolean {
   const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
   return !connection?.saveData && !["slow-2g", "2g", "3g"].includes(connection?.effectiveType ?? "");

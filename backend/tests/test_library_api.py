@@ -278,7 +278,7 @@ class ImageIdentityTests(unittest.TestCase):
                 return root / 'cache' if value == '/app/data/thumbnails' else Path(value)
             provider = Mock()
             provider.resolve_local_path.return_value = original
-            namespace = dict(Depends=lambda f: None, get_current_user=lambda: None,
+            namespace = dict(Depends=lambda f: None, get_current_user=lambda: None, APP_REVIEW_READ_ONLY=False,
                 PHOTO_STORAGE_ROOT=directory, HTTPException=HTTPException, FileResponse=FileResponse,
                 Path=local_path, uuid=uuid, os=os, LocalStorageProvider=lambda _: provider,
                 db_query=lambda *args: [{'provider_key': 'original.heic', 'original_filename': 'photo.heic', 'media_type': 'image/heic'}])

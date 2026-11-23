@@ -250,6 +250,8 @@ struct Album: Codable, Identifiable, Hashable, Sendable {
     let description: String?
     let photo_count: Int
     let source: String?
+    var cover_photo_id: String? = nil
+    var cover_media_kind: MediaKind? = nil
 
     /// The path segment `/albums/{reference}/photos` accepts: id or slug.
     var reference: String? { id ?? slug }

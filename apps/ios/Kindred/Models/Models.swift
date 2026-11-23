@@ -275,6 +275,7 @@ struct MeResponse: Codable {
     let display_name: String?
     let role: String?
     let avatar_url: String?
+    let review_read_only: Bool?
 }
 
 enum HouseholdFlickrConnection: String {

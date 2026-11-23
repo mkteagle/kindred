@@ -146,6 +146,33 @@ actor APIClient {
         }
     }
 
+    private struct AccountChangeError: Decodable { let detail: String }
+
+    func accountChange<B: Encodable, R: Decodable>(_ operation: String, body: B) async throws -> R {
+        guard let token = sessionToken, let url = URL(string: "\(baseURL)/auth/account/\(operation)") else {
+            throw APIError.unauthorized
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 35
+        request.setValue(token, forHTTPHeaderField: "X-Session-Token")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+        let (data, response) = try await PairingService.authenticationSession.data(for: request)
+        guard let response = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        if response.statusCode == 401 {
+            invalidateSession(for: request)
+            throw APIError.unauthorized
+        }
+        guard 200..<300 ~= response.statusCode else {
+            if let detail = try? decoder.decode(AccountChangeError.self, from: data) {
+                throw PairingService.PairingError.rejected(detail.detail)
+            }
+            throw APIError.httpError(response.statusCode)
+        }
+        return try decoder.decode(R.self, from: data)
+    }
+
     // MARK: - Generic GET
 
     func get<T: Decodable>(_ path: String) async throws -> T {

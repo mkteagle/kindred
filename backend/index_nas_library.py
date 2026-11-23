@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Restart-safe, single-worker ML indexing of mirrored NAS originals."""
+"""Restart-safe ML indexing of NAS originals."""
 
 from __future__ import annotations
 
@@ -66,57 +66,71 @@ def indexable_original(source: Path):
         yield output
 
 
-async def run(args: argparse.Namespace) -> int:
-    provider = main.LocalStorageProvider(main.PHOTO_STORAGE_ROOT)
-    library_only = getattr(args, "library_only", False)
-    rows = pending(args.limit, library_only=library_only)
-    print(f"[index] pending={len(rows):,}", flush=True)
-    completed = failed = 0
-    started = time.monotonic()
-    for position, row in enumerate(rows, 1):
-        on_progress = getattr(args, "on_progress", None)
-        if on_progress:
-            on_progress(position - 1, completed, failed)
+async def index_photo(row, provider, library_only):
+    photo_id = row["kindred_photo_id"]
+    try:
         source = provider.resolve_local_path(row["provider_key"])
         if source is None:
-            failed += 1
-            if library_only:
-                main.db_query("UPDATE nas_source_files SET ml_error='Source is unavailable' WHERE photo_id=%s", (row['kindred_photo_id'],), fetch=False)
-            print(f"[index] missing NAS original {row['kindred_photo_id']}", flush=True)
-            continue
-        try:
-            with indexable_original(source) as decoded:
-                await main._process_uploaded_photo(
-                    row["kindred_photo_id"], str(decoded), cluster_after=False,
-                    fetch_flickr_info=False,
-                )
-        except Exception as exc:
-            failed += 1
-            if library_only:
-                main.db_query("UPDATE nas_source_files SET ml_error=%s WHERE photo_id=%s", (str(exc)[:500],row['kindred_photo_id']), fetch=False)
-            print(f"[index] failed {row['kindred_photo_id']}: {exc}", flush=True)
-            continue
-        verified = main.db_query(
-            "SELECT 1 FROM processed_photos WHERE photo_id=%s LIMIT 1",
-            (row["kindred_photo_id"],),
-        )
-        if verified:
-            completed += 1
-        else:
-            failed += 1
-            if library_only:
-                main.db_query("UPDATE nas_source_files SET ml_error='Recognition did not complete' WHERE photo_id=%s", (row['kindred_photo_id'],), fetch=False)
-            print(f"[index] failed {row['kindred_photo_id']}", flush=True)
-        if position % 10 == 0:
-            elapsed = max(time.monotonic() - started, 0.001)
-            print(
-                f"[index] scanned={position:,}/{len(rows):,} completed={completed:,} "
-                f"failed={failed:,} rate={position/elapsed:.3f}/s",
-                flush=True,
+            raise FileNotFoundError("Source is unavailable")
+        with indexable_original(source) as decoded:
+            await main._process_uploaded_photo(
+                photo_id, str(decoded), cluster_after=False, fetch_flickr_info=False,
             )
+    except Exception as exc:
+        error = str(exc)[:500] or type(exc).__name__
+    else:
+        if main.db_query("SELECT 1 FROM processed_photos WHERE photo_id=%s LIMIT 1", (photo_id,)):
+            return True
+        error = "Recognition did not complete"
+    if library_only:
+        main.db_query("UPDATE nas_source_files SET ml_error=%s WHERE photo_id=%s", (error, photo_id), fetch=False)
+    print(f"[index] failed {photo_id}: {error}", flush=True)
+    return False
 
-    if getattr(args, "on_progress", None):
-        args.on_progress(len(rows), completed, failed)
+
+def index_in_process(row, library_only):
+    provider = main.LocalStorageProvider(main.PHOTO_STORAGE_ROOT)
+    return asyncio.run(index_photo(row, provider, library_only))
+
+
+async def run(args: argparse.Namespace, rows=None, executor=None) -> int:
+    provider = main.LocalStorageProvider(main.PHOTO_STORAGE_ROOT)
+    library_only = getattr(args, "library_only", False)
+    workers = args.workers if executor is not None else 1
+    rows = pending(args.limit, library_only=library_only) if rows is None else rows
+    print(f"[index] pending={len(rows):,} workers={workers}", flush=True)
+    queue = iter(rows)
+    completed = failed = 0
+    started = time.monotonic()
+    before_item = getattr(args, "before_item", None)
+    on_progress = getattr(args, "on_progress", None)
+
+    async def consume():
+        nonlocal completed, failed
+        while before_item is None or before_item():
+            row = next(queue, None)
+            if row is None:
+                break
+            succeeded = (
+                await index_photo(row, provider, library_only) if executor is None
+                else await asyncio.get_running_loop().run_in_executor(executor, index_in_process, row, library_only)
+            )
+            completed += int(succeeded)
+            failed += int(not succeeded)
+            scanned = completed + failed
+            if on_progress:
+                on_progress(scanned, completed, failed)
+            if scanned % 10 == 0:
+                elapsed = max(time.monotonic() - started, 0.001)
+                print(
+                    f"[index] scanned={scanned:,}/{len(rows):,} completed={completed:,} "
+                    f"failed={failed:,} rate={scanned/elapsed:.3f}/s",
+                    flush=True,
+                )
+
+    if on_progress:
+        on_progress(0, 0, 0)
+    await asyncio.gather(*(consume() for _ in range(workers)))
     if not args.defer_clustering:
         for category in ("people", "pets", "vehicles"):
             main.run_clustering(category, distance_threshold=0.80)

@@ -17,9 +17,9 @@ import time
 
 from PIL import Image, ImageOps
 
-from library_progress import previews_finished, progress
 from preview_delivery import THUMBNAIL_ROOT
 from r2_thumbnails import THUMBNAIL_PREFIX, key_for, storage
+from worker_priority import DATA_DIR, IndexingPriority
 
 THUMBNAIL_EDGE = 320
 THUMBNAIL_MAX_BYTES = 32 * 1024
@@ -47,9 +47,11 @@ def pending_item(path, checkpoint, info=None):
         return path, key, version
 
 
-def pending_files(root, checkpoint, priorities=()):
+def pending_files(root, checkpoint, priorities=(), can_work=None):
     priority_paths = set()
     for identity in dict.fromkeys(priorities):
+        if can_work is not None and not can_work():
+            return
         if not key_for(identity):
             continue
         for name in (f"{identity}-poster.jpg", f"{identity}.jpg"):
@@ -59,6 +61,8 @@ def pending_files(root, checkpoint, priorities=()):
                 break
     with os.scandir(root) as entries:
         for entry in entries:
+            if can_work is not None and not can_work():
+                return
             if entry.name in priority_paths or not entry.is_file(follow_symlinks=False):
                 continue
             try:
@@ -73,28 +77,28 @@ def compact_identity(key):
     return bytes.fromhex(identity.replace("-", "")) if "-" in identity else identity
 
 
-def thumbnail_total(root, checkpoint_path, stopped):
+def thumbnail_total(root, checkpoint_path, can_work):
     """Count unique R2 keys using filenames only, including already uploaded keys."""
     identities = set()
     with os.scandir(root) as entries:
         for entry in entries:
-            if stopped.is_set():
+            if not can_work():
                 return None
             name = THUMBNAIL_NAME.fullmatch(entry.name)
             if name and entry.is_file(follow_symlinks=False) and (key := key_for(name[1])):
                 identities.add(compact_identity(key))
     with closing(sqlite3.connect(f"{checkpoint_path.resolve().as_uri()}?mode=ro", uri=True)) as checkpoint:
         for key, in checkpoint.execute("SELECT key FROM published"):
-            if stopped.is_set():
+            if not can_work():
                 return None
             identities.add(compact_identity(key))
     return len(identities)
 
 
-def report_inventory(args, status, stopped):
+def report_inventory(args, status, stopped, can_work):
     while not stopped.is_set():
         try:
-            total = thumbnail_total(args.root, args.checkpoint, stopped)
+            total = thumbnail_total(args.root, args.checkpoint, can_work)
             if total is not None:
                 status["thumbnail_total"] = total
                 write_status(args.checkpoint.with_suffix(".inventory.json"), {"thumbnail_total": total})
@@ -132,9 +136,13 @@ def write_status(path, status):
     temporary.replace(path)
 
 
-def report_status(path, status, stopped):
-    while not stopped.wait(15):
-        write_status(path, status)
+def report_status(path, status, stopped, priority):
+    while not stopped.wait(5):
+        phase = priority.blocking_phase()
+        snapshot = dict(status)
+        if phase:
+            snapshot.update(phase=phase, running=False, waiting=True)
+        write_status(path, snapshot)
 
 
 def run(args):
@@ -147,6 +155,11 @@ def run(args):
             status = dict(completed=confirmed, failed=0, running=True, waiting=False,
                           phase="starting", workers=args.workers)
             stopped = Event()
+            priority = IndexingPriority(args.wait_for_previews or DATA_DIR, required=bool(args.wait_for_previews))
+
+            def can_work():
+                return priority.wait(stopped)
+
             reporter = None
             counter = None
             catalog_sync = None
@@ -160,14 +173,15 @@ def run(args):
                         pass
                 args.status.parent.mkdir(parents=True, exist_ok=True)
                 write_status(args.status, status)
-                reporter = Thread(target=report_status, args=(args.status, status, stopped), daemon=True)
+                reporter = Thread(target=report_status, args=(args.status, status, stopped, priority), daemon=True)
                 reporter.start()
                 if args.watch:
-                    counter = Thread(target=report_inventory, args=(args, status, stopped), daemon=True)
+                    counter = Thread(target=report_inventory, args=(args, status, stopped, can_work), daemon=True)
                     counter.start()
-                else:
-                    status["thumbnail_total"] = thumbnail_total(args.root, args.checkpoint, stopped)
             try:
+                can_work()
+                if args.status and not args.watch:
+                    status["thumbnail_total"] = thumbnail_total(args.root, args.checkpoint, can_work)
                 config = storage(upload_workers=args.workers)
                 if config is None:
                     raise RuntimeError("Set KINDRED_R2_BUCKET and the bucket-scoped R2 credentials first")
@@ -176,18 +190,13 @@ def run(args):
                     from r2_catalog import initialize_feed, sync_catalog
 
                     initialize_feed(checkpoint)
-                    catalog_sync = Thread(target=sync_catalog, args=(args.checkpoint, bucket, stopped), daemon=True)
+                    catalog_sync = Thread(target=sync_catalog, args=(args.checkpoint, bucket, stopped, can_work), daemon=True)
                     catalog_sync.start()
-                if args.wait_for_previews:
-                    status.update(waiting=True, phase="waiting_for_previews")
-                    print("Waiting for thumbnail indexing to finish", flush=True)
-                    while not previews_finished(progress(args.wait_for_previews)):
-                        time.sleep(30)
-                    print("Thumbnail indexing finished; publishing to R2", flush=True)
                 while True:
+                    can_work()
                     priorities = args.priority_list.read_text().splitlines() if args.priority_list else ()
                     status.update(waiting=False, running=True, phase="publishing", failed=0)
-                    failed = publish_pass(args, client, bucket, checkpoint, pool, priorities, status)
+                    failed = publish_pass(args, client, bucket, checkpoint, pool, priorities, status, can_work)
                     phase = "retrying" if failed else "stopped" if args.limit else "caught_up"
                     status.update(waiting=True, running=False, phase=phase)
                     if not args.watch:
@@ -208,9 +217,9 @@ def run(args):
                     write_status(args.status, status)
 
 
-def publish_pass(args, client, bucket, checkpoint, pool, priorities, status):
+def publish_pass(args, client, bucket, checkpoint, pool, priorities, status, can_work):
     uploaded = failed = 0
-    items = pending_files(args.root, checkpoint, priorities)
+    items = pending_files(args.root, checkpoint, priorities, can_work)
     if args.limit:
         items = islice(items, args.limit)
     last_report = time.monotonic()
@@ -220,7 +229,7 @@ def publish_pass(args, client, bucket, checkpoint, pool, priorities, status):
     print("Publishing available compact thumbnails", flush=True)
     while True:
         if uploaded or failed < 64:
-            for item in islice(items, args.workers * 2 - len(active)):
+            for item in islice(items, args.workers - len(active)):
                 active.add(pool.submit(publish_one, client, bucket, item))
         if not active:
             break
@@ -270,5 +279,6 @@ if __name__ == "__main__":
     parser.add_argument("--workers", type=int, default=4, choices=range(1, 33))
     parser.add_argument("--priority-list", type=Path, help="Catalog IDs to publish before the full preview scan")
     parser.add_argument("--watch", action="store_true", help="Keep publishing previews as they become available")
-    parser.add_argument("--wait-for-previews", type=Path, metavar="STATUS_DIR")
+    parser.add_argument("--wait-for-previews", type=Path, metavar="STATUS_DIR",
+                        help="Require discovery and NAS previews to be caught up while publishing")
     raise SystemExit(run(parser.parse_args()))

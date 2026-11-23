@@ -8,11 +8,17 @@ const fmt = new Intl.NumberFormat("en-GB");
 const phaseLabels: Record<string, string> = {
   caught_up: "caught up",
   counting_thumbnails: "counting thumbnails",
+  reading_flickr: "reading Flickr inventory",
+  restoring_flickr_albums: "restoring Flickr albums",
+  preparing_nas_catalog: "preparing NAS lookup",
+  needs_review: "review required",
+  failed: "worker stopped",
   retrying: "waiting to retry",
   stopped: "stopped",
   waiting_for_discovery: "waiting for discovery",
   waiting_for_previews: "waiting for thumbnails",
   waiting_for_capacity: "waiting for NAS capacity",
+  waiting_for_flickr_match: "waiting for Flickr comparison",
 };
 
 function sortOrder(pipeline: Pipeline) {
@@ -91,10 +97,13 @@ export default function PipelinesPage() {
     <main className="kx-page" style={{ maxWidth: 900 }}>
       <h1 className="kx-title">Indexing progress</h1>
       <p className="kx-lede">
-        Live progress for NAS discovery, previews, R2 uploads, and recognition.
+        Live progress for NAS discovery, previews, R2 uploads, recognition, and Flickr backup.
       </p>
 
-      <p style={{ margin: "12px 0 16px" }}><Link href="/activity">View filenames and processing timestamps →</Link></p>
+      <p style={{ margin: "12px 0 16px", display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <Link href="/activity">View filenames and processing timestamps →</Link>
+        <Link href="/settings/health">Health check →</Link>
+      </p>
       {error && <KxErrorBanner detail={(error as Error).message} onRetry={() => void refetch()} />}
 
       {isPending ? (

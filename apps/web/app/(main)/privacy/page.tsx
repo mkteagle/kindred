@@ -7,7 +7,7 @@ export default function PrivacyPage() {
     <main className="legal-page">
       <div className="legal-content">
         <h1>Privacy Policy</h1>
-        <p className="legal-updated">Last updated: April 26, 2026</p>
+        <p className="legal-updated">Last updated: November 22, 2026</p>
 
         <h2>1. Introduction</h2>
         <p>
@@ -20,27 +20,28 @@ export default function PrivacyPage() {
         <h2>2. Information We Collect</h2>
         <h3>Account Information</h3>
         <p>
-          When you create an account or join a household, we collect your display name,
-          username, and password (stored as a salted hash — we never store plaintext
-          passwords).
+          When you join a household, its Kindred installation stores your display name,
+          username, and sign-in information. Passwords are stored as salted hashes.
+          If you connect a sign-in provider, the installation stores the information
+          needed to verify your identity and disconnect the provider.
         </p>
         <h3>Photo Metadata</h3>
         <p>
           Kindred processes your photos to extract metadata including faces, objects,
-          locations, and scenes. This processing occurs on your self-hosted server.
-          Photo pixel data is never transmitted to Kindling Signal or any third party.
+          locations, and scenes on the household’s server. The server operator chooses
+          where to store originals, catalog metadata, and thumbnails and whether to
+          enable a Flickr backup.
         </p>
         <h3>Flickr Integration</h3>
         <p>
-          If you connect your Flickr account, we store OAuth tokens to access your
-          Flickr photo library on your behalf. Your Flickr credentials are never shared
-          with other household members.
+          If your household connects Flickr, its Kindred installation stores OAuth
+          tokens to authorize that connection. Members use their own Kindred accounts.
         </p>
         <h3>Analytics</h3>
         <p>
-          We use PostHog for anonymous usage analytics (page views, feature usage).
-          No personally identifiable information is sent to PostHog. You can opt out
-          by blocking the PostHog domain in your browser.
+          Kindling Signal’s hosted website uses PostHog for usage analytics. Mobile
+          backup diagnostics are limited to Kindling Signal’s own household servers,
+          where they report technical details such as transfer duration and errors.
         </p>
 
         <h2>3. How We Use Your Information</h2>
@@ -52,9 +53,9 @@ export default function PrivacyPage() {
 
         <h2>4. Data Storage &amp; Security</h2>
         <p>
-          Kindred is a self-hosted application. Your photos, metadata, and AI models
-          run on infrastructure you control. Kindling Signal does not have access to
-          your server, your photos, or your household data.
+          Kindred is a self-hosted application. When you pair with your own Kindred
+          installation, that server handles your account, photos, and metadata.
+          Kindling Signal does not host independent households.
         </p>
         <p>
           Session tokens are encrypted and transmitted over HTTPS. Passwords are hashed
@@ -63,8 +64,9 @@ export default function PrivacyPage() {
 
         <h2>5. Data Sharing</h2>
         <p>
-          We do not sell, rent, or share your personal information with third parties.
-          Photo data stays on your self-hosted server and your Flickr account.
+          We do not sell personal information. A household’s server operator chooses
+          whether to connect optional providers, such as Flickr for backup or an
+          object storage service for thumbnails.
         </p>
 
         <h2>6. Household Data</h2>
@@ -76,9 +78,11 @@ export default function PrivacyPage() {
 
         <h2>7. Your Rights</h2>
         <p>
-          You can request deletion of your account at any time by contacting the
-          household admin or emailing us at{" "}
-          <a href="mailto:sayhello@bykindling.com">sayhello@bykindling.com</a>.
+          Open Settings, then Account, then Manage account to delete your account.
+          A household owner can transfer ownership before leaving or delete the
+          household to close its Kindred installation. Deleting the household removes
+          its catalog and accounts. The storage owner manages the files in NAS, R2,
+          and Flickr separately.
         </p>
 
         <h2>8. Changes</h2>

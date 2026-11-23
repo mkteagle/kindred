@@ -82,6 +82,7 @@
 		A83B035E8134E00E29548C37 /* parent-child-bw.jpg in Resources */ = {isa = PBXBuildFile; fileRef = FE8D9981155E9F25522F38A5 /* parent-child-bw.jpg */; };
 		A963B9015CDEE555040CB967 /* SpaceGrotesk-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9D79A69247715682CF126556 /* SpaceGrotesk-SemiBold.ttf */; };
 		A99829953F4047F0C7D802BA /* KindredComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A44AD87608284B60A477814E /* KindredComponents.swift */; };
+		ADA219657A866287C4E18FE1 /* ReviewPhotoImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EFF60471B16CC4613D18CF3 /* ReviewPhotoImportView.swift */; };
 		AE59DCD11A6CDDE4ED26B96E /* BackgroundUploadSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEE262BA5C4A4B97272B2F0F /* BackgroundUploadSession.swift */; };
 		B46500F625869F6FE968164D /* timeline.json in Resources */ = {isa = PBXBuildFile; fileRef = 24600255C470452650FA06F0 /* timeline.json */; };
 		B4C7A8D029549B70218F235A /* IntelligenceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14FD772A88639BA388DDDE6 /* IntelligenceView.swift */; };
@@ -121,6 +122,7 @@
 		E3BDA7B3CE6EB1165D1FA4E0 /* KindredChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 479A5BC1ADD2716E94180233 /* KindredChrome.swift */; };
 		E5AACC02659FBD57F578B36F /* family-camper-lights.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 72D103FAE68C4054EE71D11A /* family-camper-lights.jpg */; };
 		E7F5172F93855406CCC31A87 /* family-inside-van.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 85E4D798A7E5847C3B08BAB8 /* family-inside-van.jpg */; };
+		EB3F5524AE0FD1518BAE5BDC /* AccountManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6435CF2807D14A5BF78AE14E /* AccountManagementView.swift */; };
 		EE38746E808E4C4E0FEB635B /* family-campfire-4.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 07DFA115DBF94EAA161C8AB7 /* family-campfire-4.jpg */; };
 		F08E3C4F26C0AE62ACE7A89A /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 436E630D09BC6B267BF169AB /* KeychainHelper.swift */; };
 		F165A0B9D84C4F1E0AD3DF1D /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = 29E6469794F77263EBA16F69 /* PostHog */; };
@@ -159,6 +161,7 @@
 		15BEF9B23D2B5ACF9D0D95FE /* IBMPlexMono-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexMono-Medium.ttf"; sourceTree = "<group>"; };
 		1D249E3079407116B10109A5 /* clusters_pets.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = clusters_pets.json; sourceTree = "<group>"; };
 		1DDD905DEB24569DB2C2651F /* ReviewNamingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewNamingView.swift; sourceTree = "<group>"; };
+		1EFF60471B16CC4613D18CF3 /* ReviewPhotoImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewPhotoImportView.swift; sourceTree = "<group>"; };
 		2030C40545203955A7CA7CEF /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
 		2050DA599C9A9F9F9250802E /* family-three-sunset.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "family-three-sunset.jpg"; sourceTree = "<group>"; };
 		23489410DB1EBFFEAB8A93F3 /* PhotoViewerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoViewerView.swift; sourceTree = "<group>"; };
@@ -199,6 +202,7 @@
 		5E29208DC0CDBEA7BD7E601D /* Diagnostics.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Diagnostics.xcconfig; sourceTree = "<group>"; };
 		627DA647A1DCC2F20A5F8904 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		638462172B5E94C7DEE1ED04 /* TogetherViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TogetherViewModel.swift; sourceTree = "<group>"; };
+		6435CF2807D14A5BF78AE14E /* AccountManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountManagementView.swift; sourceTree = "<group>"; };
 		64B19E4CFCD3B54FD23F5416 /* landscape-beach.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "landscape-beach.jpg"; sourceTree = "<group>"; };
 		65214FB1FD2C53A7DC4E67DF /* SpaceGrotesk-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "SpaceGrotesk-Medium.ttf"; sourceTree = "<group>"; };
 		673263B463F828C69EF060EF /* SelectionSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionSheets.swift; sourceTree = "<group>"; };
@@ -340,6 +344,7 @@
 		4E1696DDDC76A93B70E42BA7 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				6435CF2807D14A5BF78AE14E /* AccountManagementView.swift */,
 				918189580D5A4A876432A29F /* AdminScanView.swift */,
 				1F21F269364746B294760EAC /* IndexingProgressView.swift */,
 				CD09D59D8A5407B1B3EA53F0 /* AvatarPickerView.swift */,
@@ -379,6 +384,7 @@
 			isa = PBXGroup;
 			children = (
 				841FCC6B8C7D15019E642B3C /* LibraryView.swift */,
+				1EFF60471B16CC4613D18CF3 /* ReviewPhotoImportView.swift */,
 				673263B463F828C69EF060EF /* SelectionSheets.swift */,
 			);
 			path = Library;
@@ -750,6 +756,7 @@
 			files = (
 				110AD97907E7DDE11FE27938 /* APIClient+Library.swift in Sources */,
 				DA50AE027B1A31EBC5D24161 /* APIClient.swift in Sources */,
+				EB3F5524AE0FD1518BAE5BDC /* AccountManagementView.swift in Sources */,
 				9B3C60D6014F23716FD165DB /* AdminScanView.swift in Sources */,
 				4BCCA9054E3A4682B0A48121 /* IndexingProgressView.swift in Sources */,
 				CC8A5D857C59B70CE127B3EE /* Analytics.swift in Sources */,
@@ -793,6 +800,7 @@
 				C5EDF51C2581C76576D9AA6B /* PhotoLibraryManager.swift in Sources */,
 				693A0492E9FC69866FE3A692 /* PhotoViewerView.swift in Sources */,
 				CE9916E3366180FCD8827DDD /* ReviewNamingView.swift in Sources */,
+				ADA219657A866287C4E18FE1 /* ReviewPhotoImportView.swift in Sources */,
 				5B31F9103F020BF6C9AE7ADC /* ScrollOffsetReader.swift in Sources */,
 				D841EA52153A8AB965A7D37C /* SearchDateRange.swift in Sources */,
 				D886ECD98F89BFFC335B3BEF /* SearchView.swift in Sources */,

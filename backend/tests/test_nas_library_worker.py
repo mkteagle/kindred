@@ -1,8 +1,11 @@
+import os
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
-import nas_library_worker as worker
+
+with patch.dict(os.environ, {"KINDRED_IMPORT_SOURCE": str(Path(__file__).parent)}):
+    import nas_library_worker as worker
 
 
 class WorkerTests(unittest.TestCase):

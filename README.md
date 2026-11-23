@@ -19,7 +19,7 @@
 
 ---
 
-Kindred is a **self-hosted family photo organizer** that uses your existing Flickr account as the storage backend. Your photos never leave Flickr -- Kindred simply layers intelligence on top: face clustering, pet and vehicle recognition, natural-language search, text extraction, and a household model so the whole family can enjoy the library together.
+Kindred is a **self-hosted family photo organizer** that runs on a NAS or another computer you control. It stores originals on your NAS, uses your PostgreSQL database for the catalog, and can back up supported uploads to Flickr. Kindred adds face clustering, pet and vehicle recognition, natural-language search, text extraction, and a household model so the whole family can enjoy the library together.
 
 No cloud lock-in. No subscription. Your photos, your server.
 
@@ -70,8 +70,8 @@ Select two or more people and instantly see every photo where they appear togeth
 - Per-user API keys for the iOS app.
 
 ### Privacy First
-- **Self-hosted** -- runs on your own hardware or VPS.
-- **Flickr as storage** -- photos live in your Flickr account, not on a third-party AI service.
+- **Self-hosted** -- runs on a Docker-capable NAS or Linux host.
+- **NAS originals** -- the household stores originals on its own NAS and can enable a second copy on Flickr.
 - **All AI runs locally** -- face detection, CLIP embeddings, object detection, and OCR all run on your server. Nothing is sent to external APIs.
 - **No telemetry** in self-hosted mode.
 
@@ -186,6 +186,8 @@ pnpm start
 ```
 
 The web app runs on port 3000 by default.
+
+For an all-in-one NAS installation, see the [NAS setup guide](apps/web/content/docs/self-hosting/nas.mdx).
 
 ### 6. iOS app
 

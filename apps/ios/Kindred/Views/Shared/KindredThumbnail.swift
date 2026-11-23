@@ -22,6 +22,13 @@ final class PhotoImageDelivery {
         thumbnails.totalCostLimit = 48 * 1024 * 1024
     }
 
+    func clear() {
+        for task in inFlight.values { task.cancel() }
+        inFlight.removeAll()
+        thumbnails.removeAllObjects()
+        responseCache.removeAllCachedResponses()
+    }
+
     func thumbnail(for photoID: String) -> UIImage? {
         if ContinuousClock.now >= purgeAfter {
             thumbnails.removeAllObjects()

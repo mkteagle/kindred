@@ -41,6 +41,9 @@ importers:
       leaflet:
         specifier: ^1.9.4
         version: 1.9.4
+      modern-gif:
+        specifier: 2.1.0
+        version: 2.1.0
       next:
         specifier: ^16.4.6
         version: 16.4.6(@opentelemetry/api@1.9.1)(@types/node@22.19.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -2410,6 +2413,12 @@ packages:
         optional: true
       uglify-js:
         optional: true
+
+  modern-gif@2.1.0:
+    resolution: {integrity: sha512-9ZGD5b4jNUge0fvFP1bd9Hsqz5CSZI1al3EhCJ+WFkZgmn5NO1yvVwXJA/LTqro85l2Gt0+S0dDFgVYhYtLLWg==}
+
+  modern-palette@2.0.0:
+    resolution: {integrity: sha512-wKZcom2QzK6sS6h5RLYHEkd3V3maQLzgkI+ekDCimlk7dfXa63aekZcy+7KS+8JEqIDeY/yV1CAvA7l+7u6QHA==}
 
   motion-dom@12.38.0:
     resolution: {integrity: sha512-pdkHLD8QYRp8VfiNLb8xIBJis1byQ9gPT3Jnh2jqfFtAsWUA3dEepDlsWe/xMpO8McV+VdpKVcp+E+TGJEtOoA==}
@@ -5376,6 +5385,12 @@ snapshots:
       webpack: 5.113.0(esbuild@0.28.0)
     optionalDependencies:
       esbuild: 0.28.0
+
+  modern-gif@2.1.0:
+    dependencies:
+      modern-palette: 2.0.0
+
+  modern-palette@2.0.0: {}
 
   motion-dom@12.38.0:
     dependencies:

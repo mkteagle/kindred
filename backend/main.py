@@ -9,12 +9,14 @@ from anyio.from_thread import run as run_from_worker_thread
 from pydantic import BaseModel, Field
 from typing import Literal, Optional, List
 from functools import lru_cache
+from contextlib import closing
 import numpy as np
 import json
 import uuid
 import httpx
 import threading
 import flickr_limits
+import household_lifecycle
 import asyncio
 import base64
 import os
@@ -33,10 +35,15 @@ from storage import LocalStorageProvider
 from storage.local import managed_originals
 from backup_status import build_backup_status_items
 from resumable_uploads import ChunkAppendError, append_chunk
-from review_account import build_review_auth_response, review_credentials_match
+from review_account import (
+    REVIEW_PUBLIC, REVIEW_USERNAME, archive_review_photo, build_review_auth_response,
+    configure_review_connection, prepare_review_archive, review_credentials_match, review_route_allowed,
+    review_session, session_key,
+)
 from albums import album_slug, unique_album_slug
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
+APP_REVIEW_READ_ONLY = os.environ.get("KINDRED_APP_REVIEW") == "1"
 FLICKR_API_KEY = os.environ.get("FLICKR_API_KEY", "")
 FLICKR_USER_AGENT = "Kindred/1.0"
 FLICKR_SECRET = os.environ.get("FLICKR_SECRET", "")
@@ -82,6 +89,29 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: FastAPIRequest, call_next):
         from fastapi.responses import JSONResponse
         path = request.url.path
+        if APP_REVIEW_READ_ONLY:
+            method = request.method
+            if not review_route_allowed(method, path):
+                return JSONResponse(status_code=403, content={
+                    "detail": "The App Review library is read-only. Uploads and changes are disabled."
+                }, headers={"Cache-Control": "no-store"})
+            if (method, path) in REVIEW_PUBLIC:
+                response = await call_next(request)
+                response.headers["Cache-Control"] = "no-store"
+                return response
+            token = request.headers.get("X-Session-Token") or request.query_params.get("session_token")
+            reviewer = await asyncio.to_thread(validate_session, token) if token else None
+            if not reviewer or reviewer["username"] != REVIEW_USERNAME:
+                return JSONResponse(status_code=401, content={"detail": "App Review sign-in required"},
+                                    headers={"Cache-Control": "no-store"})
+            request.state.user = {**reviewer, "auth_method": "session"}
+            state = review_session.set(session_key(token))
+            try:
+                response = await call_next(request)
+            finally:
+                review_session.reset(state)
+            response.headers["Cache-Control"] = "private, no-store"
+            return response
         # Skip auth for public endpoints
         if path in AUTH_SKIP_PATHS or path.startswith("/docs"):
             return await call_next(request)
@@ -92,6 +122,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # subject, so no session is established and none is honoured here.
             return await call_next(request)
         if path == "/scan/auto":
+            if await asyncio.to_thread(household_closed):
+                return JSONResponse(status_code=410, content={"detail": "This household was deleted"})
             # Optionally extract user (session OR API key) so admin auth can substitute
             # for the SCAN_SECRET. Auth is not *required* here — the handler also accepts
             # the shared SCAN_SECRET query param for cron-style triggers.
@@ -128,6 +160,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     return await call_next(request)
             # Legacy: check static env var for backward compat during migration
             if API_KEY and key == API_KEY:
+                if await asyncio.to_thread(household_closed):
+                    return JSONResponse(status_code=410, content={"detail": "This household was deleted"})
                 request.state.user = {"user_id": None, "role": "admin", "username": "api", "auth_method": "api_key"}
                 return await call_next(request)
 
@@ -286,6 +320,8 @@ def create_new_tables():
             cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
             # Clean up expired sessions
             cur.execute("DELETE FROM sessions WHERE expires_at < now()")
+            if APP_REVIEW_READ_ONLY:
+                prepare_review_archive(cur)
         conn.commit()
         conn.close()
     except Exception as e:
@@ -295,6 +331,9 @@ def create_new_tables():
 def get_db():
     conn = psycopg2.connect(DATABASE_URL)
     register_vector(conn)
+    if APP_REVIEW_READ_ONLY and (key := review_session.get()):
+        with conn.cursor() as cur:
+            configure_review_connection(cur, key)
     return conn
 
 def db_query(sql, params=None, fetch=True):
@@ -323,15 +362,19 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
 
-def create_session(user_id: str) -> dict:
+def create_session(user_id: str, *, confirmed: bool = False) -> dict:
     token = secrets.token_hex(32)
     expires_at = datetime.now(timezone.utc) + timedelta(days=30)
     db_query(
-        "INSERT INTO sessions (user_id, token, expires_at) VALUES (%s, %s, %s)",
-        (user_id, token, expires_at),
+        "INSERT INTO sessions (user_id, token, expires_at, confirmed_at) VALUES (%s, %s, %s, CASE WHEN %s THEN now() END)",
+        (user_id, token, expires_at, confirmed),
         fetch=False,
     )
     return {"token": token, "expires_at": expires_at.isoformat()}
+
+def create_confirmed_session(user_id: str) -> dict:
+    return create_session(user_id, confirmed=True)
+
 
 def validate_session(token: str) -> dict | None:
     rows = db_query(
@@ -403,9 +446,18 @@ def validate_api_key(raw_key: str) -> dict | None:
             }
     return None
 
+def household_closed():
+    if not DATABASE_URL:
+        return False
+    rows = db_query("SELECT closed_at FROM household_lifecycle WHERE singleton")
+    return bool(rows and rows[0].get("closed_at"))
+
+
 def get_flickr_credentials() -> dict | None:
     from household_flickr import credentials
 
+    if household_closed():
+        return None
     return credentials(db_query, HOUSEHOLD_FLICKR_USER_ID, {
         "user_id": FLICKR_USER_ID,
         "oauth_token": FLICKR_OAUTH_TOKEN,
@@ -700,6 +752,34 @@ def region_embedding(img_bgr, bbox: list, size: int = 64) -> list:
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+if APP_REVIEW_READ_ONLY:
+    @app.get("/", include_in_schema=False)
+    def app_review_home():
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(
+            "<!doctype html><html lang=en><meta charset=utf-8>"
+            "<meta name=viewport content='width=device-width, initial-scale=1'>"
+            "<title>Kindred App Review</title><main><h1>Kindred App Review</h1>"
+            "<p>Open Kindred on iPhone and choose Enter server address. Use this address "
+            "and the credentials in App Store Connect.</p>"
+            "<p>This sample library contains fictional photos. Photo uploads and changes are disabled.</p>"
+            "</main></html>",
+            headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow"},
+        )
+
+
+if APP_REVIEW_READ_ONLY:
+    @app.post("/review/photos/{photo_id}/archive", include_in_schema=False)
+    def temporarily_archive_sample(photo_id: uuid.UUID, request: FastAPIRequest):
+        # Archive actions use their session header and cannot be triggered by a media URL.
+        if not request.headers.get("X-Session-Token"):
+            raise HTTPException(401, "App Review sign-in required")
+        archived = archive_review_photo(db_query, review_session.get(), photo_id)
+        if not archived:
+            raise HTTPException(404, "Sample photo not found")
+        return archived
+
+
 @app.get("/health")
 def health():
     try:
@@ -712,12 +792,18 @@ def health():
 @app.get("/app-config")
 def get_app_config():
     """Publish client capabilities. Provider credentials stay on the server."""
-    rows = db_query("SELECT COUNT(*) as cnt FROM users")
-    setup_complete = rows[0]["cnt"] > 0 if rows else False
+    rows = db_query("""
+        SELECT (SELECT count(*) FROM users) AS cnt, closed_at
+        FROM household_lifecycle WHERE singleton
+    """)
+    closed = bool(rows and rows[0].get("closed_at"))
+    setup_complete = bool(rows and rows[0]["cnt"] > 0)
     return {
         "api_version": "1.0",
         "app_name": "Kindred",
         "setup_complete": setup_complete,
+        "household_deleted": closed,
+        "review_read_only": APP_REVIEW_READ_ONLY,
         "features": {
             "flickr_integration": bool(FLICKR_API_KEY),
             "face_detection": True,
@@ -777,18 +863,23 @@ class SetupRequest(BaseModel):
 @app.post("/auth/setup")
 def auth_setup(req: SetupRequest, request: FastAPIRequest):
     """First-run admin creation. Only works if no users exist."""
-    rows = db_query("SELECT COUNT(*) as cnt FROM users")
-    if rows and rows[0]["cnt"] > 0:
-        raise HTTPException(409, "Setup already complete — admin user exists")
+    if household_closed():
+        raise HTTPException(410, "This household was deleted")
     run_from_worker_thread(authorize_flickr_sign_in, request, req.flickr_user_id,
                            req.flickr_oauth_token, req.flickr_oauth_secret)
-    user_rows = db_query(
-        """INSERT INTO users (username, display_name, role, flickr_user_id, flickr_oauth_token, flickr_oauth_secret)
-           VALUES (%s, %s, 'admin', %s, %s, %s) RETURNING id, username, display_name, role""",
-        (req.username, req.display_name, req.flickr_user_id, req.flickr_oauth_token, req.flickr_oauth_secret),
-    )
-    user = user_rows[0]
-    session = create_session(str(user["id"]))
+    with closing(get_db()) as conn, conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute("SELECT pg_advisory_xact_lock(4921733102)")
+        household_lifecycle.lock(cur)
+        cur.execute("SELECT EXISTS (SELECT 1 FROM users) AS configured")
+        if cur.fetchone()["configured"]:
+            raise HTTPException(409, "Setup already complete")
+        cur.execute(
+            """INSERT INTO users (username, display_name, role, flickr_user_id, flickr_oauth_token, flickr_oauth_secret)
+               VALUES (%s, %s, 'admin', %s, %s, %s) RETURNING id, username, display_name, role""",
+            (req.username, req.display_name, req.flickr_user_id, req.flickr_oauth_token, req.flickr_oauth_secret),
+        )
+        user = cur.fetchone()
+    session = create_confirmed_session(str(user["id"]))
     # Auto-generate an API key for the admin
     raw_key, key_record = create_api_key(str(user["id"]), name="Default")
     return {
@@ -825,7 +916,7 @@ def auth_flickr_login(req: FlickrLoginRequest, request: FastAPIRequest):
         )
     uid = str(user["id"])
     avatar_url = f"/users/{uid}/avatar" if (user.get("avatar_photo_id") or user.get("has_avatar_upload")) else None
-    session = create_session(uid)
+    session = create_confirmed_session(uid)
     return {
         "user": {"id": uid, "username": user["username"],
                  "display_name": user["display_name"], "role": user["role"],
@@ -840,7 +931,7 @@ class SocialExchangeRequest(BaseModel):
 @app.post("/auth/social/exchange")
 def social_exchange(req: SocialExchangeRequest, request: FastAPIRequest, user=Depends(get_current_user)):
     from social_auth import exchange_identity
-    return exchange_identity(req.assertion, API_KEY, get_db, create_session, user)
+    return exchange_identity(req.assertion, API_KEY, get_db, create_confirmed_session if not user.get('user_id') else create_session, user)
 
 
 class PasskeyRequest(BaseModel):
@@ -870,7 +961,7 @@ def passkeys(
         if action == "login-options":
             return passkey_auth.authentication_options(db_query, origin, rp_id)
         return passkey_auth.authenticate(
-            db_query, get_db, create_session, origin, rp_id, body.challenge_id, body.credential,
+            db_query, get_db, create_confirmed_session, origin, rp_id, body.challenge_id, body.credential,
         )
     if not user_id or user.get("auth_method") != "session":
         raise HTTPException(403, "Sign in to your Kindred account first.")
@@ -925,7 +1016,10 @@ class LoginRequest(BaseModel):
 @app.post("/auth/login")
 def auth_login(req: LoginRequest):
     """Member login with username/password."""
-    if review_credentials_match(req.username, req.password):
+    if APP_REVIEW_READ_ONLY:
+        if req.username != REVIEW_USERNAME:
+            raise HTTPException(401, "Invalid username or password")
+    elif review_credentials_match(req.username, req.password):
         return build_review_auth_response(req.username)
 
     rows = db_query(
@@ -939,11 +1033,11 @@ def auth_login(req: LoginRequest):
         raise HTTPException(401, "Invalid username or password")
     uid = str(user["id"])
     avatar_url = f"/users/{uid}/avatar" if (user.get("avatar_photo_id") or user.get("has_avatar_upload")) else None
-    session = create_session(uid)
+    session = create_confirmed_session(uid)
     return {
         "user": {"id": uid, "username": user["username"],
                  "display_name": user["display_name"], "role": user["role"],
-                 "avatar_url": avatar_url},
+                 "avatar_url": avatar_url, "review_read_only": APP_REVIEW_READ_ONLY},
         "session": session,
     }
 
@@ -1015,6 +1109,7 @@ def auth_me(request: FastAPIRequest):
         "display_name": user["display_name"],
         "role": user["role"],
         "auth_method": user.get("auth_method", "session"),
+        "review_read_only": APP_REVIEW_READ_ONLY,
         "avatar_url": avatar_url,
     }
 
@@ -1097,7 +1192,7 @@ class UpdateUserRequest(BaseModel):
     role: Optional[str] = None
 
 @app.patch("/users/{user_id}")
-def update_user(user_id: str, req: UpdateUserRequest, admin=Depends(require_admin)):
+def update_user(user_id: uuid.UUID, req: UpdateUserRequest, admin=Depends(require_admin)):
     sets, params = [], []
     if req.display_name is not None:
         sets.append("display_name = %s")
@@ -1110,8 +1205,12 @@ def update_user(user_id: str, req: UpdateUserRequest, admin=Depends(require_admi
     if not sets:
         raise HTTPException(400, "Nothing to update")
     sets.append("updated_at = now()")
-    params.append(user_id)
-    db_query(f"UPDATE users SET {', '.join(sets)} WHERE id = %s", params, fetch=False)
+    params.append(str(user_id))
+    with closing(get_db()) as conn, conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+        owners = household_lifecycle.lock(cur)
+        if req.role == "member" and str(user_id) in owners:
+            raise HTTPException(409, "Transfer ownership before changing the owner's role.")
+        cur.execute(f"UPDATE users SET {', '.join(sets)} WHERE id = %s", params)
     return {"ok": True}
 
 class ChangePasswordRequest(BaseModel):
@@ -1119,10 +1218,10 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 @app.post("/auth/change-password")
-def change_password(req: ChangePasswordRequest, user=Depends(get_current_user)):
+def change_password(req: ChangePasswordRequest, request: FastAPIRequest, user=Depends(get_current_user)):
     """Change the current user's password. If no password was set (Flickr-only admin), current_password is optional."""
-    if len(req.new_password) < 6:
-        raise HTTPException(400, "Password must be at least 6 characters")
+    if not 6 <= len(req.new_password.encode("utf-8")) <= 72:
+        raise HTTPException(400, "Password must be between 6 and 72 UTF-8 bytes")
     rows = db_query("SELECT password_hash FROM users WHERE id = %s", (user["user_id"],))
     if not rows:
         raise HTTPException(404, "User not found")
@@ -1133,16 +1232,82 @@ def change_password(req: ChangePasswordRequest, user=Depends(get_current_user)):
             raise HTTPException(401, "Current password is incorrect")
     elif existing_hash and not req.current_password:
         raise HTTPException(400, "Current password is required")
+    if not existing_hash:
+        actor = household_lifecycle.require_session(user)
+        with closing(get_db()) as conn, conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+            household_lifecycle.lock(cur)
+            household_lifecycle.confirm(cur, actor, request.headers.get("X-Session-Token"), None, verify_password)
+            cur.execute("UPDATE users SET password_hash = %s, updated_at = now() WHERE id = %s AND password_hash IS NULL",
+                        (hash_password(req.new_password), actor))
+        return {"ok": True}
     new_hash = hash_password(req.new_password)
     db_query("UPDATE users SET password_hash = %s, updated_at = now() WHERE id = %s",
              (new_hash, user["user_id"]), fetch=False)
     return {"ok": True}
 
+class ConfirmAccountChange(BaseModel):
+    password: Optional[str] = Field(default=None, max_length=256)
+
+
+class OwnershipTransfer(ConfirmAccountChange):
+    member_id: uuid.UUID
+
+
+class ConfirmDeletion(ConfirmAccountChange):
+    confirmation: str = Field(max_length=32)
+
+
+def revoke_account_apple(cur, user_id):
+    from apple_account import revoke
+    return revoke(cur, user_id, API_KEY)
+
+
+@app.get("/auth/account/management")
+def account_management(request: FastAPIRequest, user=Depends(get_current_user)):
+    actor = household_lifecycle.require_session(user)
+    state = household_lifecycle.status(db_query, (actor, request.headers.get("X-Session-Token")))
+    return {**state, "web_url": PUBLIC_WEB_URL}
+
+
+@app.post("/auth/account/transfer-ownership")
+def transfer_household(body: OwnershipTransfer, request: FastAPIRequest, user=Depends(get_current_user)):
+    actor = household_lifecycle.require_session(user)
+    household_lifecycle.transfer(get_db, actor, str(body.member_id),
+                                 request.headers.get("X-Session-Token"), body.password, verify_password)
+    return {"ok": True}
+
+
+@app.post("/auth/account/delete")
+def remove_own_account(body: ConfirmDeletion, request: FastAPIRequest, user=Depends(get_current_user)):
+    if body.confirmation != "DELETE":
+        raise HTTPException(400, "Type DELETE to confirm.")
+    actor = household_lifecycle.require_session(user)
+    return household_lifecycle.delete_account(get_db, actor, request.headers.get("X-Session-Token"),
+                                              body.password, verify_password, revoke_account_apple)
+
+
+@app.post("/auth/account/delete-household")
+def remove_household(body: ConfirmDeletion, request: FastAPIRequest, user=Depends(get_current_user)):
+    if body.confirmation != "DELETE HOUSEHOLD":
+        raise HTTPException(400, "Type DELETE HOUSEHOLD to confirm.")
+    actor = household_lifecycle.require_session(user)
+    try:
+        return household_lifecycle.delete_household(get_db, actor, request.headers.get("X-Session-Token"),
+                                                    body.password, verify_password, revoke_account_apple)
+    except (psycopg2.errors.LockNotAvailable, psycopg2.errors.DeadlockDetected):
+        raise HTTPException(409, "The server is busy. Wait for active backups and indexing to finish, then try again.") from None
+
+
 @app.delete("/users/{user_id}")
-def delete_user(user_id: str, request: FastAPIRequest, admin=Depends(require_admin)):
+def delete_user(user_id: uuid.UUID, admin=Depends(require_admin)):
+    user_id = str(user_id)
     if admin["user_id"] == user_id:
         raise HTTPException(400, "Cannot delete yourself")
-    db_query("DELETE FROM users WHERE id = %s", (user_id,), fetch=False)
+    with closing(get_db()) as conn, conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+        if user_id in household_lifecycle.lock(cur):
+            raise HTTPException(409, "A household owner cannot be removed.")
+        revoke_account_apple(cur, user_id)
+        household_lifecycle.remove_user(cur, user_id)
     return {"ok": True}
 
 # ── User avatar endpoints ───────────────────────────────────────────────────
@@ -3377,6 +3542,7 @@ async def _upload_to_flickr(
     privacy: str = "family",
     *,
     tags: str | None = None,
+    deduplicate: bool = False,
 ) -> str:
     """Stream a single file from disk to Flickr using the admin's OAuth credentials.
     Returns the Flickr photo ID. Caller is responsible for cleaning up file_path.
@@ -3439,6 +3605,8 @@ async def _upload_to_flickr(
     }
     if tags:
         flickr_params["tags"] = tags
+    if deduplicate:
+        flickr_params["dedup_check"] = "1"
 
     # Build OAuth header (POST method for upload)
     oauth_params = {
@@ -3485,6 +3653,17 @@ async def _upload_to_flickr(
                 files=files,
                 headers=_flickr_headers(auth_header),
             )
+
+    if deduplicate:
+        from flickr_upload_response import duplicate_photo_id
+
+        existing = duplicate_photo_id(resp.text)
+        if existing:
+            info = await flickr_api({"method": "flickr.photos.getInfo", "photo_id": existing}, creds)
+            verified_owner = info.get("photo", {}).get("owner", {}).get("nsid")
+            if verified_owner == creds["user_id"]:
+                return existing
+            raise HTTPException(502, "Flickr duplicate identity could not be verified")
 
     if resp.status_code not in range(200, 300):
         raise HTTPException(502, f"Flickr upload failed (HTTP {resp.status_code}): {resp.text[:500]}")
@@ -4259,17 +4438,6 @@ async def _process_uploaded_photo(
                         VALUES (%s, %s) ON CONFLICT (photo_id) DO NOTHING
                     """, (photo_id, np.array(photo_clip, dtype=np.float32)))
 
-            try:
-                colors = _extract_dominant_colors(img)
-                if colors:
-                    with conn.cursor() as cur:
-                        cur.execute("""
-                            INSERT INTO photo_colors (photo_id, colors)
-                            VALUES (%s, %s) ON CONFLICT (photo_id) DO NOTHING
-                        """, (photo_id, json.dumps(colors)))
-            except Exception:
-                pass
-
             # Record completion even when the image contains no object
             # detections; otherwise a restart analyzes it forever.
             with conn.cursor() as cur:
@@ -5007,48 +5175,13 @@ async def list_flickr_albums(user=Depends(get_current_user)):
     """List the household's Flickr albums (photosets).
     Returns [{id, title, photo_count, primary_photo_id}].
     """
-    import urllib.parse
+    from flickr_album_import import read_albums
 
-    flickr_creds = get_flickr_credentials()
+    flickr_creds = await asyncio.to_thread(get_flickr_credentials)
     if not FLICKR_API_KEY or not flickr_creds:
         raise HTTPException(500, "Flickr OAuth not configured")
 
-    flickr_url = "https://api.flickr.com/services/rest"
-    albums: list[dict] = []
-    page = 1
-    async with httpx.AsyncClient(timeout=30) as client:
-        while True:
-            params = {
-                "method": "flickr.photosets.getList",
-                "user_id": flickr_creds["user_id"],
-                "per_page": "500",
-                "page": str(page),
-                "format": "json",
-                "nojsoncallback": "1",
-            }
-            signed = _flickr_oauth_sign(flickr_url, params, flickr_creds)
-            auth_header = "OAuth " + ", ".join(
-                f'{k}="{urllib.parse.quote(str(v), "")}"' for k, v in signed.items()
-            )
-            qs = urllib.parse.urlencode(params)
-            resp = await client.get(f"{flickr_url}?{qs}", headers={"Authorization": auth_header})
-            data = resp.json()
-            if data.get("stat") != "ok":
-                raise HTTPException(502, f"Flickr error: {data.get('message', 'unknown')}")
-            photosets = data.get("photosets", {})
-            for ps in photosets.get("photoset", []):
-                title = ps.get("title", {})
-                title_str = title.get("_content", "") if isinstance(title, dict) else str(title)
-                albums.append({
-                    "id": ps["id"],
-                    "title": title_str,
-                    "photo_count": int(ps.get("photos", 0)),
-                    "primary_photo_id": ps.get("primary"),
-                })
-            if page >= int(photosets.get("pages", 1)):
-                break
-            page += 1
-    return {"albums": albums}
+    return {"albums": await read_albums(flickr_api, flickr_creds)}
 
 
 async def _flickr_set_dates(photo_id: str, taken_at_unix: int, creds: dict) -> None:
@@ -5495,6 +5628,8 @@ def _album_response(row: dict, photo_count: int | None = None) -> dict:
         "slug": row["slug"],
         "description": row.get("description") or "",
         "flickr_photoset_id": row.get("flickr_photoset_id"),
+        "cover_photo_id": str(row["cover_photo_id"]) if row.get("cover_photo_id") else None,
+        "cover_media_kind": row.get("cover_media_kind"),
         "photo_count": photo_count if photo_count is not None else row.get("photo_count", 0),
         "nas_path": f"albums/{row['slug']}" if PHOTO_STORAGE_ROOT else None,
         "source": "kindred",
@@ -5513,10 +5648,11 @@ async def list_albums(
     """List Kindred albums, newest first."""
     rows = db_query(
         """
-        SELECT a.*, COUNT(ap.photo_id) AS photo_count
+        SELECT a.*, cover.media_kind AS cover_media_kind, COUNT(ap.photo_id) AS photo_count
         FROM albums a
         LEFT JOIN album_photos ap ON ap.album_id = a.id
-        GROUP BY a.id
+        LEFT JOIN photos cover ON cover.id = a.cover_photo_id
+        GROUP BY a.id, cover.media_kind
         ORDER BY a.created_at DESC
         """
     )
@@ -5543,6 +5679,14 @@ async def list_albums(
             print(f"[albums] could not list Flickr photosets: {exc}")
 
     return {"albums": albums}
+
+
+@app.post("/albums/import-flickr")
+async def import_flickr_album_memberships(admin=Depends(require_admin)):
+    from flickr_album_import import import_albums
+
+    creds = await asyncio.to_thread(get_flickr_credentials)
+    return await import_albums(flickr_api, db_query, _adopt_flickr_photoset, creds)
 
 
 @app.post("/albums")
@@ -6554,14 +6698,10 @@ def get_pipelines(request: FastAPIRequest, user=Depends(get_current_user)):
     import pipelines
     from library_progress import progress
     snapshot = progress()
-    counts = get_library_counts(user=user)
-    source_counts = get_cached('nas_pipeline_counts', ttl_seconds=30)
-    if source_counts is None:
-        source_counts = db_query('''SELECT count(*) AS registered,
-            count(*) FILTER (WHERE preview_ready_at IS NOT NULL) AS previews_ready
-            FROM nas_source_files''')[0]
-        set_cached('nas_pipeline_counts', dict(source_counts))
-    rows = dict(source_counts, photos=counts['photos'], indexed=counts['indexed_photos'])
+    rows = get_cached('nas_pipeline_counts', ttl_seconds=30)
+    if rows is None:
+        rows = pipelines.catalog_progress(db_query)
+        set_cached('nas_pipeline_counts', rows)
     result = pipelines.build(rows, snapshot.get('inventory'), snapshot)
     for entry in result:
         worker = snapshot.get('recognition' if entry['key']=='index' else entry['key']) or {}
@@ -7150,6 +7290,8 @@ def get_local_photo(photo_id: str, variant: str = "original", user=Depends(get_c
         (photo_id,),
     )
     row = rows[0] if rows else None
+    if APP_REVIEW_READ_ONLY and row is None:
+        raise HTTPException(404, "Photo is not in this library")
     if row and variant in ("thumb", "preview"):
         import preview_delivery
         import image_transforms

@@ -192,6 +192,7 @@ export async function finishSocialAuth(req: NextRequest, provider: SocialProvide
     const verifiedEmail = payload.email_verified === true || payload.email_verified === "true";
     const assertion = await new SignJWT({ provider, email: verifiedEmail ? payload.email : undefined, email_verified: verifiedEmail,
       private_email: provider === "apple" && (payload.is_private_email === true || payload.is_private_email === "true"),
+      apple_refresh_token: provider === "apple" && typeof tokens.refresh_token === "string" ? tokens.refresh_token : undefined,
       name: typeof payload.name === "string" ? payload.name : undefined,
       link_user_id: flow.link_user_id || undefined, invite_code: flow.invite_code || undefined })
       .setProtectedHeader({ alg: "HS256" }).setIssuer("kindred-web").setAudience("kindred-backend")

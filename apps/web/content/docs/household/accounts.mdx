@@ -5,16 +5,17 @@ description: Invite family members to browse your Kindred Photos library with th
 
 ## Overview
 
-Kindred Photos supports household accounts so family members can browse the photo library without needing their own Flickr account. The admin (who connected Flickr) has full control, while members can browse, search, and upload photos.
+Kindred Photos supports household accounts so family members can browse the photo library without needing their own Flickr account. Each installation has one owner and can have multiple admins and members. Everyone signs in to the household’s own server.
 
 ## Roles
 
 | Role | Capabilities |
 |------|-------------|
+| **Owner** | Admin permissions, plus ownership transfer and household deletion |
 | **Admin** | Connect Flickr, run scans, label/merge/dismiss clusters, delete photos, manage members, create invites, intelligence settings |
 | **Member** | Browse all photos, search, view clusters, timeline, locations, events, upload photos |
 
-Admins can promote members to admin or demote admins to members from the Settings page. See [Roles](/docs/household/roles) for the full comparison.
+Admins can change roles in Settings. A household can have multiple owners. Each owner can transfer their own ownership to another member. See [Roles](/docs/household/roles) for the full comparison.
 
 ## Inviting members
 
@@ -60,16 +61,20 @@ From the Settings page, admins can:
 - Remove members (immediately revokes access)
 - View and revoke active invite codes
 
-## Photo uploads
+## Backups
 
-Photo uploads go to the Flickr account configured in the backend's `.env` file (`FLICKR_OAUTH_TOKEN` and `FLICKR_USER_ID`). This is typically the admin's Flickr account. All household members browse the same library from this account.
+Uploads are saved to the household's NAS. If its admin enables a Flickr
+connection, supported uploads are also queued for the household’s one Flickr
+destination. Members use their own accounts and have their own favorites.
 
-If your household has multiple Flickr accounts (e.g. one per family member), the admin can change which account is configured in the backend environment. Support for multiple linked Flickr accounts per household is planned for a future release.
+## Delete your account or household
 
-## How it works
+Open **Settings → Account → Manage account** on iOS or the web. Confirm your
+identity, then use **Delete Account** to remove your profile, credentials,
+favorites, and share links. The household’s shared media stays in its storage.
 
-- Members authenticate with username/password
-- Sessions are stored in the database and expire after 30 days
-- The admin authenticates via Flickr OAuth (same as before)
-- All data is shared — members see the same photos, clusters, and labels
-- Destructive actions (scan, delete, label, merge) are admin-only at the API level
+If you own the household, transfer ownership to another member before deleting
+your own account. To close the installation for everyone, use **Delete Household**.
+That removes the Kindred accounts, catalog, and connections. The server operator
+manages the files held on the NAS, in R2, and in Flickr. A new Kindred
+installation needs a new database.

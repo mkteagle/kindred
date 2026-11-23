@@ -1,9 +1,9 @@
 """Durable progress stays correct when render results finish concurrently."""
 import argparse
 import ast
-from concurrent.futures import ThreadPoolExecutor,as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from collections import deque
-from contextlib import closing
+from contextlib import closing, nullcontext
 import json
 from pathlib import Path
 import tempfile
@@ -15,7 +15,7 @@ import unittest
 class ParallelPreviewTests(unittest.TestCase):
     def test_parallel_results_keep_database_baseline_and_commit_before_counting(self):
         tree=ast.parse((Path(__file__).parents[1]/'prepare_nas_previews.py').read_text())
-        funcs=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ('run','heartbeat')]
+        funcs=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ('run','heartbeat','prepare_batch')]
         class Cursor:
             def __enter__(self):return self
             def __exit__(self,*a):pass
@@ -37,10 +37,13 @@ class ParallelPreviewTests(unittest.TestCase):
             committed.extend([id for id,_ in ready]+[id for id,_ in failed]);return .01
         ns={'os':SimpleNamespace(nice=lambda n:None,environ={'PHOTO_STORAGE_ROOT':'fixture'}),
             'LocalStorageProvider':lambda p:object(),'Path':Path,'json':json,'threading':threading,
-            'time':time,'deque':deque,'closing':closing,'ThreadPoolExecutor':ThreadPoolExecutor,'as_completed':as_completed,
+            'time':time,'deque':deque,'closing':closing,'ThreadPoolExecutor':ThreadPoolExecutor,
+            'FIRST_COMPLETED':FIRST_COMPLETED,'wait':wait,
             'psycopg2':SimpleNamespace(connect=lambda url:Connection()),'RealDictCursor':object,
             'save_status':lambda state,status:writes.append(dict(status)),
-            'progress':lambda:{'discovery':{'complete':True}},'render_item':render,'commit_results':commit}
+            'DISCOVERY_STATUS':'discovery.json','preview_queue_access':lambda _:nullcontext(),
+            'read_status':lambda _:dict(complete=True, version=1),
+            'render_item':render,'commit_results':commit}
         ns['os'].environ['DATABASE_URL']='fixture'
         exec(compile(ast.Module(body=funcs,type_ignores=[]),'<preview>','exec'),ns)
         with tempfile.TemporaryDirectory() as d:

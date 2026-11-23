@@ -13,6 +13,7 @@ const sections = [
   { path: "/settings/backup", title: "Backup & Sync", icon: "M20 7v5h-5 M4 17v-5h5 M20 12a8 8 0 0 0-14-5 M4 12a8 8 0 0 0 14 5" },
   { path: "/settings/storage", title: "Storage", icon: "M3 7h18v12H3z M6 15h.01 M10 15h.01" },
   { path: "/settings/notifications", title: "Notifications", icon: "M5 16h14l-2-4V9a5 5 0 1 0-10 0v3l-2 4Z M10 20h4" },
+  { path: "/settings/health", title: "Health check", icon: "M3 12h4l3-7 4 14 3-7h4" },
   { path: "/settings/advanced", title: "Advanced", icon: "M8 6l-6 6 6 6m8-12 6 6-6 6m-2-15-4 18", admin: true },
 ];
 

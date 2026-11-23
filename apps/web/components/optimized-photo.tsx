@@ -1,47 +1,71 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { canPrefetch, prefetchImage, rememberThumbnail } from "@/lib/image-delivery";
+import { useState } from "react";
+import { loadedThumbnail, rememberThumbnail, thumbnailUrlIsFresh } from "@/lib/image-delivery";
 import { thumbUrl } from "@/components/kx/photos";
 
-/** Grid tiles use the same bounded URL as Search and the photo viewer. */
-export function OptimizedPhoto({ photoId, video = false, alt = "", className, thumbnailUrl }: {
-  photoId: string; video?: boolean; alt?: string; className?: string; thumbnailUrl?: string;
+export type ThumbnailPriority = "visible" | "nearby" | "deferred" | "automatic";
+
+/** Display a bounded thumbnail with one fallback to Kindred's delivery route. */
+export function OptimizedPhoto({
+  photoId, video = false, alt = "", className, thumbnailUrl,
+  priority = "automatic", onSettled,
+}: {
+  photoId: string;
+  video?: boolean;
+  alt?: string;
+  className?: string;
+  thumbnailUrl?: string;
+  priority?: ThumbnailPriority;
+  onSettled?: (id: string) => void;
 }) {
-  const ref = useRef<HTMLImageElement>(null);
-  const [visible, setVisible] = useState(false);
-  const [near, setNear] = useState(false);
-  const [warmed, setWarmed] = useState("");
-  const [failedThumbnail, setFailedThumbnail] = useState<string>();
-  const directThumbnail = thumbnailUrl && thumbnailUrl !== failedThumbnail ? thumbnailUrl : undefined;
-  const url = directThumbnail ?? thumbUrl({ photo_id: photoId, media_kind: video ? "video" : "photo" });
+  const [failedDirect, setFailedDirect] = useState<string[]>([]);
+  const [result, setResult] = useState<{ photoId: string; url: string; loaded: boolean }>();
+  const fallback = thumbUrl({ photo_id: photoId, media_kind: video ? "video" : "photo" });
+  const remembered = loadedThumbnail(photoId);
+  const direct = [remembered !== fallback ? remembered : undefined, thumbnailUrl]
+    .find(url => url && !failedDirect.includes(url) && thumbnailUrlIsFresh(url));
+  const displayed = result?.photoId === photoId && result.loaded ? result.url : undefined;
+  const url = displayed ?? direct ?? fallback;
+  const resolved = result?.photoId === photoId && result.url === url;
+  const loaded = resolved && result.loaded;
+  const unavailable = resolved && !result.loaded;
+  const request = priority !== "deferred" || loaded;
+  const state = loaded ? "loaded" : unavailable ? "unavailable" : "loading";
 
-  useEffect(() => {
-    const node = ref.current;
-    if (!node) return;
-    const viewport = new IntersectionObserver(entries => {
-      setVisible(entries[0].isIntersecting);
-    });
-    const ahead = new IntersectionObserver(entries => setNear(entries[0].isIntersecting), {
-      rootMargin: `${Math.round(window.innerHeight * 1.5)}px 0px`,
-    });
-    viewport.observe(node);
-    ahead.observe(node);
-    return () => { viewport.disconnect(); ahead.disconnect(); };
-  }, []);
-
-  useEffect(() => {
-    if (!near || visible || warmed === url || !canPrefetch()) return;
-    const controller = new AbortController();
-    void prefetchImage(url, controller.signal).then((loaded) => {
-      if (loaded && !controller.signal.aborted) setWarmed(url);
-    });
-    return () => controller.abort();
-  }, [near, visible, url, warmed]);
-
-  return <img ref={ref} src={visible || warmed === url ? url : undefined}
-    alt={alt} className={className} loading={visible ? "eager" : "lazy"} decoding="async" draggable={false}
-    referrerPolicy={directThumbnail ? "no-referrer" : undefined}
-    onError={directThumbnail ? () => setFailedThumbnail(directThumbnail) : undefined}
-    onLoad={() => { rememberThumbnail(photoId, url); setWarmed(url); }} />;
+  return (
+    <span className="kx-photo-thumbnail" data-state={state}>
+      {!loaded && (
+        <span className="kx-photo-thumbnail-placeholder" aria-hidden="true"
+          title={unavailable ? "Thumbnail unavailable" : undefined}>
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <rect x="3" y="4" width="18" height="16" rx="3" />
+            <path d="m3 16 5-5 4 4 3-3 6 6" />
+            <circle cx="15.5" cy="8.5" r="1" />
+          </svg>
+        </span>
+      )}
+      {request && !unavailable && (
+        <img key={url} src={url} alt={alt} className={className}
+          loading={priority === "automatic" ? "lazy" : "eager"}
+          fetchPriority={priority === "visible" ? "high" : priority === "nearby" ? "low" : "auto"}
+          decoding="async" draggable={false} referrerPolicy={url !== fallback ? "no-referrer" : undefined}
+          onLoad={() => {
+            rememberThumbnail(photoId, url);
+            setResult({ photoId, url, loaded: true });
+            onSettled?.(photoId);
+          }}
+          onError={() => {
+            if (url !== fallback) {
+              setFailedDirect(failed => [...failed, url]);
+              setResult(current => current?.url === url ? undefined : current);
+            }
+            else {
+              setResult({ photoId, url, loaded: false });
+              onSettled?.(photoId);
+            }
+          }} />
+      )}
+    </span>
+  );
 }

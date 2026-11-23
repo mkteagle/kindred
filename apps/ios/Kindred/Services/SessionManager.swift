@@ -14,17 +14,21 @@ struct UserInfo: Codable {
     let display_name: String
     let role: String
     let avatar_url: String?
+    let reviewReadOnly: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id, username, display_name, role, avatar_url
+        case reviewReadOnly = "review_read_only"
     }
 
-    init(id: String, username: String, display_name: String, role: String, avatar_url: String? = nil) {
+    init(id: String, username: String, display_name: String, role: String,
+         avatar_url: String? = nil, reviewReadOnly: Bool? = nil) {
         self.id = id
         self.username = username
         self.display_name = display_name
         self.role = role
         self.avatar_url = avatar_url
+        self.reviewReadOnly = reviewReadOnly
     }
 
     init(from decoder: Decoder) throws {
@@ -34,6 +38,7 @@ struct UserInfo: Codable {
         display_name = try container.decode(String.self, forKey: .display_name)
         role = try container.decode(String.self, forKey: .role)
         avatar_url = try container.decodeIfPresent(String.self, forKey: .avatar_url)
+        reviewReadOnly = try container.decodeIfPresent(Bool.self, forKey: .reviewReadOnly)
     }
 }
 
@@ -63,6 +68,7 @@ final class SessionManager {
     private(set) var currentUser: UserInfo?
     private(set) var sessionToken: String?
     private(set) var serverURL = PairingService.storedServerURL()
+    var isReadOnlyReview: Bool { currentUser?.reviewReadOnly == true }
 
     private let tokenKey = "kindred_session_token"
     private let userKey = "kindred_session_user"
@@ -257,7 +263,8 @@ final class SessionManager {
                 username: me.username ?? currentUser?.username ?? "",
                 display_name: me.display_name ?? currentUser?.display_name ?? "",
                 role: me.role ?? currentUser?.role ?? "member",
-                avatar_url: me.avatar_url
+                avatar_url: me.avatar_url,
+                reviewReadOnly: me.review_read_only ?? currentUser?.reviewReadOnly
             )
             self.currentUser = updated
             KeychainHelper.saveCodable(updated, forKey: userKey)
@@ -295,9 +302,23 @@ final class SessionManager {
         KeychainHelper.saveCodable(user, forKey: userKey)
     }
 
+    func confirmIdentity(with provider: HostedSocialSignIn.Provider) async throws {
+        guard let serverURL, let user = currentUser, let token = sessionToken else {
+            throw ConnectionError.serverRequired
+        }
+        let account = try await HostedSocialSignIn.shared.signIn(with: provider, ephemeral: true)
+        guard account.user.id.caseInsensitiveCompare(user.id) == .orderedSame,
+              self.sessionToken == token, self.serverURL == serverURL else {
+            throw PairingService.PairingError.rejected("Use the sign-in method for your current Kindred account.")
+        }
+        await restoreSession(token: account.session.token, user: account.user,
+                             expiresAt: account.session.expires_at, serverURL: serverURL)
+    }
+
     // MARK: - Logout
 
     func logout() {
+        if isReadOnlyReview { ReviewPhotoStore.shared.removeAll() }
         FlickrUploader.shared.pauseBackup()
         Analytics.stop()
         clearStoredSession()
@@ -332,7 +353,7 @@ final class HostedSocialSignIn: NSObject, ASWebAuthenticationPresentationContext
         return ["api.kindredphotos.app", "nas-api.kindredphotos.app"].contains(host)
     }
 
-    func signIn(with provider: Provider) async throws -> AuthResponse {
+    func signIn(with provider: Provider, ephemeral: Bool = false) async throws -> AuthResponse {
         guard session == nil, Self.supports(server: await APIClient.shared.currentBaseURL()) else {
             throw SignInError.unavailable
         }
@@ -349,7 +370,7 @@ final class HostedSocialSignIn: NSObject, ASWebAuthenticationPresentationContext
         ]
         guard let url = start.url else { throw SignInError.invalidCallback }
 
-        let callback = try await authorize(url)
+        let callback = try await authorize(url, ephemeral: ephemeral)
         guard let result = URLComponents(url: callback, resolvingAgainstBaseURL: false),
               result.scheme == "kindred", result.host == "social-auth", result.path == "/complete",
               let values = result.queryItems,
@@ -377,7 +398,7 @@ final class HostedSocialSignIn: NSObject, ASWebAuthenticationPresentationContext
         return try JSONDecoder().decode(AuthResponse.self, from: body)
     }
 
-    private func authorize(_ url: URL) async throws -> URL {
+    private func authorize(_ url: URL, ephemeral: Bool) async throws -> URL {
         defer { session = nil }
         return try await withCheckedThrowingContinuation { continuation in
             let browser = ASWebAuthenticationSession(url: url, callbackURLScheme: "kindred") { callback, error in
@@ -387,6 +408,7 @@ final class HostedSocialSignIn: NSObject, ASWebAuthenticationPresentationContext
                     continuation.resume(throwing: error ?? SignInError.invalidCallback)
                 }
             }
+            browser.prefersEphemeralWebBrowserSession = ephemeral
             browser.presentationContextProvider = self
             session = browser
             if !browser.start() {

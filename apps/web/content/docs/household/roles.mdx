@@ -5,7 +5,7 @@ description: Admin and member roles in Kindred Photos, and what each can do.
 
 ## Overview
 
-Every Kindred Photos household has one admin and any number of members. Roles determine what actions are available in the UI and enforced at the API level.
+Every Kindred installation has one owner and can have multiple admins and members. The owner also has all admin permissions. Roles determine what actions are available in the UI and enforced at the API level.
 
 ## Role comparison
 
@@ -29,11 +29,12 @@ Every Kindred Photos household has one admin and any number of members. Roles de
 | Create and revoke invites | Yes | -- |
 | Intelligence settings | Yes | -- |
 | Promote member to admin | Yes | -- |
-| Demote admin to member | Yes | -- |
+| Demote an admin who is not the owner | Yes | -- |
+| Delete your own account | Yes | Yes |
 
 ## How roles work
 
-- The person who first connects a Flickr account becomes the admin.
+- The first admin becomes the owner. Only the owner can transfer ownership or delete the household.
 - Members register through an invite code or email invite.
 - Admins can promote a member to admin or demote an admin to member from the Settings page.
 - The UI automatically adjusts -- members see a cleaner interface without management controls.

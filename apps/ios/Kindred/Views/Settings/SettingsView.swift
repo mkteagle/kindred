@@ -12,25 +12,31 @@ struct SettingsView: View {
                         .padding(.horizontal, -KindredTheme.gutter)
                     account
 
-                    VStack(spacing: 0) {
-                        NavigationLink {
-                            BackupSettingsView()
-                        } label: {
-                            SettingsLinkLabel("Backup & Sync", icon: "arrow.triangle.2.circlepath")
-                        }
-                        .accessibilityIdentifier("settings.backup")
+                    if session.isReadOnlyReview {
+                        Text("This sample library is read-only. You can try an on-device import from Library.")
+                            .font(.kindredBody)
+                            .foregroundStyle(KindredTheme.inkSecondary)
+                    } else {
+                        VStack(spacing: 0) {
+                            NavigationLink {
+                                BackupSettingsView()
+                            } label: {
+                                SettingsLinkLabel("Backup & Sync", icon: "arrow.triangle.2.circlepath")
+                            }
+                            .accessibilityIdentifier("settings.backup")
 
-                        Divider()
+                            Divider()
 
-                        NavigationLink {
-                            StorageSettingsView()
-                        } label: {
-                            SettingsLinkLabel("Storage", icon: "externaldrive")
+                            NavigationLink {
+                                StorageSettingsView()
+                            } label: {
+                                SettingsLinkLabel("Storage", icon: "externaldrive")
+                            }
+                            .accessibilityIdentifier("settings.storage")
                         }
-                        .accessibilityIdentifier("settings.storage")
+                        .buttonStyle(.plain)
+                        .kindredGroupedCard()
                     }
-                    .buttonStyle(.plain)
-                    .kindredGroupedCard()
 
                     VStack(spacing: 0) {
                         NavigationLink {
@@ -42,13 +48,15 @@ struct SettingsView: View {
                         if session.currentUser?.role == "admin" {
                             Divider()
 
-                            NavigationLink {
-                                HouseholdSettingsView()
-                            } label: {
-                                SettingsLinkLabel("Household", icon: "person.2")
-                            }
+                            if !session.isReadOnlyReview {
+                                NavigationLink {
+                                    HouseholdSettingsView()
+                                } label: {
+                                    SettingsLinkLabel("Household", icon: "person.2")
+                                }
 
-                            Divider()
+                                Divider()
+                            }
 
                             NavigationLink {
                                 IndexingProgressView()
@@ -69,7 +77,7 @@ struct SettingsView: View {
                                 SettingsLinkLabel("Intelligence", icon: "sparkle")
                             }
 
-                            if session.currentUser?.role == "admin" {
+                            if session.currentUser?.role == "admin" && !session.isReadOnlyReview {
                                 Divider()
 
                                 NavigationLink {
@@ -167,6 +175,7 @@ private struct AccountSettingsView: View {
                         .contentShape(Rectangle())
                     }
                     .accessibilityLabel("Edit profile photo")
+                    .disabled(viewModel.session.isReadOnlyReview)
 
                     Divider()
                 }
@@ -180,10 +189,26 @@ private struct AccountSettingsView: View {
                     Divider()
                 }
 
+                if !DemoDataProvider.shared.isActive && !viewModel.session.isReadOnlyReview {
+                    NavigationLink {
+                        AccountManagementView()
+                    } label: {
+                        SettingsLinkLabel("Manage account", icon: "person.crop.circle.badge.minus")
+                    }
+
+                    Divider()
+                }
+
                 Button {
                     showPrivacy = true
                 } label: {
                     SettingsLinkLabel("Privacy", icon: "lock.shield")
+                }
+
+                Divider()
+
+                Link(destination: URL(string: "https://kindredphotos.app/privacy")!) {
+                    SettingsLinkLabel("Privacy policy", icon: "doc.text")
                 }
             }
             .buttonStyle(.plain)

@@ -33,6 +33,10 @@ async function handleRequest(
   try {
     const { path } = await params;
     const pathStr = path.join("/");
+    if (req.method === "POST" && pathStr.startsWith("auth/account/") &&
+        (req.headers.get("X-Kindred-Account-Action") !== "1" || !req.headers.get("content-type")?.startsWith("application/json"))) {
+      return NextResponse.json({ detail: "Open Kindred account settings to continue." }, { status: 403 });
+    }
     const queryString = req.nextUrl.search;
     const thumbnail = req.method === "GET" && isThumbnailRequest(pathStr, req.nextUrl.searchParams);
     const previewQuery = req.nextUrl.searchParams;

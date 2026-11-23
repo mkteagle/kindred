@@ -23,15 +23,21 @@ def progress(root='/app/data'):
         ('previews', 'nas-preview-status.json'),
         ('recognition', 'nas-recognition-status.json'),
         ('r2', R2_STATUS_FILE),
+        ('flickr_match', 'worker-status/flickr-match-status.json'),
+        ('flickr_backup', 'worker-status/flickr-nas-backup-status.json'),
     ):
         try:
             path = root / filename
             value = json.loads(path.read_text())
+            if not isinstance(value, dict):
+                result[key] = None
+                continue
             # Never return exception messages or source paths to household members.
             allowed = ('photos', 'videos', 'media_files', 'complete', 'phase', 'found',
                        'registered', 'unchanged', 'folders', 'errors', 'completed',
                        'failed', 'waiting', 'batches', 'batch_completed', 'updated_at', 'elapsed_seconds', 'thumbnail_total',
-                       'stage', 'workers', 'in_flight', 'rate_per_minute', 'commit_batch_size', 'counts_authoritative', 'decode_seconds', 'metadata_seconds', 'commit_seconds')
+                       'stage', 'workers', 'in_flight', 'rate_per_minute', 'commit_batch_size', 'counts_authoritative', 'decode_seconds', 'metadata_seconds', 'commit_seconds',
+                       'remote_total', 'matched', 'unmatched', 'skipped')
             clean = {field: value[field] for field in allowed if field in value}
             age = max(0, datetime.now(timezone.utc).timestamp() - path.stat().st_mtime)
             clean['stale'] = age > 600

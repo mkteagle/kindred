@@ -7,6 +7,7 @@
     "getting-started/installation",
     "getting-started/flickr-setup",
     "---Self-Hosting---",
+    "self-hosting/nas",
     "self-hosting/docker",
     "self-hosting/vps",
     "self-hosting/environment",

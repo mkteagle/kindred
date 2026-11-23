@@ -10,7 +10,7 @@ import time
 import uuid
 import threading
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 import psycopg2
 from psycopg2.extras import RealDictCursor, execute_values
 import capture_date
@@ -18,7 +18,7 @@ import image_transforms
 import preview_delivery
 from storage import LocalStorageProvider
 from discover_nas_library import save_status
-from library_progress import progress
+from worker_priority import DISCOVERY_STATUS, preview_queue_access, read_status
 
 
 def build_preview(source, photo_id, media_type):
@@ -85,7 +85,7 @@ def render_item(provider, row):
         return row['photo_id'], None, str(error), decode_seconds, metadata_seconds
 
 
-def heartbeat(state, status, stop):
+def heartbeat(status, stop, report):
     samples = deque()
     while not stop.wait(3):
         if status.get('counts_authoritative'):
@@ -96,7 +96,47 @@ def heartbeat(state, status, stop):
             elapsed = now-samples[0][0]
             if elapsed>=15:
                 status['rate_per_minute'] = round(max(0,status['completed']-samples[0][1])*60/elapsed,2)
-        save_status(state, dict(status))
+        report()
+
+
+def prepare_batch(connection, pool, provider, workers, commit_size, rows, status, discovery_status):
+    pending = iter(rows)
+    futures = set()
+    ready, failed = [], []
+
+    def commit_pending():
+        if not ready and not failed:
+            return
+        status['stage'] = 'saving'
+        status['commit_seconds'] += commit_results(connection, ready, failed)
+        status['completed'] += len(ready)
+        status['failed'] += len(failed)
+        ready.clear()
+        failed.clear()
+        status['stage'] = 'rendering'
+
+    while True:
+        if read_status(discovery_status).get('complete'):
+            for _ in range(workers - len(futures)):
+                row = next(pending, None)
+                if row is None:
+                    break
+                futures.add(pool.submit(render_item, provider, row))
+        status['in_flight'] = len(futures)
+        if not futures:
+            break
+        finished, futures = wait(futures, return_when=FIRST_COMPLETED)
+        for future in finished:
+            photo_id, metadata, error, decode_seconds, metadata_seconds = future.result()
+            status['decode_seconds'] += decode_seconds
+            status['metadata_seconds'] += metadata_seconds
+            if error:
+                failed.append((photo_id, error))
+            else:
+                ready.append((photo_id, metadata))
+            if len(ready) + len(failed) >= commit_size:
+                commit_pending()
+    commit_pending()
 
 
 def run(args):
@@ -117,9 +157,16 @@ def run(args):
                   metadata_seconds=previous.get('metadata_seconds',0.0),
                   commit_seconds=previous.get('commit_seconds',0.0),
                   workers=workers,commit_batch_size=commit_size,in_flight=0,stage='starting')
-    save_status(state,status)
+    status_lock = threading.Lock()
+
+    def report():
+        with status_lock:
+            save_status(state, dict(status))
+
+    discovery_status = state.parent / DISCOVERY_STATUS
+    report()
     stop = threading.Event()
-    reporter = threading.Thread(target=heartbeat,args=(state,status,stop),daemon=True)
+    reporter = threading.Thread(target=heartbeat,args=(status,stop,report),daemon=True)
     reporter.start()
     try:
         with closing(psycopg2.connect(os.environ['DATABASE_URL'])) as connection, ThreadPoolExecutor(max_workers=workers) as pool:
@@ -136,51 +183,43 @@ def run(args):
             connection.commit()
             status.update(completed=completed,failed=failed,counts_authoritative=True)
             while True:
-                discovery = progress().get('discovery')
-                if not discovery or not discovery.get('complete'):
+                if not read_status(discovery_status).get('complete'):
                     status.update(phase='waiting_for_discovery',waiting=True,stage='waiting_for_discovery')
                     if args.once:break
                     stop.wait(10);continue
-                status.update(phase='previews',stage='fetching',waiting=False)
-                with connection.cursor(cursor_factory=RealDictCursor) as cur:
-                    cur.execute('''SELECT n.photo_id::text, n.relative_path, p.media_type, p.original_filename, nas.provider_key
-                        FROM nas_source_files n JOIN photos p ON p.id=n.photo_id
-                        JOIN photo_copies nas ON nas.photo_id=p.id AND nas.provider='nas' AND nas.status='available'
-                        WHERE n.preview_ready_at IS NULL AND n.preview_error IS NULL
-                        ORDER BY n.created_at,n.photo_id LIMIT %s''',(batch_size,))
-                    rows=cur.fetchall()
-                connection.commit()
+                with preview_queue_access(state.parent):
+                    discovery = read_status(discovery_status)
+                    if not discovery.get('complete'):
+                        continue
+                    with connection.cursor(cursor_factory=RealDictCursor) as cur:
+                        cur.execute('''SELECT n.photo_id::text, n.relative_path, p.media_type, p.original_filename, nas.provider_key
+                            FROM nas_source_files n JOIN photos p ON p.id=n.photo_id
+                            JOIN photo_copies nas ON nas.photo_id=p.id AND nas.provider='nas' AND nas.status='available'
+                            WHERE n.preview_ready_at IS NULL AND n.preview_error IS NULL
+                            ORDER BY n.created_at,n.photo_id LIMIT %s''',(batch_size,))
+                        rows=cur.fetchall()
+                    connection.commit()
+                    if rows:
+                        status.update(phase='previews',stage='rendering',waiting=False)
+                        report()
+                        prepare_batch(connection, pool, provider, workers, commit_size, rows, status, discovery_status)
                 if not rows:
-                    status.update(waiting=True,stage='queue_empty')
-                    if args.once:break
-                    stop.wait(10);continue
-                status.update(stage='rendering',in_flight=len(rows))
-                futures=[pool.submit(render_item,provider,row) for row in rows]
-                ready,failed=[],[]
-                def commit_pending():
-                    if not ready and not failed:return
-                    status['stage']='saving'
-                    status['commit_seconds']+=commit_results(connection,ready,failed)
-                    status['completed']+=len(ready);status['failed']+=len(failed)
-                    ready.clear();failed.clear()
-                    status['stage']='rendering'
-                for future in as_completed(futures):
-                    photo_id,metadata,error,decode_seconds,metadata_seconds=future.result()
-                    status['in_flight']-=1
-                    status['decode_seconds']+=decode_seconds
-                    status['metadata_seconds']+=metadata_seconds
-                    if error:failed.append((photo_id,error))
-                    else:ready.append((photo_id,metadata))
-                    if len(ready)+len(failed)>=commit_size:commit_pending()
-                commit_pending()
-                if args.once:break
+                    version = discovery['version']
+                    if status['stage'] != 'queue_empty' or status.get('checked_discovery_version') != version:
+                        status.update(phase='previews',waiting=True,stage='queue_empty',in_flight=0,
+                                      checked_discovery_version=version)
+                        report()
+                if args.once:
+                    break
+                if not rows:
+                    stop.wait(10)
         status['running']=False
     except Exception:
         status.update(running=False,stage='failed')
         raise
     finally:
         stop.set();reporter.join(timeout=5)
-        save_status(state,status)
+        report()
 
 
 if __name__=='__main__':

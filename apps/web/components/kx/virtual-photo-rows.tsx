@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { JUNK_LABELS } from "@/lib/library-junk";
 import { OptimizedPhoto } from "@/components/optimized-photo";
+import { canPrefetch } from "@/lib/image-delivery";
 import { KxDayHeader } from "./day-header";
 import { PlayIcon } from "./icons";
 import { useKxUi } from "./ui-state";
@@ -76,23 +77,50 @@ export function VirtualPhotoRows({ sections, selected, selecting, onSelectDay, o
     count: rows.length,
     estimateSize: index => rows[index].header ? 54 : height + 8,
     getItemKey: index => rows[index].key,
-    overscan: 4,
+    overscan: 2,
     scrollMargin: box.top,
   });
   useEffect(() => { virtualizer.measure(); }, [height, columns, virtualizer]);
   const items = virtualizer.getVirtualItems();
   // The range excludes overscan, so a pre-rendered row cannot select the rail's year early.
-  const visibleYear = rows[virtualizer.range?.startIndex ?? 0]?.section.year || null;
-  useEffect(() => { onVisibleYear(visibleYear); }, [onVisibleYear, visibleYear]);
-  const last = items[items.length - 1]?.index ?? -1;
+  const first = virtualizer.range?.startIndex ?? 0;
+  const last = virtualizer.range?.endIndex ?? -1;
+  const visibleYear = rows[first]?.section.year || null;
+  const visiblePhotos = useMemo(() => rows.slice(first, last + 1)
+    .flatMap(row => row.tiles.map(photo => photo.photo_id)), [rows, first, last]);
+  const mountedPhotos = useMemo(() => new Set(items.flatMap(item =>
+    rows[item.index].tiles.map(photo => photo.photo_id))), [items, rows]);
+  const settled = useRef(new Set<string>());
+  const [readyViewport, setReadyViewport] = useState<string[]>();
+  const prefetchWhenReady = useCallback(() => {
+    if (visiblePhotos.length && visiblePhotos.every(id => settled.current.has(id)) && canPrefetch()) {
+      setReadyViewport(visiblePhotos);
+    }
+  }, [visiblePhotos]);
+  const onThumbnailSettled = useCallback((id: string) => {
+    settled.current.add(id);
+    prefetchWhenReady();
+  }, [prefetchWhenReady]);
   useEffect(() => {
-    if (last >= rows.length - 5 && hasNextPage && !fetching && !error) fetchNextPage();
+    for (const id of settled.current) {
+      if (!mountedPhotos.has(id)) settled.current.delete(id);
+    }
+    prefetchWhenReady();
+  }, [mountedPhotos, prefetchWhenReady]);
+  useEffect(() => { onVisibleYear(visibleYear); }, [onVisibleYear, visibleYear]);
+  useEffect(() => {
+    if (last >= 0 && last >= rows.length - 5 && hasNextPage && !fetching && !error) fetchNextPage();
   }, [last, rows.length, hasNextPage, fetching, error, fetchNextPage]);
 
+  const nearby = virtualizer.scrollDirection === "backward"
+    ? items.findLast(item => item.index < first && !rows[item.index].header)?.index
+    : items.find(item => item.index > last && !rows[item.index].header)?.index;
   return <div ref={container} className="kx-virtual-photos" data-virtual-rows={rows.length}
     style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
     {items.map(item => {
       const row = rows[item.index];
+      const priority = item.index >= first && item.index <= last ? "visible"
+        : item.index === nearby && readyViewport === visiblePhotos ? "nearby" : "deferred";
       return <div key={item.key} data-virtual-row={item.index} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: item.size, transform: `translateY(${item.start - box.top}px)` }}>
         {row.header ? <KxDayHeader label={row.section.label} count={row.section.photos.length}
           day={dayLabels?.get(row.section.key) ?? null} year={row.section.year}
@@ -107,7 +135,8 @@ export function VirtualPhotoRows({ sections, selected, selecting, onSelectDay, o
               aria-pressed={selecting ? selected.has(photo.photo_id) : undefined}
               aria-label={photo.photo_title || (photo.media_kind === "video" ? "Open video" : "Open photo")}
               onClick={() => onTileClick(photo)}>
-              <OptimizedPhoto photoId={photo.photo_id} video={photo.media_kind === "video"} thumbnailUrl={photo.thumbnail_url} />
+              <OptimizedPhoto photoId={photo.photo_id} video={photo.media_kind === "video"} thumbnailUrl={photo.thumbnail_url}
+                priority={priority} onSettled={onThumbnailSettled} />
               {selected.has(photo.photo_id) && <span className="kx-selected-mark" aria-hidden="true">✓</span>}
               {photo.junk_reason && <span className="kx-tile-video">{JUNK_LABELS[photo.junk_reason]}</span>}
               {photo.media_kind === "video" && <span className="kx-tile-video"><PlayIcon size={9} />{formatDuration(photo.duration_seconds) ?? "Video"}</span>}

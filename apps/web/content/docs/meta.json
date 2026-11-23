@@ -11,6 +11,7 @@
     "features/notifications",
     "features/upload",
     "---Self-Hosting---",
+    "self-hosting/nas",
     "self-hosting/docker",
     "self-hosting/vps",
     "self-hosting/environment",

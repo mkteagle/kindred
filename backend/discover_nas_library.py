@@ -17,6 +17,7 @@ import throttle
 from psycopg2.extras import execute_values
 from capture_date import parse_filename_datetime
 from nas_browser import IMAGES, VIDEOS
+from worker_priority import preview_queue_access
 
 RAW = {'.dng', '.cr2', '.cr3', '.nef', '.arw', '.raf', '.orf', '.rw2'}
 MORE_VIDEO = {'.mts', '.m2v', '.m4p', '.ogg', '.ogv'}
@@ -104,7 +105,9 @@ def run(args):
     status=dict(running=True,phase='resuming_discovery',found=0,registered=0,unchanged=0,folders=0,errors=0,complete=False)
     with state.with_suffix('.lock').open('a+') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
-        with closing(psycopg2.connect(os.environ['DATABASE_URL'])) as connection:
+        if args.limit or getattr(args, 'rescan', False) or not checkpoint.get('complete'):
+            save_status(state, status)
+        with preview_queue_access(state.parent, discovery=True), closing(psycopg2.connect(os.environ['DATABASE_URL'])) as connection:
             with connection.cursor() as cursor:
                 # One grouped read recovers already cataloged folders from older
                 # workers too. Complete folders need no per-file stat/read/UPSERT.
@@ -165,8 +168,8 @@ def run(args):
             complete=not args.limit and status['errors']==0
             checkpoint['complete']=complete
             if not args.limit:save_status(checkpoint_path,checkpoint)
-    status.update(running=False,phase='complete' if complete else 'partial',complete=complete,elapsed_seconds=round(time.monotonic()-started,1))
-    save_status(state,status);print(json.dumps(status),flush=True)
+            status.update(running=False,phase='complete' if complete else 'partial',complete=complete,elapsed_seconds=round(time.monotonic()-started,1))
+            save_status(state,status);print(json.dumps(status),flush=True)
 
 
 if __name__ == '__main__':

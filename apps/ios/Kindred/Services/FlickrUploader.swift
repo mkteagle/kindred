@@ -116,6 +116,13 @@ actor UploadQueueStore {
         try? FileManager.default.removeItem(at: recordURL(record))
     }
 
+    func removeAccount(_ accountID: String) {
+        for record in activityRecords(accountID: accountID) {
+            records.removeValue(forKey: record.id)
+            try? FileManager.default.removeItem(at: recordURL(record))
+        }
+    }
+
     func resumableIdentifiers(accountID: String, activeIdentifiers: Set<String>) -> [String] {
         activityRecords(accountID: accountID)
             .filter { record in
@@ -500,6 +507,7 @@ final class FlickrUploader {
     func resumeQueuedUploads() async -> UploadSummary {
         guard runningBackup == nil,
               !isPaused,
+              !SessionManager.shared.isReadOnlyReview,
               SessionManager.shared.isAuthenticated,
               let accountID = SessionManager.shared.currentUser?.id else {
             return .empty

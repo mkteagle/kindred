@@ -34,26 +34,25 @@ need backup protection.
 
 ## Before first start
 
-1. Copy `.env.example` to `.env` and replace every placeholder secret.
-2. Import this directory through **Docker → Project → Create** in UGOS.
-3. Start the core project and verify the database, API, and web containers.
-4. Create a named Cloudflare Tunnel for staging.
-5. Route `nas.kindredphotos.app` to `http://web:3000`.
-6. Route `nas-api.kindredphotos.app` to `http://api:8000`.
-7. Enable the `public` Compose profile after the token and routes are ready.
-8. Wait for UGOS Storage Manager to report that RAID synchronization is done
-   before starting any photo import, scan, or mobile backup.
+1. Copy `.env.example` to `.env` and replace the database, API, scan, and cookie secrets.
+2. Set `PUBLIC_WEB_URL` and `PUBLIC_API_URL` to your installation's HTTPS addresses.
+3. Start the private database, API, and web services through UGOS Docker or run
+   `docker compose up -d database api web` from this directory.
+4. Create the first owner with
+   `docker compose exec api python bootstrap_owner.py owner --name "Household Owner"`.
+5. If using Cloudflare Tunnel, route your web hostname to `http://web:3000`
+   and your API hostname to `http://api:8000`. Set the connector token in the
+   private environment file and start the `public` Compose profile.
+6. Let NAS storage synchronization finish before importing media or using mobile backup.
 
-The tunnel token is a credential. Keep it only in the NAS project `.env` and
-rotate it if it is ever copied into logs, screenshots, chat, or Git.
+The API applies PostgreSQL migrations on startup. The local PostgreSQL included
+with this project works for a standalone installation. Flickr, Railway, and
+object storage are optional. See the [NAS setup guide](../../apps/web/content/docs/self-hosting/nas.mdx).
 
-## Deployment gate
-
-The current backend still assumes an existing Kindred database schema and uses
-Flickr as the canonical photo provider. Do not deploy this stack as a fresh
-production replacement until the database bootstrap/migration and NAS storage
-provider tasks are complete. This Compose project is the runtime foundation,
-not the data migration itself.
+On an existing installation, the server operator can make an admin a household
+owner with `docker compose exec api python bootstrap_owner.py USERNAME --claim-existing`.
+An installation can have multiple owners. Transferring ownership moves the
+signed-in owner's grant to the chosen member.
 
 ## Checkpoint import and indexing worker
 

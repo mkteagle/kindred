@@ -5,9 +5,9 @@ description: Kindred Photos is a self-hosted family photo library with face reco
 
 ## What is Kindred Photos?
 
-Kindred Photos turns your Flickr photo library into something a household can actually use. It automatically detects faces, pets, and vehicles in your photos, clusters them into people and animals, and lets everyone in the family browse by person, location, event, or timeline.
+Kindred brings your household's photo library together. It automatically detects faces, pets, and vehicles in your photos, clusters them into people and animals, and lets everyone in the family browse by person, location, event, or timeline.
 
-Unlike cloud photo services, Kindred Photos runs on your own server. Your photos stay on Flickr -- Kindred just indexes and organizes them. No photo data is stored on the Kindred server itself.
+Kindred runs on your NAS or another server you control. Your installation stores originals on the NAS, catalogs them in your PostgreSQL database, and can mirror supported uploads to your household's Flickr account.
 
 A calmer home for family photos.
 
@@ -36,7 +36,7 @@ A calmer home for family photos.
 - **Notifications** -- Push notifications and an in-app inbox for scan completions, new people discovered, and more.
 
 ### Uploads
-- **Upload proxy** -- Any household member can upload photos through the VPS, no Flickr credentials needed.
+- **Upload proxy** -- Any household member can upload photos to the household's Kindred server.
 - **Bulk upload** -- A CLI tool for importing Google Takeout archives directly to Flickr with AI processing.
 
 ### Management
@@ -49,7 +49,7 @@ A calmer home for family photos.
 
 ```
 ┌─────────────┐     ┌──────────────────────────┐     ┌──────────┐
-│  Flickr     │────▶│  Kindred Backend          │────▶│ PostgreSQL│
+│  NAS        │────▶│  Kindred Backend          │────▶│ PostgreSQL│
 │  (photos)   │◀────│  FastAPI + Docker          │     │ + pgvector│
 └─────────────┘     └──────────────────────────┘     └──────────┘
                        │         │          ▲
@@ -61,7 +61,7 @@ A calmer home for family photos.
                        │          │         │
                        ▼          ▼         │
                  ┌─────────────────────┐    │
-                 │  Upload Proxy (VPS) │────┘
+                 │  NAS upload service │────┘
                  │  Members upload     │
                  │  through backend    │
                  └─────────────────────┘
@@ -71,8 +71,8 @@ A calmer home for family photos.
 - **Database** -- PostgreSQL with pgvector for embedding similarity search.
 - **Web frontend** -- Next.js app, can be deployed on Vercel or self-hosted.
 - **iOS app** -- Native SwiftUI app connecting to your backend.
-- **Upload proxy** -- The backend accepts photo uploads from any household member and forwards them to Flickr, so members never need Flickr credentials.
-- **Photo storage** -- Flickr. Kindred Photos never stores your photos, only metadata and embeddings.
+- **Upload proxy** -- The backend saves uploads to the NAS and can queue a Flickr copy for supported media.
+- **Photo storage** -- The household's NAS holds originals. Flickr can hold a second copy.
 
 ## Quick start
 

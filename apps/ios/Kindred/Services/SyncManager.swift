@@ -64,7 +64,7 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
     /// Checked before a transfer starts rather than being baked into the
     /// background session, which cannot be reconfigured once it exists.
     var canUploadNow: Bool {
-        !wifiOnly || NetworkReachability.shared.isUnmetered
+        !SessionManager.shared.isReadOnlyReview && (!wifiOnly || NetworkReachability.shared.isUnmetered)
     }
 
     func configure() {
@@ -248,7 +248,8 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
     }
 
     func syncNewPhotos() async {
-        guard !FlickrUploader.shared.isUploading, !FlickrUploader.shared.isPaused else { return }
+        guard !SessionManager.shared.isReadOnlyReview,
+              !FlickrUploader.shared.isUploading, !FlickrUploader.shared.isPaused else { return }
         guard SessionManager.shared.isAuthenticated else {
             lastRunSucceeded = false
             return
@@ -259,6 +260,7 @@ final class SyncManager: NSObject, PHPhotoLibraryChangeObserver {
         totalToSync = toSync.count
 
         if toSync.isEmpty {
+            await syncFavorites()
             recordSuccessfulSync()
             return
         }

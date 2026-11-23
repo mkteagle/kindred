@@ -104,6 +104,43 @@ class BuildTests(unittest.TestCase):
         result = {p['key']: p for p in build(self.rows(), workers=workers)}
         self.assertFalse(result['previews']['running'])
 
+    def test_r2_publication_uses_its_own_inventory_and_sorts_first(self):
+        workers = self.workers()
+        workers['r2'] = dict(running=True, stale=False, phase='publishing', completed=24, thumbnail_total=80)
+        workers['flickr_backup'] = dict(running=False, stale=False, phase='waiting_for_flickr_match')
+        result = build(self.rows(registered=100), workers=workers)
+        r2 = next(row for row in result if row['key'] == 'r2')
+        self.assertEqual((r2['done'], r2['total'], r2['remaining'], r2['percent']), (24, 80, 56, 30))
+        self.assertTrue(r2['running'])
+        self.assertEqual(result[-1]['key'], 'flickr_backup')
+
+    def test_a_caught_up_r2_publisher_waits_for_more_previews(self):
+        workers = self.workers()
+        workers['r2'] = dict(running=False, stale=False, phase='caught_up', completed=24, thumbnail_total=24)
+        r2 = next(row for row in build(self.rows(), workers=workers) if row['key'] == 'r2')
+        self.assertEqual(r2['phase'], 'waiting_for_previews')
+        self.assertFalse(r2['complete'])
+        workers['discovery']['complete'] = True
+        workers['previews'].update(counts_authoritative=True, stage='queue_empty', in_flight=0)
+        r2 = next(row for row in build(self.rows(), workers=workers) if row['key'] == 'r2')
+        self.assertTrue(r2['complete'])
+
+    def test_flickr_comparison_reports_checked_items_even_while_paused(self):
+        worker = dict(running=True, stale=False, phase='waiting_for_capacity',
+                      completed=4, remote_total=20, matched=3, unmatched=1)
+        item, = build(self.rows(), workers={'flickr_match': worker})
+        self.assertEqual((item['done'], item['total'], item['percent']), (4, 20, 20))
+        self.assertFalse(item['running'])
+        self.assertIn('NAS', item['detail'])
+
+    def test_flickr_backup_shows_linked_files_and_keeps_retries_visible(self):
+        worker = dict(running=False, stale=False, phase='caught_up', completed=8, matched=5, failed=3)
+        item, = build(self.rows(), workers={'flickr_backup': worker})
+        self.assertEqual(item['done'], 5)
+        self.assertIsNone(item['total'])
+        self.assertEqual(item['phase'], 'retrying')
+        self.assertFalse(item['complete'])
+
 
 if __name__ == "__main__":
     unittest.main()

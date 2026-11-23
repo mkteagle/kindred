@@ -7,15 +7,15 @@ description: Deploy the Kindred Photos web frontend on Vercel.
 
 1. Fork or clone the [Kindred repo](https://github.com/mkteagle/kindred)
 2. Import the project in [Vercel](https://vercel.com/new)
-3. Set the **Root Directory** to the repo root (not `docs/`)
+3. Set the **Root Directory** to `apps/web`
 4. Add environment variables:
 
 | Variable | Value |
 |----------|-------|
-| `BACKEND_URL` | `https://api.your-domain.com` (your VPS backend) |
+| `BACKEND_URL` | `https://api.your-domain.com` (your NAS or server API) |
 | `API_KEY` | Your backend API key |
 | `COOKIE_SECRET` | A random 32-byte hex string |
-| `NEXT_PUBLIC_BASE_URL` | Your Vercel domain |
+| `NEXT_PUBLIC_APP_URL` | Your Vercel domain |
 
 5. Deploy
 

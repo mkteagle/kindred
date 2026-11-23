@@ -100,7 +100,7 @@ class TransformTests(unittest.TestCase):
         def user(request: Request):
             if request.headers.get('x-session-token') != 'valid': raise HTTPException(401)
             return {'role': 'member'}
-        namespace = dict(Depends=Depends, get_current_user=user, HTTPException=HTTPException,
+        namespace = dict(Depends=Depends, get_current_user=user, HTTPException=HTTPException, APP_REVIEW_READ_ONLY=False,
             FastAPIRequest=Request, Path=Path, PHOTO_STORAGE_ROOT=str(self.root), LocalStorageProvider=LocalStorageProvider,
             db_query=lambda *args: [{'provider_key': 'original.jpg', 'original_filename': 'original.jpg', 'media_type': 'image/jpeg'}],
             FileResponse=FileResponse, Response=Response, asyncio=asyncio,

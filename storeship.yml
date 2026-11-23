@@ -1,5 +1,6 @@
 # StoreShip release configuration for Kindred Photos.
 # Store credentials live in .env.local and ~/.appstoreconnect; never commit them.
+# KINDRED_REVIEW_PASSWORD is the private password for the seeded review server.
 #
 # Validate without publishing:
 #   storeship ship --config storeship.yml --platform ios --dry-run
@@ -40,38 +41,46 @@ ios:
     contact_last_name: Teagle
     contact_email: mkteagle@gmail.com
     contact_phone: "${APP_REVIEW_PHONE}"
-    demo_account_name: "${REVIEW_ACCOUNT_EMAIL}"
-    demo_account_password: "${REVIEW_ACCOUNT_PASSWORD}"
+    demo_account_name: kindred-reviewer
+    demo_account_password: "${KINDRED_REVIEW_PASSWORD}"
     demo_account_required: true
     privacy_policy_url: https://kindredphotos.app/privacy
     marketing_url: https://kindredphotos.app
     description: >-
-      Sign in with the supplied App Review account to explore Kindred with
-      representative family photos, people, pets, places, search results, and
-      household settings. The review account cannot access a private library.
+      Connect to the Kindred review server to browse a fictional household
+      library, search by capture date, and try a temporary on-device photo import.
     notes: >-
-      Sign in with the supplied App Review credentials. This special account
-      opens an isolated, bundled sample library and cannot read or upload any
-      household photos. No server setup or photo-library permission is needed.
+      Open Kindred, choose Enter server address, and enter
+      https://demo.kindredphotos.app. Tap Continue and use the private reviewer
+      credentials below. The library contains fictional photos. Server uploads
+      and permanent changes are disabled. The Library plus button opens a
+      local-only preview for up to five photos. Temporary copies expire after an hour.
   app_store_review:
     contact_first_name: Michael
     contact_last_name: Teagle
     contact_email: mkteagle@gmail.com
     contact_phone: "${APP_REVIEW_PHONE}"
-    demo_account_name: "${REVIEW_ACCOUNT_EMAIL}"
-    demo_account_password: "${REVIEW_ACCOUNT_PASSWORD}"
+    demo_account_name: kindred-reviewer
+    demo_account_password: "${KINDRED_REVIEW_PASSWORD}"
     demo_account_required: true
-    notes: >-
-      Sign in with the supplied App Review credentials. The account opens an
-      isolated, bundled sample library and cannot access or upload private
-      household photos. Kindred is a self-hosted household photo application;
-      connecting a real library requires a user-operated Kindred server.
+    notes: |-
+      Purpose and audience
+      Kindred Photos is a free photo library and backup client for families who run their own Kindred server. Members can back up photos and videos, browse a shared library, keep personal favorites, and find older media by date or other metadata. There are no paid features or in-app purchases.
+
+      How to review the app
+      From a fresh launch, finish onboarding and tap Get started. Choose Enter server address, enter https://demo.kindredphotos.app, tap Continue, then sign in with the credentials in the App Review Instructions fields. The server has 12 fictional photos in two albums. Open Library, view a photo, try Search with November 2025, and browse Favorites on Home. In the photo viewer, choose More actions, then Archive sample. Archived photos restore after one hour. The Library plus button lets you select up to five local photos for a temporary preview. These copies expire after one hour. The review server is read-only for uploads and permanent changes.
+
+      Household accounts and content
+      On a regular installation, a household administrator creates an invite code. Members choose Join Kindred on the sign-in screen and enter the invite, a display name, a username, and a password. They can delete their account from Settings, Account, Manage account, Delete Account. Household owners can transfer ownership or delete the household. Shared media stays within the household, and administrators can remove members and revoke their access. The seeded reviewer account is for browsing the sample library.
+
+      Services and regional availability
+      Core functionality uses the household's own Kindred HTTPS server, PostgreSQL catalog, and storage such as a NAS. iOS PhotoKit is used after the user grants photo access. Flickr is optional for secondary backup. Google and Sign in with Apple are optional on installations configured for those sign-in methods. Face grouping and photo indexing run on the household's server. App features and sample content are the same across storefronts. The review media depict fictional examples, and ordinary households supply their own library content.
   what_to_test: >-
-    Open Home on a slow connection and look for placeholders until photos arrive.
-    Start a backup, open Backup → Activity, and check each item's status. On
-    iOS 26 or later, switch apps while a backup is running and check progress
-    when you return. Flickr copy details are under Backup → Destinations.
-    Test with Google or Apple. The review account opens a sample library.
+    Enter https://demo.kindredphotos.app and sign in with the review credentials.
+    Browse the seeded library, search for November 2025, and archive a sample
+    from the photo viewer. Try a local-only import from the Library plus button.
+    On a disposable self-hosted household, test account deletion, ownership
+    transfer, and whole-household deletion under Settings, Account, Manage account.
 
 brand:
   paper: "#FBF4E7"

@@ -25,6 +25,7 @@ export default function AccountSettingsPage() {
       <button className="kx-button" onClick={() => setEditing(true)}>Edit profile</button>
     </div>}
     <Link href="/settings/integrations#sign-in" className="kx-setting-row">Sign-in methods <span aria-hidden="true">›</span></Link>
+    <Link href="/settings/account" className="kx-setting-row">Manage account <span aria-hidden="true">›</span></Link>
     {editing && <AvatarEditor
       currentAvatarUrl={avatarUrl}
       displayName={name}
