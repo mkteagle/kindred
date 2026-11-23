@@ -43,8 +43,12 @@ struct BackupActivityView: View {
     }
 
     var body: some View {
-        let visibleIDs = Set(live.map(\.id))
-        let current = filtered(live + restoredQueue.filter { !visibleIDs.contains($0.id) })
+        let liveItems = live
+        let visibleIDs = Set(liveItems.map(\.id))
+        let currentItems = filtered(liveItems + restoredQueue.filter { !visibleIDs.contains($0.id) })
+        let current = filter == .all && !waitingForFlickrOnly
+            ? currentItems.sorted { allOrder($0.status) < allOrder($1.status) }
+            : currentItems
         let earlier = filtered(earlierBackups.filter { !visibleIDs.contains($0.id) })
         List {
             if !waitingForFlickrOnly {
@@ -87,6 +91,15 @@ struct BackupActivityView: View {
         }
         .task {
             if waitingForFlickrOnly { await uploadVM.refreshBackupStatuses() }
+        }
+    }
+
+    private func allOrder(_ status: BackupActivityItem.Status) -> Int {
+        switch status {
+        case .preparing, .fetchingICloud, .uploading, .finishing: 0
+        case .queued: 1
+        case .failed: 2
+        case .backedUp: 3
         }
     }
 

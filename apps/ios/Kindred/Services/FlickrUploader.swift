@@ -117,9 +117,8 @@ actor UploadQueueStore {
     }
 
     func resumableIdentifiers(accountID: String, activeIdentifiers: Set<String>) -> [String] {
-        records.values
+        activityRecords(accountID: accountID)
             .filter { record in
-                guard record.accountID == accountID else { return false }
                 switch record.state {
                 case .pending, .preparing, .failed:
                     return true
@@ -129,7 +128,6 @@ actor UploadQueueStore {
                     return false
                 }
             }
-            .sorted { $0.updatedAt < $1.updatedAt }
             .map(\.localIdentifier)
     }
 
@@ -140,7 +138,7 @@ actor UploadQueueStore {
     func activityRecords(accountID: String) -> [UploadQueueRecord] {
         records.values
             .filter { $0.accountID == accountID }
-            .sorted { $0.updatedAt > $1.updatedAt }
+            .sorted { ($0.updatedAt, $0.localIdentifier) < ($1.updatedAt, $1.localIdentifier) }
     }
 
     private func update(
@@ -517,9 +515,9 @@ final class FlickrUploader {
         guard !identifiers.isEmpty else { return .empty }
 
         let result = PHAsset.fetchAssets(withLocalIdentifiers: identifiers, options: nil)
-        var assets: [PHAsset] = []
-        result.enumerateObjects { asset, _, _ in assets.append(asset) }
-        return await uploadAssets(assets)
+        var assetsByID: [String: PHAsset] = [:]
+        result.enumerateObjects { asset, _, _ in assetsByID[asset.localIdentifier] = asset }
+        return await uploadAssets(identifiers.compactMap { assetsByID[$0] })
     }
 
     private func uploadWithRetry(
