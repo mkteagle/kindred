@@ -13,17 +13,23 @@ async def main():
         page = await context.new_page()
         requests=[]; errors=[]
         expired_requests = 0
+        remount_requests = 0
+        hold_returning_thumbnail = False
+        release_thumbnail = asyncio.Event()
         selected_id = None
         release_preview = asyncio.Event()
         page.on('pageerror', lambda error: errors.append(str(error)))
         photos=[dict(photo_id=str(i), photo_title=f'Photo {i}', date_taken='2026-08-20T12:00:00', media_kind='photo', duration_seconds=None) for i in range(200)]
         async def api(route):
-            nonlocal expired_requests
+            nonlocal expired_requests, remount_requests
             url=route.request.url; path=urlparse(url).path
             if path == '/api/fixture/expired-thumbnail':
                 expired_requests += 1
                 return await route.fulfill(status=403, headers={'Cache-Control': 'no-store'})
             if path.endswith('/image'):
+                if hold_returning_thumbnail and path.endswith('/photos/0/image'):
+                    remount_requests += 1
+                    await release_thumbnail.wait()
                 query=parse_qs(urlparse(url).query); width=int(query.get('w',['4000'])[0]); requests.append(url)
                 if path.endswith(f'/photos/{selected_id}/image') and query.get('format') == ['jpeg']:
                     await release_preview.wait()
@@ -45,6 +51,7 @@ async def main():
             await route.fulfill(json=data)
 
         async def verify_scroll_cache():
+            nonlocal hold_returning_thumbnail
             photos[0]['thumbnail_url'] = '/api/fixture/expired-thumbnail'
             fixture = await browser.new_context(viewport={'width':1280,'height':800})
             await fixture.add_cookies([{'name':'kindred_session', 'value':'fixture', 'url':'http://localhost:3109'}])
@@ -57,14 +64,23 @@ async def main():
                 ready = """() => document.querySelector('[data-photo-id="0"] img')?.naturalWidth > 0"""
                 await gallery.wait_for_function(ready)
                 assert expired_requests == 1, expired_requests
+                initial = Image.open(BytesIO(await tile.screenshot())).convert('RGB')
                 scroller = gallery.locator('.kx-content')
                 await scroller.evaluate('(element) => element.scrollTop = 3000')
                 await tile.wait_for(state='detached')
+                hold_returning_thumbnail = True
                 await scroller.evaluate('(element) => element.scrollTop = 0')
-                await gallery.wait_for_function(ready)
+                await tile.wait_for(state='visible', timeout=5000)
+                returned = Image.open(BytesIO(await tile.screenshot())).convert('RGB')
+                center = (initial.width // 2, initial.height // 2)
+                assert returned.getpixel(center) == initial.getpixel(center), (initial.getpixel(center), returned.getpixel(center))
+                assert await tile.locator('img').count() == 0, 'Returning tile still depends on a new image element'
                 assert expired_requests == 1, expired_requests
-                print(json.dumps({'expired_thumbnail_requests_after_remount':expired_requests}))
+                assert remount_requests == 0, remount_requests
+                print(json.dumps({'returning_thumbnail_painted':True,'returning_thumbnail_requests':remount_requests}))
             finally:
+                hold_returning_thumbnail = False
+                release_thumbnail.set()
                 await fixture.close()
                 del photos[0]['thumbnail_url']
                 requests.clear()

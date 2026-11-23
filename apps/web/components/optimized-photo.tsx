@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { decodedThumbnail, retainDecodedThumbnail, touchDecodedThumbnail } from "@/lib/decoded-thumbnails";
 import { forgetThumbnail, loadedThumbnail, rememberThumbnail, thumbnailUrlIsFresh } from "@/lib/image-delivery";
 import { thumbUrl } from "@/components/kx/photos";
 
@@ -21,6 +22,38 @@ export function OptimizedPhoto({
 }) {
   const [failedDirect, setFailedDirect] = useState<string[]>([]);
   const [result, setResult] = useState<{ photoId: string; url: string; loaded: boolean }>();
+  const virtualized = priority !== "automatic";
+  const [snapshot, setSnapshot] = useState(() => {
+    const bitmap = virtualized ? decodedThumbnail(photoId) : undefined;
+    return bitmap && { bitmap, width: bitmap.width, height: bitmap.height };
+  });
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const drawn = useRef(false);
+
+  useLayoutEffect(() => {
+    if (!snapshot) return;
+    const { bitmap } = snapshot;
+    const context = canvas.current?.getContext("2d");
+    if (!context || !bitmap.width) {
+      setSnapshot(undefined);
+      return;
+    }
+    context.drawImage(bitmap, 0, 0);
+    drawn.current = true;
+    touchDecodedThumbnail(photoId, bitmap);
+  }, [snapshot, photoId]);
+
+  useEffect(() => {
+    if (snapshot && drawn.current) onSettled?.(photoId);
+  }, [snapshot, onSettled, photoId]);
+
+  if (snapshot) {
+    return <span className="kx-photo-thumbnail" data-state="loaded">
+      <canvas ref={canvas} width={snapshot.width} height={snapshot.height} className={className}
+        role={alt ? "img" : undefined} aria-label={alt || undefined} aria-hidden={!alt} />
+    </span>;
+  }
+
   const fallback = thumbUrl({ photo_id: photoId, media_kind: video ? "video" : "photo" });
   const remembered = loadedThumbnail(photoId, thumbnailUrl);
   const preferred = [remembered, thumbnailUrl]
@@ -51,7 +84,8 @@ export function OptimizedPhoto({
           loading={priority === "automatic" ? "lazy" : "eager"}
           fetchPriority={priority === "visible" ? "high" : priority === "nearby" ? "low" : "auto"}
           decoding="async" draggable={false} referrerPolicy={url !== fallback ? "no-referrer" : undefined}
-          onLoad={() => {
+          onLoad={(event) => {
+            if (virtualized) void retainDecodedThumbnail(photoId, event.currentTarget);
             rememberThumbnail(photoId, thumbnailUrl || fallback, url);
             setResult({ photoId, url, loaded: true });
             onSettled?.(photoId);

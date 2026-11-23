@@ -9900,7 +9900,8 @@ button.kx-avatar { cursor: pointer; }
   color: var(--ink-3);
 }
 
-.kx-photo-thumbnail img {
+.kx-photo-thumbnail img,
+.kx-photo-thumbnail canvas {
   width: 100%;
   height: 100%;
   display: block;
