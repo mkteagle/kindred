@@ -13,7 +13,9 @@ interface PhotoDetection {
   id: string;
   category: string;
   subtype: string;
-  bbox: number[] | null; // [x1, y1, x2, y2] in original image pixels
+  bbox: number[] | null;
+  bbox_frame_width?: number | null;
+  bbox_frame_height?: number | null;
   det_score: number;
   chip: string;
   cluster_id: string | null;
@@ -582,7 +584,8 @@ export default function PhotoDetailPage() {
             {natSize &&
               detections.map((det) => {
                 if (!det.bbox || det.bbox.length < 4) return null;
-                const pos = bboxToPercent(det.bbox, natSize.w, natSize.h);
+                const pos = bboxToPercent(det.bbox, det.bbox_frame_width ?? natSize.w,
+                  det.bbox_frame_height ?? natSize.h);
                 const cat = det.category || "people";
                 const isSelected = selectedId === det.id;
                 return (

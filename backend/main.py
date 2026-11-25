@@ -716,7 +716,8 @@ def is_dismissed_face(conn, embedding, category, threshold=0.35):
         """, (category, vec, threshold))
         return cur.fetchone() is not None
 
-def insert_detection(conn, photo, category, subtype, bbox, score, embedding, img_bgr, *, mark_processed=True):
+def insert_detection(conn, photo, category, subtype, bbox, score, embedding, img_bgr, *,
+                     mark_processed=True, record_frame=False):
     # Check if this face looks like a previously dismissed person
     if is_dismissed_face(conn, embedding, category):
         return None
@@ -741,18 +742,19 @@ def insert_detection(conn, photo, category, subtype, bbox, score, embedding, img
     vec = None
     if len(embedding) == 512:
         vec = np.array(embedding, dtype=np.float32)
+    frame_height, frame_width = img_bgr.shape[:2] if record_frame else (None, None)
     with conn.cursor() as cur:
         cur.execute("""
             INSERT INTO detections (id, category, subtype, photo_id, photo_url, thumb_url,
-                flickr_url, photo_title, owner, bbox, det_score, chip, embedding)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                flickr_url, photo_title, owner, bbox, det_score, chip, embedding, bbox_frame_width, bbox_frame_height)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO NOTHING
         """, (
             det_id, category, subtype, photo["id"], photo["url"],
             photo.get("thumb", photo["url"]), photo.get("flickr_url", ""),
             photo.get("title", ""), photo.get("owner", ""),
             bbox_json, round(float(score), 3),
-            chip, vec,
+            chip, vec, frame_width, frame_height,
         ))
     if mark_processed:
         with conn.cursor() as cur:
@@ -4193,10 +4195,12 @@ async def _process_uploaded_photo(
     cluster_after: bool = True,
     fetch_flickr_info: bool = True,
     index_stage: Literal["all", "categories", "faces"] = "all",
+    category_source_mtime_ns: int | None = None,
 ) -> None:
     """Run ML for a Flickr photo, preferring its NAS original when supplied."""
     import urllib.parse
 
+    category_step = "reading the catalog"
     try:
         photo_url = ""
         if fetch_flickr_info:
@@ -4246,6 +4250,7 @@ async def _process_uploaded_photo(
         # Run ML processing. NAS recovery passes a local original so indexing does
         # not waste bandwidth downloading the same image back from Flickr. Fall
         # back to Flickr's normalized JPEG for formats OpenCV cannot decode.
+        category_step = "decoding the image"
         import cv2
         img = cv2.imread(local_path, cv2.IMREAD_COLOR) if local_path else None
         if img is None and photo_url:
@@ -4255,9 +4260,14 @@ async def _process_uploaded_photo(
             arr = np.frombuffer(resp.content, np.uint8)
             img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
         if img is None:
+            if index_stage == "categories":
+                from categorization_log import CategorizationError
+
+                raise CategorizationError("decode_failed", "OpenCV could not decode an image from the NAS original or its cached preview.")
             print(f"[upload-process] Could not decode image for {photo_id}")
             return
 
+        category_step = "opening the database"
         conn = get_db()
         counts = {"people": 0, "pets": 0, "vehicles": 0}
 
@@ -4271,6 +4281,7 @@ async def _process_uploaded_photo(
                     counts["people"] += 1
 
             if index_stage != "faces":
+                category_step = "detecting objects"
                 yolo_results = get_yolo()(img[:, :, ::-1], verbose=False)
                 # Decide what is worth embedding before embedding anything. This
                 # used to run CLIP over every box YOLO returned and then discard the
@@ -4291,12 +4302,18 @@ async def _process_uploaded_photo(
                     wanted.append((box.xyxy[0].tolist(), score, category, subtype))
 
                 # Every crop and the whole frame in one pass through the model.
+                category_step = "generating visual embeddings"
                 embeddings = clip_embed_regions(img, [bbox for bbox, _, _, _ in wanted] + [None])
                 photo_clip = embeddings[-1]
+                if index_stage == "categories" and photo_clip is None:
+                    from categorization_log import CategorizationError
+
+                    raise CategorizationError("embedding_failed", "The visual model returned no embedding for this image.")
+                category_step = "saving the analysis"
                 for (xyxy, score, category, subtype), clip_emb in zip(wanted, embeddings):
                     insert_detection(conn, photo, category, subtype, xyxy, score,
                         clip_emb.tolist() if clip_emb is not None else [], img,
-                        mark_processed=index_stage == "all")
+                        mark_processed=index_stage == "all", record_frame=index_stage == "categories")
                     counts[category] += 1
                 if photo_clip is not None:
                     with conn.cursor() as cur:
@@ -4318,10 +4335,9 @@ async def _process_uploaded_photo(
 
             with conn.cursor() as cur:
                 if index_stage == "categories":
-                    cur.execute(
-                        "UPDATE nas_source_files SET categorized_at=now() WHERE photo_id=%s",
-                        (photo_id,),
-                    )
+                    from categorization_log import record_success
+
+                    record_success(cur, photo_id, category_source_mtime_ns)
                 else:
                     # A successful face pass also records photos with zero detections.
                     cur.execute(
@@ -4342,11 +4358,20 @@ async def _process_uploaded_photo(
 
         except Exception as e:
             conn.rollback()
+            if index_stage == "categories":
+                raise
             print(f"[upload-process] ML processing failed for {photo_id}: {e}")
         finally:
             conn.close()
 
     except Exception as e:
+        if index_stage == "categories":
+            from categorization_log import describe_error
+
+            failure = describe_error(e, category_step)
+            if failure is e:
+                raise
+            raise failure from e
         print(f"[upload-process] Failed to process uploaded photo {photo_id}: {e}")
 
 
@@ -6577,6 +6602,15 @@ def get_import_activity(kind: str = "all", search: str = "", cursor: str | None 
     return history(db_query, kind=kind, search=search, cursor=cursor, limit=limit)
 
 
+@app.get("/categorization-events")
+def get_categorization_events(before: int | None = Query(None, ge=1, le=2**63 - 1),
+                              history: bool = False, limit: int = Query(50, ge=1, le=100),
+                              admin=Depends(require_admin)):
+    from categorization_log import events
+
+    return events(db_query, before=before, limit=limit, history=history)
+
+
 @app.get("/pipelines")
 def get_pipelines(request: FastAPIRequest, user=Depends(get_current_user)):
     """Show current Kindred workers; never scan retired import directories."""
@@ -7495,6 +7529,7 @@ def get_photo_detections(photo_id: str):
         identities += [v for v in (str(catalog['id']), catalog.get('legacy_photo_id'), catalog.get('flickr_id')) if v]
     rows = db_query("""
         SELECT d.id, d.category, d.subtype, d.bbox, d.det_score, d.chip,
+               d.bbox_frame_width, d.bbox_frame_height,
                dc.cluster_id, c.label as cluster_label
         FROM detections d
         LEFT JOIN detection_clusters dc ON dc.detection_id = d.id

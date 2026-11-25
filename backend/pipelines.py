@@ -101,8 +101,8 @@ def catalog_progress(query) -> dict:
                count(*) FILTER (WHERE image AND indexed) AS indexed,
                count(*) FILTER (WHERE image IS NOT TRUE) AS index_skipped,
                count(*) FILTER (WHERE image AND (preview_ready OR indexed)) AS recognition_total,
-               count(*) FILTER (WHERE image AND (indexed OR (preview_ready AND categorized))) AS categorized,
-               count(*) FILTER (WHERE image AND preview_ready AND NOT indexed AND NOT categorized
+               count(*) FILTER (WHERE image AND ((indexed AND NOT category_failed) OR (preview_ready AND categorized))) AS categorized,
+               count(*) FILTER (WHERE image AND preview_ready AND NOT categorized
                                AND category_failed) AS categorization_failed,
                count(*) FILTER (WHERE image AND preview_ready AND NOT indexed AND face_failed) AS faces_failed
         FROM nas_progress
@@ -184,14 +184,20 @@ def build(rows: dict, disk: dict | None = None, workers: dict | None = None) -> 
             elif complete and not failed:
                 detail = 'All NAS previews are ready'
         if key in RECOGNITION_PHASES:
-            failed = terminal_failures = rows.get(f'{key}_failed', 0)
-            complete = previews_done and total is not None and done + failed >= total
+            failed = rows.get(f'{key}_failed', 0)
+            terminal_failures = failed if key == 'faces' else 0
+            complete = previews_done and total is not None and done + terminal_failures >= total
             if failed:
                 detail = f'{detail} · {failed:,} failed'
             if phase in RECOGNITION_PHASES.values() and phase != RECOGNITION_PHASES[key]:
                 phase = 'queued'
             elif phase == 'caught_up' and not complete:
-                phase = 'waiting_for_previews' if not previews_done else 'needs_review'
+                if not previews_done:
+                    phase = 'waiting_for_previews'
+                elif key == 'categorization' and failed:
+                    phase = 'waiting_for_categorization_retry'
+                else:
+                    phase = 'needs_review'
         if key == 'index':
             complete = total is not None and done >= total
             skipped = skipped_index

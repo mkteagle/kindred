@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { KxErrorBanner, KxSkeletonRows } from "@/components/kx/states";
 import { usePipelines, type Pipeline } from "@/components/kx/use-library";
+import { useUser } from "@/lib/use-user";
 
 const fmt = new Intl.NumberFormat("en-GB");
 const phaseLabels: Record<string, string> = {
@@ -21,6 +22,7 @@ const phaseLabels: Record<string, string> = {
   waiting_for_discovery: "waiting for discovery",
   waiting_for_previews: "waiting for thumbnails",
   waiting_for_capacity: "waiting for NAS capacity",
+  waiting_for_categorization_retry: "waiting for the next retry",
   waiting_for_flickr_batch: "pausing between Flickr download batches",
   waiting_for_flickr_downloads: "Flickr is limiting original downloads",
   waiting_for_flickr_match: "waiting for Flickr comparison",
@@ -95,6 +97,7 @@ function Bar({ pipeline }: { pipeline: Pipeline }) {
 
 export default function PipelinesPage() {
   const { data, error, isPending, refetch } = usePipelines();
+  const { isAdmin } = useUser();
   const pipelines = data?.pipelines ?? [];
   const sections = [
     { title: "Running", items: pipelines.filter((pipeline) => pipeline.running && !pipeline.complete) },
@@ -111,6 +114,7 @@ export default function PipelinesPage() {
 
       <p style={{ margin: "12px 0 16px", display: "flex", gap: 12, flexWrap: "wrap" }}>
         <Link href="/activity">View filenames and processing timestamps →</Link>
+        {isAdmin && <Link href="/pipelines/failures">Categorization failures →</Link>}
         <Link href="/settings/health">Health check →</Link>
       </p>
       {error && <KxErrorBanner detail={(error as Error).message} onRetry={() => void refetch()} />}

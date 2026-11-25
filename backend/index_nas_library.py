@@ -27,6 +27,7 @@ def pending(limit: int | None, library_only: bool = False, stage: str = "all",
     elif library_only:
         source_filter += " AND source.ml_error IS NULL AND source.face_error IS NULL"
     capture_order = "COALESCE(p.taken_at, '0001-01-01'::timestamptz)"
+    source_version = ", source.mtime_ns AS source_mtime_ns" if stage == "categories" else ""
     cursor_filter = f"AND ({capture_order}, p.id) < (%s::timestamptz, %s::uuid)" if before else ""
     params = (before or ()) + ((limit,) if limit else ())
     return main.db_query(
@@ -34,7 +35,7 @@ def pending(limit: int | None, library_only: bool = False, stage: str = "all",
         SELECT p.id::text AS kindred_photo_id,
                {capture_order} AS index_date,
                nas.provider_key,
-               flickr.provider_key AS flickr_photo_id
+               flickr.provider_key AS flickr_photo_id{source_version}
         FROM photos p
         JOIN photo_copies nas
           ON nas.photo_id=p.id AND nas.provider='nas' AND nas.status='available'
@@ -57,6 +58,20 @@ def pending(limit: int | None, library_only: bool = False, stage: str = "all",
         """ + suffix,
         params,
     )
+
+
+def pending_categorization_retries(limit):
+    return main.db_query("""
+        SELECT retry.photo_id::text AS kindred_photo_id,
+               source.mtime_ns AS source_mtime_ns, nas.provider_key
+        FROM categorization_retries retry
+        JOIN nas_source_files source ON source.photo_id = retry.photo_id AND source.mtime_ns = retry.source_mtime_ns
+        JOIN photo_copies nas ON nas.photo_id = retry.photo_id AND nas.provider = 'nas' AND nas.status = 'available'
+        WHERE retry.next_attempt_at <= now() AND source.categorized_at IS NULL
+          AND source.ml_error IS NOT NULL AND source.preview_ready_at IS NOT NULL
+        ORDER BY retry.next_attempt_at, retry.photo_id
+        LIMIT %s
+    """, (limit,))
 
 
 @contextmanager
@@ -125,6 +140,8 @@ async def run(args: argparse.Namespace, rows=None, executor=None) -> int:
 
 
 async def index_photo(row, provider, library_only, stage):
+    if stage == "categories":
+        return await categorize_photo(row, provider)
     photo_id = row["kindred_photo_id"]
     try:
         source = provider.resolve_local_path(row["provider_key"])
@@ -134,12 +151,7 @@ async def index_photo(row, provider, library_only, stage):
             await main._process_uploaded_photo(
                 photo_id, str(decoded), cluster_after=False, fetch_flickr_info=False, index_stage=stage,
             )
-        receipt = (
-            "SELECT 1 FROM nas_source_files WHERE photo_id=%s AND categorized_at IS NOT NULL"
-            if stage == "categories" else
-            "SELECT 1 FROM processed_photos WHERE photo_id=%s"
-        )
-        if main.db_query(receipt, (photo_id,)):
+        if main.db_query("SELECT 1 FROM processed_photos WHERE photo_id=%s", (photo_id,)):
             return True
         error = f"{stage.title()} indexing did not complete"
     except Exception as exc:
@@ -149,6 +161,42 @@ async def index_photo(row, provider, library_only, stage):
         main.db_query(f"UPDATE nas_source_files SET {error_column}=%s WHERE photo_id=%s", (error, photo_id), fetch=False)
     print(f"[index] failed {photo_id}: {error}", flush=True)
     return False
+
+
+async def categorize_photo(row, provider):
+    from categorization_log import CategorizationError, describe_error, record_failure
+    from preview_delivery import cached_thumbnail
+
+    photo_id = row["kindred_photo_id"]
+    source_mtime = row["source_mtime_ns"]
+
+    async def analyze(path):
+        await main._process_uploaded_photo(
+            photo_id, str(path), cluster_after=False, fetch_flickr_info=False,
+            index_stage="categories", category_source_mtime_ns=source_mtime,
+        )
+
+    try:
+        preview = cached_thumbnail([photo_id])
+        if preview is not None:
+            try:
+                await analyze(preview)
+                return True
+            except CategorizationError as error:
+                if error.code != "decode_failed":
+                    raise
+
+        source = provider.resolve_local_path(row["provider_key"])
+        if source is None:
+            raise CategorizationError("source_unavailable", "The NAS original is unavailable.")
+        with indexable_original(source) as decoded:
+            await analyze(decoded)
+        return True
+    except Exception as exc:
+        error = describe_error(exc, "reading the source image")
+        print(f"[index] category failure {photo_id}: {error.code}: {error}", flush=True)
+        record_failure(main.db_query, photo_id, source_mtime, error)
+        return False
 
 
 def index_in_process(row, library_only, stage):

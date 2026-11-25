@@ -40,12 +40,12 @@ async def watch_locked(executor, workers):
     next_grouping = 0.0
     category_batches = 0
 
-    def next_rows(stage):
+    def next_rows(stage, limit=args.limit):
         before = cursors.get(stage)
-        rows = indexer.pending(args.limit, library_only=True, stage=stage, before=before)
+        rows = indexer.pending(limit, library_only=True, stage=stage, before=before)
         if not rows and before is not None:
             cursors.pop(stage, None)
-            rows = indexer.pending(args.limit, library_only=True, stage=stage)
+            rows = indexer.pending(limit, library_only=True, stage=stage)
         if rows:
             last = rows[-1]
             cursors[stage] = (last["index_date"], last["kindred_photo_id"])
@@ -71,7 +71,9 @@ async def watch_locked(executor, workers):
             category_batches = 0
         if not rows and time.monotonic() >= next_categories_check:
             args.stage = "categories"
-            rows = next_rows(args.stage)
+            retries = indexer.pending_categorization_retries(16)
+            fresh = next_rows(args.stage, args.limit - len(retries))
+            rows = retries + fresh if fresh else indexer.pending_categorization_retries(args.limit)
             if not rows:
                 next_categories_check = time.monotonic() + 30
         if not rows and faces_enabled:
