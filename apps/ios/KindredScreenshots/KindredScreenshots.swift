@@ -226,6 +226,42 @@ final class KindredScreenshots: XCTestCase {
         app.buttons["Settings"].tap()
         XCTAssertTrue(app.buttons["settings.manageOnWeb"].waitForExistence(timeout: 5))
         takeScreenshot(named: "06_device_settings")
+
+        app.terminate()
+        app.launchArguments = ["--ui-test-fresh-session", "-hasSeenOnboarding", "YES"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Scan a pairing code"].waitForExistence(timeout: 8))
+        takeScreenshot(named: "09_login")
+    }
+
+    func testCaptureReleaseSelection() {
+        continueAfterFailure = false
+        app.terminate()
+        XCUIDevice.shared.orientation = .portrait
+        app.launchArguments = ["--ui-test-home"]
+        app.launch()
+        app.buttons["Library"].tap()
+        let select = app.buttons["library.select"]
+        XCTAssertTrue(select.waitForExistence(timeout: 5))
+        select.tap()
+        let photo = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Easter morning")).firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout: 5))
+        photo.tap()
+        takeScreenshot(named: "release-selection")
+    }
+
+    func testCaptureDarkTabletSettings() throws {
+        guard isIPad else { throw XCTSkip("iPad marketing capture") }
+        continueAfterFailure = false
+        app.terminate()
+        XCUIDevice.shared.orientation = .portrait
+        app.launchArguments = ["--ui-test-home"]
+        app.launch()
+        let settings = app.buttons["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 8))
+        settings.tap()
+        XCTAssertTrue(app.buttons["settings.manageOnWeb"].waitForExistence(timeout: 5))
+        takeScreenshot(named: "device-settings-dark")
     }
 
     func testIPadPairingCodeIsReachableFromWelcome() throws {

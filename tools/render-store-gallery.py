@@ -17,9 +17,9 @@ CARDS = (
     ("03_favorites_and_albums", "Favorites and albums", "Go straight to the photos you saved.", "01_favorites_and_albums", "family-evening.jpg"),
     ("04_photo_search", "Find a photo faster", "Search by subject or narrow by month.", "05_photo_search", "family-three-sunset.jpg"),
     ("05_people", "Browse photos by person", "Open a group to see its photos together.", "04_people", "family-roadtrip.jpg"),
-    ("06_media_selection", "Choose what to share", "Select several photos and review them together.", "library-selected-media", "family-campervan.jpg"),
+    ("06_media_selection", "Choose what to share", "Select several photos and review them together.", "release-selection", "family-campervan.jpg"),
     ("07_backup", "Back up to your NAS", "Set automatic backup and Wi-Fi preferences.", "settings-backup-and-sync", "family-camper-lights.jpg"),
-    ("08_backup_activity", "See what backed up", "Check each item and its destination.", "backup-activity", "family-evening.jpg"),
+    ("08_backup_copies", "Check your backup copies", "See where your photos are stored.", "settings-storage", "family-evening.jpg"),
     ("09_pair_device", "Connect another device", "Pair your iPhone or iPad with your server.", "09_login", "family-three-sunset.jpg"),
     ("10_device_settings", "Device settings", "Find backup, storage, and your web settings.", "06_device_settings", "family-roadtrip.jpg"),
 )
@@ -68,14 +68,15 @@ def screenshot_frame(base, screen, center, width, max_height, tablet):
 def render(raw, output, tablet, dark, landscape=None):
     size = (2064, 2752) if tablet else (1320, 2868)
     output.mkdir(parents=True, exist_ok=True)
-    for slide, (name, title, detail, capture, photo) in enumerate(CARDS):
+    cards = CARDS if tablet else CARDS[2:3] + CARDS[:2] + CARDS[3:]
+    for slide, (name, title, detail, capture, photo) in enumerate(cards):
         source = raw / f"{capture}.png"
         if tablet and slide == 0 and landscape:
             source = landscape
         if tablet and slide == 9 and dark:
             source = dark
         with Image.open(source) as image:
-            screen = image.convert("RGB")
+            screen = ImageOps.exif_transpose(image).convert("RGB")
         page = canvas(size, tablet, photo, slide)
         draw = ImageDraw.Draw(page)
         margin = 130 if tablet else 105
@@ -88,7 +89,7 @@ def render(raw, output, tablet, dark, landscape=None):
             screenshot_frame(page, screen, center=1580, width=1710, max_height=1792, tablet=True)
         else:
             screenshot_frame(page, screen, center=1660, width=944, max_height=2110, tablet=False)
-        page.save(output / f"{name}.png", optimize=True)
+        page.save(output / f"{slide+1:02d}_{name[3:]}.png", optimize=True)
 
 
 def main():

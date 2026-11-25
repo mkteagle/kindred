@@ -1,5 +1,25 @@
 # Kindred Photos - App Store Screenshot Automation
 
+## Kindred 1.1 App Store gallery
+
+Capture the demo on both simulators with XCTest's `testCaptureStoreScreenshots`,
+`testCaptureReleaseSelection`, and `testBackupShowsBothDestinations`. Use
+`testIPadUsesTheSamePrimaryTabs` for the landscape library and
+`testCaptureDarkTabletSettings` with the simulator in dark mode.
+
+Render the ten cards for each display with Pillow installed.
+
+```sh
+python3 tools/render-store-gallery.py \
+  --ipad-landscape-library /tmp/kindred_screenshots_ipad/ipad-library-landscape.png \
+  --ipad-dark-settings /tmp/kindred_screenshots_ipad/device-settings-dark.png \
+  --output /tmp/kindred-appstore-gallery
+```
+
+Publish the two verified output folders with `storeship screenshots`.
+The older HTML gallery below is kept as a reference.
+
+
 Automated pipeline for capturing, framing, and producing App Store-ready screenshots for the Kindred Photos iOS app.
 
 ## Quick Start
