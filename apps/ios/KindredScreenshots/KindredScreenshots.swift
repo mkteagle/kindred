@@ -228,7 +228,7 @@ final class KindredScreenshots: XCTestCase {
         takeScreenshot(named: "06_device_settings")
 
         app.terminate()
-        app.launchArguments = ["--ui-test-fresh-session", "-hasSeenOnboarding", "YES"]
+        app.launchArguments = ["--ui-test-fresh-session", "-hasSeenOnboarding", "YES", "-kindred_server_url", "https://api.kindredphotos.app"]
         app.launch()
         XCTAssertTrue(app.buttons["Scan a pairing code"].waitForExistence(timeout: 8))
         takeScreenshot(named: "09_login")
