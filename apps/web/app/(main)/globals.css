@@ -12439,17 +12439,24 @@ body:has(.kx) .lb-overlay .lb-image-area-with-info { padding-right: 344px; }
   box-shadow: none;
 }
 
-/* ── Pipelines dashboard ─────────────────────────────────────────────────
-   Five jobs that run for days. The bar has to distinguish three states, not
-   two: finished, moving, and stopped. A stalled job drawn as a half-full bar
-   is indistinguishable from a slow one, which is how a download sat dead for
-   twenty minutes behind a container reporting "healthy". */
+/* ── Pipelines dashboard ───────────────────────────────────────────────── */
+
+.kx-pipeline-section {
+  margin: 22px 0 0;
+}
+
+.kx-pipeline-section h2 {
+  margin: 0 0 8px;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 650;
+}
 
 .kx-pipelines {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin: 18px 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }

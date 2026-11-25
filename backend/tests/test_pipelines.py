@@ -104,6 +104,51 @@ class BuildTests(unittest.TestCase):
         result = {p['key']: p for p in build(self.rows(), workers=workers)}
         self.assertFalse(result['previews']['running'])
 
+    def test_preview_pass_finishes_with_terminal_failures(self):
+        workers = self.workers()
+        workers['discovery'].update(complete=True, version=52, reconciled=True, eligible_total=90)
+        workers['previews'].update(waiting=True, counts_authoritative=True, stage='queue_empty',
+                                   in_flight=0, checked_discovery_version=52)
+        rows = self.rows(registered=100, previews_ready=98, previews_failed=2)
+        preview = next(row for row in build(rows, workers=workers) if row['key'] == 'previews')
+        self.assertTrue(preview['complete'])
+        self.assertFalse(preview['running'])
+        self.assertEqual(preview['phase'], 'complete_with_errors')
+        self.assertEqual((preview['done'], preview['total'], preview['failed']), (98, 100, 2))
+        self.assertEqual((preview['remaining'], preview['percent']), (0, 100))
+
+        rows['registered'] = 101
+        preview = next(row for row in build(rows, workers=workers) if row['key'] == 'previews')
+        self.assertFalse(preview['complete'])
+        self.assertEqual(preview['phase'], 'reconciliation_needed')
+        self.assertEqual(preview['remaining'], 1)
+
+        rows['previews_ready'] = 99
+        workers['discovery']['version'] = 53
+        preview = next(row for row in build(rows, workers=workers) if row['key'] == 'previews')
+        self.assertFalse(preview['complete'])
+        self.assertEqual(preview['phase'], 'checking_completion')
+
+    def test_backup_priority_and_split_recognition_follow_the_running_phase(self):
+        workers = {
+            key: dict(running=True, stale=False)
+            for key in ('recognition', 'r2', 'flickr_match', 'flickr_backup')
+        }
+        workers['recognition'].update(split_stages=True, faces_enabled=True, phase='categories')
+        rows = self.rows(categorized=60, recognition_total=95)
+        result = build(rows, workers=workers)
+        self.assertEqual([row['key'] for row in result],
+                         ['flickr_backup', 'flickr_match', 'r2', 'categorization', 'faces'])
+        self.assertEqual([row['running'] for row in result], [True, True, True, True, False])
+        self.assertEqual((result[-2]['done'], result[-2]['total']), (60, 95))
+        workers['recognition']['phase'] = 'faces'
+        result = build(rows, workers=workers)
+        self.assertEqual([row['key'] for row in result][-2:], ['faces', 'categorization'])
+        self.assertTrue(result[-2]['running'])
+        self.assertEqual(result[-1]['phase'], 'queued')
+        workers['recognition']['faces_enabled'] = False
+        self.assertNotIn('faces', [row['key'] for row in build(rows, workers=workers)])
+
     def test_r2_publication_uses_its_own_inventory_and_sorts_first(self):
         workers = self.workers()
         workers['r2'] = dict(running=True, stale=False, phase='publishing', completed=24, thumbnail_total=80)
@@ -124,6 +169,15 @@ class BuildTests(unittest.TestCase):
         workers['previews'].update(counts_authoritative=True, stage='queue_empty', in_flight=0)
         r2 = next(row for row in build(self.rows(), workers=workers) if row['key'] == 'r2')
         self.assertTrue(r2['complete'])
+
+    def test_r2_does_not_show_100_percent_from_a_preview_estimate(self):
+        workers = self.workers()
+        workers['previews'].update(counts_authoritative=True, completed=20)
+        workers['r2'] = dict(running=True, stale=False, phase='publishing', completed=24)
+        r2 = next(row for row in build(self.rows(), workers=workers) if row['key'] == 'r2')
+        self.assertTrue(r2['running'])
+        self.assertEqual(r2['phase'], 'counting_thumbnails')
+        self.assertIsNone(r2['percent'])
 
     def test_flickr_comparison_reports_checked_items_even_while_paused(self):
         worker = dict(running=True, stale=False, phase='waiting_for_capacity',

@@ -6587,14 +6587,16 @@ def get_pipelines(request: FastAPIRequest, user=Depends(get_current_user)):
         set_cached('nas_pipeline_counts', rows)
     result = pipelines.build(rows, snapshot.get('inventory'), snapshot)
     for entry in result:
-        worker = snapshot.get('recognition' if entry['key']=='index' else entry['key']) or {}
+        key = entry['key']
+        worker_key = 'recognition' if key == 'index' or key in pipelines.RECOGNITION_PHASES else key
+        worker = snapshot.get(worker_key) or {}
         rate = worker.get('rate_per_minute') if entry['running'] else None
         if rate is None and entry['running']:
-            rate = _rate_per_minute(entry['key'],entry['done'])
-        if entry.get('phase') == 'waiting_for_capacity':
-            rate = None
+            rate = _rate_per_minute(key, entry['done'])
+        elif not entry['running']:
+            _pipeline_samples.pop(key, None)
         entry['rate_per_minute'] = round(rate, 2) if rate is not None else None
-        entry['eta'] = pipelines.format_eta(pipelines.eta_seconds(entry['done'], entry['total'], rate))
+        entry['eta'] = pipelines.format_eta(pipelines.eta_seconds(0, entry['remaining'], rate))
     return {'pipelines': result}
 
 

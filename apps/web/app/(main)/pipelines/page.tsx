@@ -7,11 +7,14 @@ import { usePipelines, type Pipeline } from "@/components/kx/use-library";
 const fmt = new Intl.NumberFormat("en-GB");
 const phaseLabels: Record<string, string> = {
   caught_up: "caught up",
+  checking_completion: "checking completion",
   counting_thumbnails: "counting thumbnails",
   reading_flickr: "reading Flickr inventory",
   restoring_flickr_albums: "restoring Flickr albums",
   preparing_nas_catalog: "preparing NAS lookup",
   needs_review: "review required",
+  reconciliation_needed: "review required",
+  queued: "queued",
   failed: "worker stopped",
   retrying: "waiting to retry",
   stopped: "stopped",
@@ -20,11 +23,6 @@ const phaseLabels: Record<string, string> = {
   waiting_for_capacity: "waiting for NAS capacity",
   waiting_for_flickr_match: "waiting for Flickr comparison",
 };
-
-function sortOrder(pipeline: Pipeline) {
-  if (pipeline.complete) return 2;
-  return pipeline.running ? 0 : 1;
-}
 
 /** "measured 4 minutes ago" — a cached total should say how old it is. */
 function ago(iso: string | null): string {
@@ -39,6 +37,7 @@ function ago(iso: string | null): string {
 function Bar({ pipeline }: { pipeline: Pipeline }) {
   const { percent, total, done, running, rate_per_minute: rate, eta } = pipeline;
   const r2Publication = pipeline.key === "r2";
+  const previewFailures = pipeline.key === "previews" ? (pipeline.failed ?? 0) : 0;
 
   // Three states worth telling apart, because they mean different things:
   // finished, moving, and awaiting a fresh report. A stalled pipeline that looks like a
@@ -50,7 +49,8 @@ function Bar({ pipeline }: { pipeline: Pipeline }) {
     rate ? `${rate.toFixed(0)}/min` : null,
     eta && `${eta} left`,
   ].filter(Boolean).join(" · ");
-  const status = finished ? "complete" : pipeline.stale ? "progress update delayed"
+  const status = finished ? (pipeline.phase === "complete_with_errors" ? "complete with errors" : "complete")
+    : pipeline.stale ? "progress update delayed"
     : phaseLabels[pipeline.phase ?? ""] ?? (running ? activity : "no recent progress");
 
   return (
@@ -58,9 +58,11 @@ function Bar({ pipeline }: { pipeline: Pipeline }) {
       <div className="kx-pipeline-head">
         <strong>{pipeline.label}</strong>
         <span className="kx-mono kx-pipeline-count">
-          {fmt.format(done)}
+          {fmt.format(done + previewFailures)}
           {total !== null && ` / ${fmt.format(total)}`}
-          {r2Publication ? " uploaded" : total === null && " · total unknown"}
+          {r2Publication && " uploaded"}
+          {!!previewFailures && " checked"}
+          {total === null && " · total unknown"}
         </span>
       </div>
 
@@ -91,13 +93,18 @@ function Bar({ pipeline }: { pipeline: Pipeline }) {
 
 export default function PipelinesPage() {
   const { data, error, isPending, refetch } = usePipelines();
-  const pipelines = (data?.pipelines ?? []).slice().sort((a, b) => sortOrder(a) - sortOrder(b));
+  const pipelines = data?.pipelines ?? [];
+  const sections = [
+    { title: "Running", items: pipelines.filter((pipeline) => pipeline.running && !pipeline.complete) },
+    { title: "Waiting and needs review", items: pipelines.filter((pipeline) => !pipeline.running && !pipeline.complete) },
+    { title: "Finished", items: pipelines.filter((pipeline) => pipeline.complete) },
+  ];
 
   return (
     <main className="kx-page" style={{ maxWidth: 900 }}>
       <h1 className="kx-title">Indexing progress</h1>
       <p className="kx-lede">
-        Live progress for NAS discovery, previews, R2 uploads, recognition, and Flickr backup.
+        Live progress for NAS discovery, previews, Flickr backup, and photo indexing.
       </p>
 
       <p style={{ margin: "12px 0 16px", display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -109,11 +116,16 @@ export default function PipelinesPage() {
       {isPending ? (
         <KxSkeletonRows count={3} height={74} />
       ) : (
-        <ul className="kx-pipelines">
-          {pipelines.map((pipeline) => (
-            <Bar key={pipeline.key} pipeline={pipeline} />
+        <>
+          {sections.filter(({ items }) => items.length).map(({ title, items }) => (
+            <section className="kx-pipeline-section" key={title}>
+              <h2>{title}</h2>
+              <ul className="kx-pipelines">
+                {items.map((pipeline) => <Bar key={pipeline.key} pipeline={pipeline} />)}
+              </ul>
+            </section>
           ))}
-        </ul>
+        </>
       )}
     </main>
   );

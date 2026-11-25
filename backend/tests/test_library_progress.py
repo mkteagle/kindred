@@ -2,10 +2,34 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from library_progress import progress
+from library_progress import previews_finished, progress
 
 
 class ReconciliationTests(unittest.TestCase):
+    def test_preview_check_must_be_fresh_and_match_the_discovery_snapshot(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            discovery = root / 'nas-discovery-status.json'
+            discovery.write_text(json.dumps({'complete': True}))
+            (root / 'nas-preview-status.json').write_text(json.dumps({
+                'counts_authoritative': True, 'stage': 'queue_empty', 'in_flight': 0,
+                'checked_discovery_version': discovery.stat().st_mtime_ns,
+            }))
+            (root / 'nas-recognition-status.json').write_text(json.dumps({
+                'split_stages': True, 'faces_enabled': False,
+            }))
+            snapshot = progress(root)
+            self.assertTrue(previews_finished(snapshot))
+            self.assertTrue(snapshot['recognition']['split_stages'])
+            self.assertFalse(snapshot['recognition']['faces_enabled'])
+            snapshot['previews']['stale'] = True
+            self.assertFalse(previews_finished(snapshot))
+            snapshot['previews'].update(stale=False, in_flight=1)
+            self.assertFalse(previews_finished(snapshot))
+            snapshot['previews'].update(in_flight=0)
+            snapshot['discovery']['version'] += 1
+            self.assertFalse(previews_finished(snapshot))
+
     def test_cloud_workers_expose_progress_without_source_details(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)

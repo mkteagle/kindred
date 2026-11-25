@@ -1,6 +1,7 @@
 """Cheap worker heartbeats, separate from catalog/recognition totals."""
 import json
 from datetime import datetime, timezone
+from os import fstat
 from pathlib import Path
 
 R2_STATUS_FILE = 'worker-status/r2-thumbnail-status.json'
@@ -11,7 +12,8 @@ def previews_finished(status):
     previews = status.get("previews") or {}
     return bool(discovery.get("complete") and previews.get("counts_authoritative")
                 and previews.get("stale") is False and previews.get("stage") == "queue_empty"
-                and previews.get("in_flight") == 0)
+                and previews.get("in_flight") == 0
+                and previews.get("checked_discovery_version") == discovery.get("version"))
 
 
 def progress(root='/app/data'):
@@ -28,7 +30,9 @@ def progress(root='/app/data'):
     ):
         try:
             path = root / filename
-            value = json.loads(path.read_text())
+            with path.open() as stream:
+                value = json.load(stream)
+                stat = fstat(stream.fileno())
             if not isinstance(value, dict):
                 result[key] = None
                 continue
@@ -37,9 +41,12 @@ def progress(root='/app/data'):
                        'registered', 'unchanged', 'folders', 'errors', 'completed',
                        'failed', 'waiting', 'batches', 'batch_completed', 'updated_at', 'elapsed_seconds', 'thumbnail_total',
                        'stage', 'workers', 'in_flight', 'rate_per_minute', 'commit_batch_size', 'counts_authoritative', 'decode_seconds', 'metadata_seconds', 'commit_seconds',
-                       'remote_total', 'matched', 'unmatched', 'skipped')
+                       'remote_total', 'matched', 'unmatched', 'skipped',
+                       'checked_discovery_version', 'split_stages', 'faces_enabled')
             clean = {field: value[field] for field in allowed if field in value}
-            age = max(0, datetime.now(timezone.utc).timestamp() - path.stat().st_mtime)
+            if key == 'discovery':
+                clean['version'] = stat.st_mtime_ns
+            age = max(0, datetime.now(timezone.utc).timestamp() - stat.st_mtime)
             clean['stale'] = age > 600
             clean['running'] = bool(value.get('running')) and not clean['stale']
             result[key] = clean
