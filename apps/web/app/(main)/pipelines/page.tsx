@@ -21,6 +21,8 @@ const phaseLabels: Record<string, string> = {
   waiting_for_discovery: "waiting for discovery",
   waiting_for_previews: "waiting for thumbnails",
   waiting_for_capacity: "waiting for NAS capacity",
+  waiting_for_flickr_batch: "pausing between Flickr download batches",
+  waiting_for_flickr_downloads: "Flickr is limiting original downloads",
   waiting_for_flickr_match: "waiting for Flickr comparison",
 };
 

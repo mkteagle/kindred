@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from collections import Counter
+from collections import Counter, deque
 from contextlib import closing
+from email.utils import parsedate_to_datetime
 import fcntl
 import hashlib
 from itertools import islice
+import math
 import os
 from pathlib import Path
 import re
@@ -29,6 +31,70 @@ STATUS_FILE = "worker-status/flickr-match-status.json"
 SIZE_INDEX = "idx_photo_copies_nas_original_size"
 CHUNK_BYTES = 1024 * 1024
 FLICKR_ID = re.compile(r"[0-9]{1,32}")
+UNRESOLVED = {"retry", "nas_unavailable"}
+ORIGINAL_BATCH_SIZE = 20
+ORIGINAL_BATCH_WINDOW = 120
+ORIGINAL_REQUEST_GAP = 2
+
+
+class OriginalRateLimited(Exception):
+    def __init__(self, retry_after):
+        self.retry_after = retry_after
+
+
+class OriginalDownloadPacer:
+    """Give original downloads their own cooldown, independent of Flickr REST."""
+
+    def __init__(self, checkpoint, owner):
+        self.checkpoint, self.owner = checkpoint, owner
+        saved = checkpoint.execute(
+            "SELECT retry_at, strikes FROM original_cooldown WHERE owner=?", (owner,)
+        ).fetchone()
+        self.retry_at, self.strikes = saved or (0, 0)
+        self.next_request = 0.0
+        self.recent = deque()
+
+    def batch_wait(self):
+        now = time.monotonic()
+        while self.recent and now - self.recent[0] >= ORIGINAL_BATCH_WINDOW:
+            self.recent.popleft()
+        if len(self.recent) >= ORIGINAL_BATCH_SIZE:
+            return self.recent[0] + ORIGINAL_BATCH_WINDOW - now
+        return 0.0
+
+    async def wait_between_requests(self):
+        delay = max(self.next_request - time.monotonic(), self.batch_wait())
+        if delay > 0:
+            await asyncio.sleep(delay)
+        now = time.monotonic()
+        self.next_request = now + ORIGINAL_REQUEST_GAP
+        self.recent.append(now)
+
+    def received(self, successful):
+        if successful and self.strikes:
+            with self.checkpoint:
+                self.checkpoint.execute("DELETE FROM original_cooldown WHERE owner=?", (self.owner,))
+            self.retry_at, self.strikes = 0, 0
+
+    def rate_limited(self, retry_after):
+        self.strikes = min(self.strikes + 1, 3)
+        now = time.time()
+        delay = 900 * 2 ** (self.strikes - 1)
+        if retry_after:
+            try:
+                requested = float(retry_after)
+            except ValueError:
+                try:
+                    requested = parsedate_to_datetime(retry_after).timestamp() - now
+                except (ValueError, TypeError, OverflowError):
+                    requested = 0
+            if math.isfinite(requested):
+                delay = max(delay, requested)
+        self.retry_at = math.ceil(now + delay)
+        with self.checkpoint:
+            self.checkpoint.execute("INSERT OR REPLACE INTO original_cooldown VALUES (?,?,?)",
+                                    (self.owner, self.retry_at, self.strikes))
+        print(f"Flickr original downloads paused for {delay:.0f} seconds after HTTP 429", flush=True)
 
 
 def original_url(value):
@@ -125,9 +191,15 @@ def record_match(query, owner, flickr_id, match, digest, size):
     return bool(saved)
 
 
-async def download_digest(client, url, find_by_size, byte_limit, mime_prefix):
+async def download_digest(client, url, find_by_size, byte_limit, mime_prefix, pacer=None):
     for _ in range(4):
+        if pacer:
+            await pacer.wait_between_requests()
         async with client.stream("GET", url) as response:
+            if response.status_code == 429:
+                raise OriginalRateLimited(response.headers.get("retry-after"))
+            if pacer:
+                pacer.received(response.status_code == 200)
             if not response.is_redirect:
                 return await hash_response(response, find_by_size, byte_limit, mime_prefix)
             url = original_url(str(response.next_request.url)) if response.next_request else None
@@ -206,30 +278,28 @@ async def remote_pages(api, credentials, cutoff, albums_only):
         page += 1
 
 
-async def prioritized_pages(api, credentials, cutoff, albums_only, albums_first, on_albums_checked):
-    """Reuse the album inventory before walking the remaining photostream."""
+async def prioritized_pages(api, credentials, cutoff, albums_only, albums_first):
+    """Discover account size first, then yield album pages before the photostream."""
     stream = remote_pages(api, credentials, cutoff, albums_only=False)
-    if not albums_first and not albums_only:
-        async for page in stream:
-            yield page
+    if albums_only:
+        unique = {}
+        async for _, page in remote_pages(api, credentials, cutoff, albums_only=True):
+            unique.update((str(item["id"]), item) for item in page)
+        items = iter(unique.values())
+        while page := list(islice(items, 500)):
+            yield len(unique), page, True
         return
-    unique = {}
-    async for _, page in remote_pages(api, credentials, cutoff, albums_only=True):
-        unique.update((str(item["id"]), item) for item in page)
-    first = None if albums_only else await anext(stream, None)
-    total = first[0] if first else len(unique)
-    items = iter(unique.values())
-    while page := list(islice(items, 500)):
-        yield total, page
-    if on_albums_checked:
-        await on_albums_checked()
-    if first is not None:
-        yield first
-        async for page in stream:
-            yield page
+    first = await anext(stream, None)
+    if first:
+        if albums_first:
+            async for _, page in remote_pages(api, credentials, cutoff, albums_only=True):
+                yield first[0], page, True
+        yield first[0], first[1], False
+        async for total, page in stream:
+            yield total, page, False
 
 
-async def compare_item(main, storage, client, credentials, remote, byte_limit):
+async def compare_item(main, storage, client, credentials, remote, byte_limit, pacer):
     flickr_id = str(remote["id"])
     media_kind = remote.get("media")
     try:
@@ -250,7 +320,7 @@ async def compare_item(main, storage, client, credentials, remote, byte_limit):
             return "original_unavailable"
         outcome, size, digest, rows = await download_digest(
             client, url, lambda n: candidates(main.db_query, n, media_kind), byte_limit,
-            "video/" if media_kind == "video" else "image/",
+            "video/" if media_kind == "video" else "image/", pacer,
         )
     except (HTTPException, httpx.HTTPError, TimeoutError, ValueError):
         return "retry"
@@ -318,100 +388,140 @@ async def run_pass(args, state, checkpoint, priority):
     stats = Counter()
     seen = set()
     reported_totals = set()
+    pending = deque()
+    pacer = OriginalDownloadPacer(checkpoint, owner)
     inventory_complete = False
+    album_pending = 0
+    restore_albums = not args.dry_run and args.limit is None
+
+    def report():
+        failed = sum(stats[key] for key in UNRESOLVED)
+        state.update(completed=sum(stats.values()) - failed,
+                     matched=stats["linked"] + stats["already_linked"] + stats["matched"],
+                     failed=failed, unmatched=stats["unmatched"],
+                     skipped=sum(stats[key] for key in ("conflict", "ambiguous", "too_large",
+                                 "original_unavailable", "video_original_unavailable")))
+        save_status(args.status, state)
+
+    async def flickr_page(params, creds):
+        await wait_for_indexing()
+        return await main.flickr_api(params, creds)
+
     async def publish_album_links():
         from flickr_album_import import import_albums
 
-        await wait_for_indexing()
-        state["phase"] = "restoring_flickr_albums"
-        save_status(args.status, state)
+        state.update(phase="restoring_flickr_albums", waiting=False)
+        report()
         try:
             result = await import_albums(flickr_page, main.db_query, main._adopt_flickr_photoset, credentials)
             print(f"Flickr album reconciliation {result}", flush=True)
         except (HTTPException, psycopg2.Error):
             print("Flickr album reconciliation will retry on the next scan", flush=True)
 
-    albums_checked = publish_album_links if not args.dry_run and args.limit is None else None
-
-    async def flickr_page(params, creds):
-        await wait_for_indexing()
-        return await main.flickr_api(params, creds)
-
     scopes = prioritized_pages(flickr_page, credentials, int(time.time()) - 1,
-                               args.albums_only, args.albums_first or args.watch, albums_checked)
+                               args.albums_only, args.albums_first or args.watch)
+
+    # REST inventory and stored receipts can progress while the originals CDN
+    # is unavailable. Keep uncached items in album-first order for comparison.
+    async for total, page, from_album in scopes:
+        reported_totals.add(total)
+        state["remote_total"] = max(reported_totals)
+        ids = [str(item["id"]) for item in page if FLICKR_ID.fullmatch(str(item["id"]))]
+        links = main.db_query("""
+            SELECT provider_key, provider_owner_id, status FROM photo_copies
+            WHERE provider = 'flickr' AND provider_key = ANY(%s)
+        """, (ids,)) if ids else []
+        existing = {row["provider_key"]: row for row in links}
+        checked_since = int(time.time()) - args.retry_days * 86400
+        for remote in page:
+            flickr_id = str(remote["id"])
+            if not FLICKR_ID.fullmatch(flickr_id) or flickr_id in seen:
+                continue
+            if args.limit and len(seen) >= args.limit:
+                break
+            seen.add(flickr_id)
+            prior = existing.get(flickr_id)
+            revision = str(remote.get("lastupdate") or "")
+            if prior and prior["provider_owner_id"] not in (None, owner):
+                stats["conflict"] += 1
+                continue
+            if prior and prior["provider_owner_id"] == owner and prior["status"] == "available":
+                stats["already_linked"] += 1
+                continue
+            cached = None if args.dry_run else checkpoint.execute("""
+                SELECT result FROM checked WHERE owner = ? AND flickr_id = ? AND revision = ?
+                  AND checked_at > ?
+            """, (owner, flickr_id, revision, checked_since)).fetchone()
+            if cached:
+                stats[cached[0]] += 1
+            else:
+                pending.append((remote, flickr_id, revision, from_album))
+                album_pending += from_album
+        report()
+        if args.limit and len(seen) >= args.limit:
+            break
+    else:
+        inventory_complete = len(reported_totals) == 1 and len(seen) == state.get("remote_total")
+
     async with httpx.AsyncClient(timeout=20, trust_env=False, follow_redirects=False,
                                  headers={"User-Agent": main.FLICKR_USER_AGENT,
                                           "Accept-Encoding": "identity"}) as client:
-        async for total, page in scopes:
-            await wait_for_indexing()
-            reported_totals.add(total)
-            state["remote_total"] = max(reported_totals)
-            ids = [str(item["id"]) for item in page if FLICKR_ID.fullmatch(str(item["id"]))]
-            if not ids:
+        if restore_albums and not album_pending:
+            await publish_album_links()
+            restore_albums = False
+        while pending:
+            delay = pacer.retry_at - time.time()
+            if delay > 0:
+                state.update(phase="waiting_for_flickr_downloads", waiting=True)
+                report()
+                await asyncio.sleep(delay)
                 continue
-            links = main.db_query("""
-                SELECT provider_key, provider_owner_id, status FROM photo_copies
-                WHERE provider = 'flickr' AND provider_key = ANY(%s)
-            """, (ids,))
-            existing = {row["provider_key"]: row for row in links}
-            for remote in page:
+            delay = pacer.batch_wait()
+            if delay > 0:
+                state.update(phase="waiting_for_flickr_batch", waiting=True)
+                report()
+                await asyncio.sleep(delay)
+                continue
+            state.update(phase="matching", waiting=False)
+            await wait_for_indexing()
+            pressure = throttle.read_pressure()
+            if pressure and pressure.hurting:
+                state.update(phase="waiting_for_capacity", waiting=True)
+                report()
+                await throttle.wait_for_capacity()
+                state.update(phase="matching", waiting=False)
                 await wait_for_indexing()
-                flickr_id = str(remote["id"])
-                if not FLICKR_ID.fullmatch(flickr_id) or flickr_id in seen:
-                    continue
-                if args.limit and len(seen) >= args.limit:
-                    break
-                seen.add(flickr_id)
-                state["phase"] = "matching"
-                prior = existing.get(flickr_id)
-                revision = str(remote.get("lastupdate") or "")
-                cached = checkpoint.execute("""
-                    SELECT result FROM checked WHERE owner = ? AND flickr_id = ? AND revision = ?
-                      AND checked_at > ?
-                """, (owner, flickr_id, revision, int(time.time()) - args.retry_days * 86400)).fetchone()
-                if prior and prior["provider_owner_id"] not in (None, owner):
-                    outcome = "conflict"
-                elif prior and prior["provider_owner_id"] == owner and prior["status"] == "available":
-                    outcome = "already_linked"
-                elif cached and not args.dry_run:
-                    outcome = cached[0]
-                else:
-                    pressure = throttle.read_pressure()
-                    if pressure and pressure.hurting:
-                        state["phase"] = "waiting_for_capacity"
-                        save_status(args.status, state)
-                        await throttle.wait_for_capacity()
-                        state["phase"] = "matching"
-                        await wait_for_indexing()
-                    compared = await compare_item(main, storage, client, credentials, remote, args.max_bytes)
-                    if isinstance(compared, tuple):
-                        outcome, match, digest, size = compared
-                        if not args.dry_run:
-                            try:
-                                outcome = ("linked" if record_match(main.db_query, owner, flickr_id, match, digest, size)
-                                           else "conflict")
-                            except psycopg2.errors.UniqueViolation:
-                                outcome = "conflict"
-                    else:
-                        outcome = compared
-                    if not args.dry_run and outcome not in {"retry", "nas_unavailable", "linked"}:
-                        with checkpoint:
-                            checkpoint.execute("INSERT OR REPLACE INTO checked VALUES (?, ?, ?, ?, ?)",
-                                               (owner, flickr_id, revision, outcome, int(time.time())))
-                    await asyncio.sleep(args.item_delay)
-                stats[outcome] += 1
-                state.update(completed=len(seen), matched=stats["linked"] + stats["already_linked"] + stats["matched"],
-                             failed=stats["retry"] + stats["nas_unavailable"],
-                             unmatched=stats["unmatched"],
-                             skipped=sum(stats[key] for key in ("conflict", "ambiguous", "too_large",
-                                          "original_unavailable", "video_original_unavailable")))
-                if len(seen) % 10 == 0:
-                    save_status(args.status, state)
-            if args.limit and len(seen) >= args.limit:
-                break
-        else:
-            inventory_complete = len(reported_totals) <= 1 and len(seen) == (state.get("remote_total") or 0)
-    return inventory_complete and not state.get("failed"), stats
+            remote, flickr_id, revision, from_album = pending.popleft()
+            try:
+                compared = await compare_item(main, storage, client, credentials, remote, args.max_bytes, pacer)
+            except OriginalRateLimited as error:
+                pacer.rate_limited(error.retry_after)
+                pending.append((remote, flickr_id, revision, from_album))
+                continue
+            if isinstance(compared, tuple):
+                outcome, match, digest, size = compared
+                if not args.dry_run:
+                    try:
+                        outcome = ("linked" if record_match(main.db_query, owner, flickr_id, match, digest, size)
+                                   else "conflict")
+                    except psycopg2.errors.UniqueViolation:
+                        outcome = "conflict"
+            else:
+                outcome = compared
+            if not args.dry_run and outcome not in UNRESOLVED | {"linked"}:
+                with checkpoint:
+                    checkpoint.execute("INSERT OR REPLACE INTO checked VALUES (?, ?, ?, ?, ?)",
+                                       (owner, flickr_id, revision, outcome, int(time.time())))
+            stats[outcome] += 1
+            album_pending -= from_album
+            report()
+            if restore_albums and not album_pending:
+                await publish_album_links()
+                restore_albums = False
+            await asyncio.sleep(args.item_delay)
+
+    report()
+    return inventory_complete and not state["failed"], stats
 
 
 async def heartbeat(path, state):
@@ -431,6 +541,11 @@ async def run(args):
                 CREATE TABLE IF NOT EXISTS checked (
                     owner TEXT, flickr_id TEXT, revision TEXT, result TEXT, checked_at INTEGER,
                     PRIMARY KEY (owner, flickr_id)
+                )
+            """)
+            checkpoint.execute("""
+                CREATE TABLE IF NOT EXISTS original_cooldown (
+                    owner TEXT PRIMARY KEY, retry_at INTEGER NOT NULL, strikes INTEGER NOT NULL
                 )
             """)
             os.chmod(checkpoint_path, 0o600)
