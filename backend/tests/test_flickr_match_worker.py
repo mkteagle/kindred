@@ -132,7 +132,7 @@ class OriginalStreamingTests(unittest.IsolatedAsyncioTestCase):
             now += delay
 
         async def inventory(*_):
-            yield 3, [{"id": str(index), "lastupdate": "v1"} for index in range(1, 4)], True
+            yield 3, [{"id": str(index), "lastupdate": "v1"} for index in range(1, 4)]
 
         main = SimpleNamespace(
             FLICKR_USER_AGENT="fixture",

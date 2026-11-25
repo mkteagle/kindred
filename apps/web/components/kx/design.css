@@ -245,9 +245,10 @@ body:has(.kx-shell) { overflow:hidden; }
 .kx-file-dialog code { display:block; font-size:12px; overflow-wrap:anywhere; margin-top:8px; color:var(--ink-3); }
 .kx-album-cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:22px; }
 .kx-album-card { display:flex; flex-direction:column; border:1px solid var(--line); border-radius:16px; background:var(--surface); color:var(--ink); text-decoration:none; overflow:hidden; padding-bottom:18px; }
-.kx-album-cover { position:relative; overflow:hidden; height:170px; background:#eeeaf8; color:#6554c0; display:grid; place-items:center; margin-bottom:18px; }
-.kx-album-cover img[src] { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
-.kx-album-card:nth-child(3n+2) .kx-album-cover { background:#e1f0eb; color:#208576; }.kx-album-card:nth-child(3n+3) .kx-album-cover { background:#fbe9e3; color:#b36b54; }
+.kx-album-cover { position:relative; display:block; overflow:hidden; aspect-ratio:4 / 3; background:var(--fill-2); margin-bottom:18px; }
+.kx-album-cover .kx-photo-thumbnail { position:absolute; inset:0; }
+.kx-album-cover .kx-photo-thumbnail-placeholder { display:none; }
+.kx-album-cover img { display:block; width:100%; height:100%; object-fit:cover; }
 .kx-album-card > strong { font-family:var(--display); font-size:16px; padding:0 18px; }.kx-album-card > small { color:var(--ink-3); font-size:12px; margin-top:8px; padding:0 18px; }.kx-album-card > p { padding:0 18px; color:var(--ink-3); font-size:12px; }
 .kx-discovery-progress {
   display: flex;
@@ -883,7 +884,7 @@ body:has(.kx-shell) { overflow:hidden; }
   .kx-library-total { margin-inline-start:auto; }
   .kx-tile-size .kx-iconbutton { width:44px; height:44px; }
   .kx-album-cards { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
-  .kx-album-cover { height:auto; aspect-ratio:4 / 3; margin-bottom:10px; }
+  .kx-album-cover { margin-bottom:10px; }
   .kx-album-card > :is(strong, small, p) { padding-inline:12px; overflow-wrap:anywhere; }
   .kx-people-page .kx-reviewbanner { flex-wrap:wrap; }
   .kx-people-page .kx-reviewbanner-copy { min-width:min(180px, 70%); }

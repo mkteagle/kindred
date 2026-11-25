@@ -18,7 +18,7 @@ type Album = {
   cover_media_kind?: "photo" | "video" | null;
 };
 
-type FlickrImport = { albums: number; matched_items: number; unmatched_items: number };
+type FlickrImport = { albums: number; matched_items: number; unmatched_items: number; skipped_small_albums?: number };
 
 export default function AlbumsPage() {
   const [filter, setFilter] = useState("");
@@ -46,6 +46,7 @@ export default function AlbumsPage() {
   });
   const albums = query.data?.albums.filter(album => album.name.toLocaleLowerCase().includes(filter.toLocaleLowerCase())) ?? [];
   const imported = flickrImport.data;
+  const skippedAlbums = imported?.skipped_small_albums ?? 0;
 
   return (
     <main className="kx-page">
@@ -63,8 +64,10 @@ export default function AlbumsPage() {
       {flickrImport.error && <KxErrorBanner detail={flickrImport.error.message} onRetry={() => flickrImport.mutate()} />}
       {imported && (
         <p role="status" className="kx-lede">
-          {imported.albums === 0 ? "No Flickr albums found." :
-            `Synced ${fmt.format(imported.albums)} Flickr albums with ${fmt.format(imported.matched_items)} matched items.`}
+          {imported.albums > 0
+            ? `Synced ${fmt.format(imported.albums)} Flickr albums with ${fmt.format(imported.matched_items)} matched items.`
+            : skippedAlbums === 0 ? "No Flickr albums found." : null}
+          {skippedAlbums > 0 && ` ${fmt.format(skippedAlbums)} Flickr ${skippedAlbums === 1 ? "album has" : "albums have"} fewer than two matched items.`}
           {imported.unmatched_items > 0 && ` ${fmt.format(imported.unmatched_items)} album items have no match in Kindred.`}
         </p>
       )}
@@ -79,13 +82,10 @@ export default function AlbumsPage() {
         {albums.map(album => (
           <Link key={album.id} href={`/albums/${album.id}`} className="kx-album-card">
             <span className="kx-album-cover" aria-hidden="true">
-              <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
-                <rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 16l5-5 5 5 3-3 5 5"/><circle cx="16" cy="8" r="1.5"/>
-              </svg>
               {album.cover_photo_id && <OptimizedPhoto photoId={album.cover_photo_id} video={album.cover_media_kind === "video"} />}
             </span>
             <strong>{album.name}</strong>
-            <small>{fmt.format(album.photo_count)} items</small>
+            <small>{fmt.format(album.photo_count)} {album.photo_count === 1 ? "item" : "items"}</small>
             {album.description && <p>{album.description}</p>}
           </Link>
         ))}

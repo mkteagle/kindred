@@ -5529,6 +5529,8 @@ async def list_albums(
     user=Depends(get_current_user),
 ):
     """List Kindred albums, newest first."""
+    from flickr_album_import import MIN_FLICKR_ALBUM_ITEMS, show_in_album_list
+
     rows = db_query(
         """
         SELECT a.*, cover.media_kind AS cover_media_kind, COUNT(ap.photo_id) AS photo_count
@@ -5539,14 +5541,14 @@ async def list_albums(
         ORDER BY a.created_at DESC
         """
     )
-    albums = [_album_response(row, int(row["photo_count"])) for row in rows]
+    albums = [_album_response(row, int(row["photo_count"])) for row in rows if show_in_album_list(row)]
 
     if include_flickr:
         known = {row["flickr_photoset_id"] for row in rows if row["flickr_photoset_id"]}
         try:
             remote = await list_flickr_albums(user=user)
             for photoset in remote["albums"]:
-                if photoset["id"] not in known:
+                if photoset["id"] not in known and photoset["photo_count"] >= MIN_FLICKR_ALBUM_ITEMS:
                     albums.append({
                         "id": None,
                         "name": photoset["title"],

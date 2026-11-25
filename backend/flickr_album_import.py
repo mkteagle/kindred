@@ -5,6 +5,25 @@ import asyncio
 from fastapi import HTTPException
 
 
+MIN_FLICKR_ALBUM_ITEMS = 2
+
+# Ignore remote IDs with no verified household link. Older, ownerless copies
+# are eligible only when the catalog carries the same legacy Flickr photo ID.
+MATCHED_ITEMS = """
+    FROM unnest(%s::text[]) WITH ORDINALITY AS r(flickr_id, position)
+    JOIN photo_copies c ON c.provider = 'flickr'
+        AND c.provider_key = r.flickr_id AND c.status = 'available'
+    JOIN photos p ON p.id = c.photo_id
+    WHERE c.provider_owner_id = %s
+        OR (c.provider_owner_id IS NULL AND p.legacy_photo_id = r.flickr_id)
+"""
+
+
+def show_in_album_list(album):
+    return (album.get("created_by") is not None or not album.get("flickr_photoset_id")
+            or album["photo_count"] >= MIN_FLICKR_ALBUM_ITEMS)
+
+
 async def _pages(call_flickr, creds, method, key, **params):
     page = 1
     while True:
@@ -29,25 +48,17 @@ async def read_albums(call_flickr, creds):
             albums.append({
                 "id": str(photoset["id"]),
                 "title": title.get("_content", "") if isinstance(title, dict) else str(title),
-                "photo_count": int(photoset.get("photos", 0)),
+                "photo_count": int(photoset.get("photos") or 0) + int(photoset.get("videos") or 0),
                 "primary_photo_id": str(photoset["primary"]) if photoset.get("primary") else None,
             })
     return albums
 
 
 def save_membership(query, album_id, flickr_ids, owner, primary):
-    rows = query("""
-        WITH requested AS (
-            SELECT flickr_id, position
-            FROM unnest(%s::text[]) WITH ORDINALITY AS ids(flickr_id, position)
-        ), matched AS (
+    rows = query(f"""
+        WITH matched AS (
             SELECT c.photo_id, r.flickr_id, r.position
-            FROM requested r
-            JOIN photo_copies c ON c.provider = 'flickr'
-                AND c.provider_key = r.flickr_id AND c.status = 'available'
-            JOIN photos p ON p.id = c.photo_id
-            WHERE c.provider_owner_id = %s
-                OR (c.provider_owner_id IS NULL AND p.legacy_photo_id = r.flickr_id)
+            {MATCHED_ITEMS}
         ), saved AS (
             INSERT INTO album_photos (album_id, photo_id, flickr_synced_at)
             SELECT %s, photo_id, now() FROM matched
@@ -75,18 +86,40 @@ async def import_albums(call_flickr, query, adopt_album, creds):
     if not creds or not creds.get("verified"):
         raise HTTPException(409, "Connect and verify the household Flickr account first")
 
-    totals = dict(albums=0, matched_items=0, unmatched_items=0, primary_covers=0)
-    for photoset in await read_albums(call_flickr, creds):
+    totals = dict(albums=0, matched_items=0, unmatched_items=0, primary_covers=0, skipped_small_albums=0)
+    photosets = await read_albums(call_flickr, creds)
+    if not photosets:
+        return totals
+    existing = await asyncio.to_thread(query, """
+        SELECT id, flickr_photoset_id FROM albums
+        WHERE created_by IS NOT NULL AND flickr_photoset_id = ANY(%s)
+    """, ([photoset["id"] for photoset in photosets],))
+    user_albums = {album["flickr_photoset_id"]: album["id"] for album in existing}
+    for photoset in photosets:
+        photoset_id = photoset["id"]
+        album_id = user_albums.get(photoset_id)
+        if album_id is None and photoset["photo_count"] < MIN_FLICKR_ALBUM_ITEMS:
+            totals["skipped_small_albums"] += 1
+            continue
         flickr_ids = {}
         async for page in _pages(
             call_flickr, creds, "flickr.photosets.getPhotos", "photoset",
-            photoset_id=photoset["id"], media="all",
+            photoset_id=photoset_id, media="all",
         ):
             for item in page.get("photo", []):
                 flickr_ids[str(item["id"])] = None
-        album = await asyncio.to_thread(adopt_album, photoset["id"], photoset["title"])
+        if album_id is None:
+            match_count, = await asyncio.to_thread(
+                query, f"SELECT count(DISTINCT c.photo_id) AS total {MATCHED_ITEMS}",
+                (list(flickr_ids), creds["user_id"]),
+            )
+            if match_count["total"] < MIN_FLICKR_ALBUM_ITEMS:
+                totals["skipped_small_albums"] += 1
+                continue
+            album = await asyncio.to_thread(adopt_album, photoset_id, photoset["title"])
+            album_id = album["id"]
         saved = await asyncio.to_thread(
-            save_membership, query, album["id"], list(flickr_ids), creds["user_id"],
+            save_membership, query, album_id, list(flickr_ids), creds["user_id"],
             photoset["primary_photo_id"],
         )
         totals["albums"] += 1

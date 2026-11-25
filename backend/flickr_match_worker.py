@@ -287,16 +287,16 @@ async def prioritized_pages(api, credentials, cutoff, albums_only, albums_first)
             unique.update((str(item["id"]), item) for item in page)
         items = iter(unique.values())
         while page := list(islice(items, 500)):
-            yield len(unique), page, True
+            yield len(unique), page
         return
     first = await anext(stream, None)
     if first:
         if albums_first:
             async for _, page in remote_pages(api, credentials, cutoff, albums_only=True):
-                yield first[0], page, True
-        yield first[0], first[1], False
+                yield first[0], page
+        yield first
         async for total, page in stream:
-            yield total, page, False
+            yield total, page
 
 
 async def compare_item(main, storage, client, credentials, remote, byte_limit, pacer):
@@ -391,8 +391,6 @@ async def run_pass(args, state, checkpoint, priority):
     pending = deque()
     pacer = OriginalDownloadPacer(checkpoint, owner)
     inventory_complete = False
-    album_pending = 0
-    restore_albums = not args.dry_run and args.limit is None
 
     def report():
         failed = sum(stats[key] for key in UNRESOLVED)
@@ -407,23 +405,12 @@ async def run_pass(args, state, checkpoint, priority):
         await wait_for_indexing()
         return await main.flickr_api(params, creds)
 
-    async def publish_album_links():
-        from flickr_album_import import import_albums
-
-        state.update(phase="restoring_flickr_albums", waiting=False)
-        report()
-        try:
-            result = await import_albums(flickr_page, main.db_query, main._adopt_flickr_photoset, credentials)
-            print(f"Flickr album reconciliation {result}", flush=True)
-        except (HTTPException, psycopg2.Error):
-            print("Flickr album reconciliation will retry on the next scan", flush=True)
-
     scopes = prioritized_pages(flickr_page, credentials, int(time.time()) - 1,
                                args.albums_only, args.albums_first or args.watch)
 
     # REST inventory and stored receipts can progress while the originals CDN
     # is unavailable. Keep uncached items in album-first order for comparison.
-    async for total, page, from_album in scopes:
+    async for total, page in scopes:
         reported_totals.add(total)
         state["remote_total"] = max(reported_totals)
         ids = [str(item["id"]) for item in page if FLICKR_ID.fullmatch(str(item["id"]))]
@@ -455,8 +442,7 @@ async def run_pass(args, state, checkpoint, priority):
             if cached:
                 stats[cached[0]] += 1
             else:
-                pending.append((remote, flickr_id, revision, from_album))
-                album_pending += from_album
+                pending.append((remote, flickr_id, revision))
         report()
         if args.limit and len(seen) >= args.limit:
             break
@@ -466,9 +452,6 @@ async def run_pass(args, state, checkpoint, priority):
     async with httpx.AsyncClient(timeout=20, trust_env=False, follow_redirects=False,
                                  headers={"User-Agent": main.FLICKR_USER_AGENT,
                                           "Accept-Encoding": "identity"}) as client:
-        if restore_albums and not album_pending:
-            await publish_album_links()
-            restore_albums = False
         while pending:
             delay = pacer.retry_at - time.time()
             if delay > 0:
@@ -491,12 +474,12 @@ async def run_pass(args, state, checkpoint, priority):
                 await throttle.wait_for_capacity()
                 state.update(phase="matching", waiting=False)
                 await wait_for_indexing()
-            remote, flickr_id, revision, from_album = pending.popleft()
+            remote, flickr_id, revision = pending.popleft()
             try:
                 compared = await compare_item(main, storage, client, credentials, remote, args.max_bytes, pacer)
             except OriginalRateLimited as error:
                 pacer.rate_limited(error.retry_after)
-                pending.append((remote, flickr_id, revision, from_album))
+                pending.append((remote, flickr_id, revision))
                 continue
             if isinstance(compared, tuple):
                 outcome, match, digest, size = compared
@@ -513,11 +496,7 @@ async def run_pass(args, state, checkpoint, priority):
                     checkpoint.execute("INSERT OR REPLACE INTO checked VALUES (?, ?, ?, ?, ?)",
                                        (owner, flickr_id, revision, outcome, int(time.time())))
             stats[outcome] += 1
-            album_pending -= from_album
             report()
-            if restore_albums and not album_pending:
-                await publish_album_links()
-                restore_albums = False
             await asyncio.sleep(args.item_delay)
 
     report()
