@@ -12,7 +12,8 @@ COPY requirements.txt requirements-nas.txt ./
 RUN pip install --no-cache-dir -r requirements-nas.txt
 
 # Keep optional media tools after Python dependencies so changes here reuse ML layers.
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg libvips-tools libimage-exiftool-perl util-linux \
     && rm -rf /var/lib/apt/lists/*
 
 COPY . .

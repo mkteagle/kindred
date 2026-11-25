@@ -22,7 +22,9 @@ The authenticated `/library/discovery` endpoint reads worker heartbeats. `/libra
 
 The owner can browse the configured media directory through `/storage`; members retain library access without raw directory browsing. Path traversal and symlink escapes outside the mount are rejected.
 
-Failures remain visible in `nas_source_files.preview_error` and `ml_error`. After fixing the underlying file/decoder issue, an administrator can clear the relevant error to retry it. RAW formats are registered, but previews depend on available decoders; unsupported/corrupt files stay in the catalog with an error rather than stopping the queue.
+NAS preview recovery generates a JPEG up to 480 pixels per side from oversized images, an embedded RAW preview, or a readable video frame. The Docker image includes libvips, ExifTool, and FFmpeg for these paths. Recovery writes to the preview cache and reads originals from the NAS mount.
+
+Failures remain visible in `nas_source_files.preview_error` and `ml_error`. After fixing the underlying file or decoder issue, an administrator can clear the relevant error to retry it. Unsupported files and files without a readable image or video frame stay in the catalog with an error.
 
 Back up PostgreSQL and persistent backend data. Thumbnails can be regenerated; identities, albums, labels, and account mappings depend on the database. Flickr remains an optional integration and does not make an unverified NAS pointer a backup.
 

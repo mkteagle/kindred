@@ -6,6 +6,7 @@ from contextlib import closing
 import json
 import os
 from pathlib import Path
+from subprocess import TimeoutExpired
 import time
 import uuid
 import threading
@@ -16,6 +17,8 @@ from psycopg2.extras import RealDictCursor, execute_values
 import capture_date
 import image_transforms
 import preview_delivery
+import preview_recovery
+import video_preview
 from storage import LocalStorageProvider
 from discover_nas_library import save_status
 from worker_priority import DISCOVERY_STATUS, preview_queue_access, read_status
@@ -27,16 +30,26 @@ def build_preview(source, photo_id, media_type):
     destination.parent.mkdir(parents=True, exist_ok=True)
     try:
         if media_type.startswith('video/'):
-            import video_preview
-            duration = video_preview.probe_duration(source)
-            video_preview.render(video_preview.poster_command(source, temporary, duration), temporary)
+            try:
+                duration = video_preview.probe_duration(source)
+                video_preview.render(video_preview.poster_command(source, temporary, duration), temporary)
+            except (video_preview.VideoPreviewError, TimeoutExpired):
+                if not preview_recovery.recover_video(source, temporary):
+                    raise
         else:
-            data = image_transforms.encode(source, 480, 80, 'jpeg')
-            temporary.write_bytes(data)
+            try:
+                data = image_transforms.encode(source, preview_recovery.EDGE, 80, 'jpeg')
+            except (ValueError, OSError):
+                recovered_type = preview_recovery.recover_image(source, temporary)
+                if recovered_type is None:
+                    raise
+                media_type = recovered_type
+            else:
+                temporary.write_bytes(data)
         os.replace(temporary, destination)
     finally:
         temporary.unlink(missing_ok=True)
-    return destination
+    return destination, media_type
 
 
 def commit_results(connection, ready, failed):
@@ -75,14 +88,14 @@ def render_item(provider, row):
         if source is None:
             raise FileNotFoundError('Source is unavailable')
         started = time.monotonic()
-        build_preview(source, row['photo_id'], row['media_type'])
+        _, media_type = build_preview(source, row['photo_id'], row['media_type'])
         decode_seconds = time.monotonic() - started
         started = time.monotonic()
-        metadata = capture_date.extract(source, original_filename=row['original_filename'],media_type=row['media_type'])
+        metadata = capture_date.extract(source, original_filename=row['original_filename'], media_type=media_type)
         metadata_seconds = time.monotonic() - started
         return row['photo_id'], metadata, None, decode_seconds, metadata_seconds
     except Exception as error:
-        return row['photo_id'], None, str(error), decode_seconds, metadata_seconds
+        return row['photo_id'], None, str(error) or type(error).__name__, decode_seconds, metadata_seconds
 
 
 def heartbeat(status, stop, report):
