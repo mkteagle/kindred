@@ -138,15 +138,6 @@ export function usePipelines(pollMs = 15000) {
   });
 }
 
-/** The job worth showing when only one line is available. */
-export function busiestPipeline(pipelines: Pipeline[] | undefined): Pipeline | null {
-  const running = (pipelines ?? []).filter((p) => p.running);
-  if (running.length === 0) return null;
-  // The one furthest from done has the most left to say.
-  return running.reduce((worst, p) =>
-    (p.percent ?? 0) < (worst.percent ?? 0) ? p : worst);
-}
-
 export interface StorageStatus {
   name: string;
   household_name: string;
