@@ -1,353 +1,311 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { CloseIcon, UploadIcon } from "@/components/kx/icons";
+import { avatarCrop, CENTERED_AVATAR, moveAvatar, type AvatarPosition } from "@/lib/avatar-crop";
 import { BACKEND } from "@/lib/constants";
+import { photoImageUrl } from "@/lib/image-delivery";
+import { useSearchResults } from "@/lib/use-search-results";
 
 interface AvatarEditorProps {
   currentAvatarUrl: string | null;
   displayName: string;
-  onSaved: (newAvatarUrl: string | null) => void;
+  userId: string;
+  onSaved: (avatarUrl: string | null) => void;
   onClose: () => void;
 }
 
-interface LibraryPhoto {
-  photo_id: string;
-  thumb_url: string;
-  photo_url: string;
-  photo_title: string;
+type Photo = { photo_id: string; photo_title?: string | null; taken_at?: string | null };
+type PhotoPage = { photos: Photo[]; next_cursor: string | null };
+type PhotoSource = { label: string; url: string } | { label: string; file: File };
+type GoogleSource = "available" | "linked" | "unlinked";
+
+const AVATAR = BACKEND + "/users/me/avatar";
+const GOOGLE_REFRESH = "/api/auth/google?link=1&return=" + encodeURIComponent("/settings?edit=photo");
+
+async function requireOk(response: Response, message: string) {
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new Error(typeof data?.detail === "string" && response.status < 500 ? data.detail : message);
+  }
+  return response;
 }
 
-interface Cluster {
-  id: string;
-  label: string | null;
-  photo_count: number;
-  avatar: string | null;
-  thumb_url: string | null;
-}
-
-export function AvatarEditor({ currentAvatarUrl, displayName, onSaved, onClose }: AvatarEditorProps) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const [tab, setTab] = useState<"library" | "upload">("library");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [photos, setPhotos] = useState<LibraryPhoto[]>([]);
-  const [clusters, setClusters] = useState<Cluster[]>([]);
-  const [selectedCluster, setSelectedCluster] = useState<Cluster | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+export function AvatarEditor({ currentAvatarUrl, displayName, userId, onSaved, onClose }: AvatarEditorProps) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [source, setSource] = useState<PhotoSource | null>(null);
+  const [image, setImage] = useState<HTMLImageElement | null>(null);
+  const [error, setError] = useState("");
+  const [googlePhotoFailed, setGooglePhotoFailed] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [showAllClusters, setShowAllClusters] = useState(false);
+  const sources = useQuery({
+    queryKey: ["avatar-sources", userId],
+    queryFn: async ({ signal }): Promise<{ google: GoogleSource }> => {
+      const response = await fetch(AVATAR + "/sources", { signal });
+      return (await requireOk(response, "Couldn’t check Google photo availability.")).json();
+    },
+    retry: false,
+  });
 
   useEffect(() => {
-    dialogRef.current?.showModal();
+    const element = dialog.current;
+    if (element && !element.open) element.showModal();
   }, []);
 
-  // Load people clusters on mount
   useEffect(() => {
-    fetch(`${BACKEND}/clusters/people/summary?limit=50`)
-      .then((r) => r.json())
-      .then((data) => {
-        const named = (data.clusters || []).filter((c: Cluster) => c.label);
-        setClusters(named);
-        // Auto-select cluster matching user's first name
-        const firstName = displayName.split(" ")[0]?.toLowerCase();
-        if (firstName) {
-          const match = named.find((c: Cluster) =>
-            c.label?.toLowerCase().includes(firstName)
-          );
-          if (match) {
-            setSelectedCluster(match);
-            loadClusterPhotos(match.id);
-          }
-        }
-      })
-      .catch(() => {});
-  }, [displayName]);
-
-  // Debounce search query
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 300);
-    return () => clearTimeout(t);
-  }, [searchQuery]);
-
-  // Load search results when query changes
-  useEffect(() => {
-    if (debouncedQuery.length < 2) return;
-    setSelectedCluster(null);
-    setLoading(true);
-    fetch(`${BACKEND}/search?q=${encodeURIComponent(debouncedQuery)}&limit=40`)
-      .then((r) => r.json())
-      .then((data) => {
-        setPhotos(
-          (Array.isArray(data) ? data : data.results ?? []).map((r: Record<string, string>) => ({
-            photo_id: r.photo_id,
-            thumb_url: r.thumb_url || r.photo_url,
-            photo_url: r.photo_url,
-            photo_title: r.photo_title || "",
-          }))
-        );
-      })
-      .catch(() => setPhotos([]))
-      .finally(() => setLoading(false));
-  }, [debouncedQuery]);
-
-  const loadClusterPhotos = (clusterId: string) => {
-    setLoading(true);
-    fetch(`${BACKEND}/clusters/people/${clusterId}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setPhotos(
-          (data.items || []).map((d: Record<string, string>) => ({
-            photo_id: d.photo_id,
-            thumb_url: d.thumb_url || d.photo_url,
-            photo_url: d.photo_url,
-            photo_title: d.photo_title || "",
-          }))
-        );
-      })
-      .catch(() => setPhotos([]))
-      .finally(() => setLoading(false));
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      alert("Image must be under 5MB");
-      return;
-    }
-    setUploadFile(file);
-    const reader = new FileReader();
-    reader.onload = () => setUploadPreview(reader.result as string);
-    reader.readAsDataURL(file);
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      if (tab === "library" && selectedPhotoId) {
-        const resp = await fetch(`${BACKEND}/users/me/avatar`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ photo_id: selectedPhotoId }),
-        });
-        const data = await resp.json();
-        if (resp.ok) {
-          onSaved(data.avatar_url);
-          onClose();
-        }
-      } else if (tab === "upload" && uploadFile) {
-        const formData = new FormData();
-        formData.append("file", uploadFile);
-        const resp = await fetch(`${BACKEND}/users/me/avatar`, {
-          method: "PUT",
-          body: formData,
-        });
-        const data = await resp.json();
-        if (resp.ok) {
-          onSaved(data.avatar_url);
-          onClose();
+    if (!source) return;
+    const controller = new AbortController();
+    let objectUrl: string | undefined;
+    async function decodePhoto(selected: PhotoSource) {
+      try {
+        const file = "file" in selected ? selected.file : await fetch(selected.url, { signal: controller.signal })
+          .then((response) => requireOk(response, "Couldn’t open this photo."))
+          .then((response) => response.blob());
+        if (controller.signal.aborted) return;
+        objectUrl = URL.createObjectURL(file);
+        const decoded = new Image();
+        decoded.src = objectUrl;
+        await decoded.decode();
+        if (!controller.signal.aborted) setImage(decoded);
+      } catch {
+        if (!controller.signal.aborted) {
+          const google = "url" in selected && selected.url === AVATAR + "/google";
+          setSource(null);
+          setGooglePhotoFailed(google);
+          setError(google ? "Couldn’t open your Google photo. Refresh it or choose another photo."
+            : "Couldn’t open this photo. Try another image.");
         }
       }
-    } catch (err) {
-      console.error("Failed to save avatar:", err);
-    } finally {
-      setSaving(false);
     }
-  };
+    void decodePhoto(source);
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [source]);
 
-  const handleRemove = async () => {
+  function choosePhoto(next: PhotoSource | null) {
+    setError("");
+    setGooglePhotoFailed(false);
+    setImage(null);
+    setSource(next);
+  }
+
+  async function saveAvatar(crop?: Promise<Blob>) {
+    if (saving) return;
+    setError("");
     setSaving(true);
     try {
-      await fetch(`${BACKEND}/users/me/avatar`, { method: "DELETE" });
-      onSaved(null);
+      const file = await crop;
+      const body = file ? new FormData() : undefined;
+      if (body && file) body.append("file", file, "profile-photo.png");
+      const response = await fetch(AVATAR, { method: file ? "PUT" : "DELETE", body });
+      await requireOk(response, file ? "Couldn’t save your profile photo." : "Couldn’t remove your profile photo.");
+      onSaved(file ? (await response.json()).avatar_url : null);
       onClose();
-    } finally {
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Couldn’t update your profile photo.");
       setSaving(false);
     }
-  };
+  }
 
-  const canSave =
-    (tab === "library" && selectedPhotoId) ||
-    (tab === "upload" && uploadFile);
+  return <dialog ref={dialog} className="avatar-editor" aria-labelledby="avatar-editor-title"
+    onCancel={(event) => { event.preventDefault(); if (!saving) onClose(); }}>
+    <div className="avatar-editor-content">
+      <header className="avatar-editor-header">
+        <h2 id="avatar-editor-title">{source ? "Position your photo" : "Change profile photo"}</h2>
+        <button type="button" className="kx-button avatar-editor-close" aria-label="Close photo editor" disabled={saving} onClick={onClose}>
+          <CloseIcon size={18} />
+        </button>
+      </header>
 
-  const initial = (displayName || "?").charAt(0).toUpperCase();
-
-  return (
-    <dialog
-      ref={dialogRef}
-      className="avatar-editor"
-      onClose={onClose}
-      onClick={(e) => { if (e.target === dialogRef.current) onClose(); }}
-    >
-      <div className="avatar-editor-content">
-        <div className="avatar-editor-header">
-          <h3>Change profile photo</h3>
-          <button className="avatar-editor-close" onClick={onClose}>&times;</button>
-        </div>
-
-        {/* Current avatar preview */}
-        <div className="avatar-editor-preview">
-          {currentAvatarUrl ? (
-            <img
-              src={`${BACKEND}${currentAvatarUrl}?t=${Date.now()}`}
-              alt="Current avatar"
-              className="avatar-editor-current"
-            />
-          ) : (
-            <div className="avatar-editor-initials">{initial}</div>
-          )}
-          {currentAvatarUrl && (
-            <button className="avatar-editor-remove" onClick={handleRemove} disabled={saving}>
-              Remove photo
-            </button>
-          )}
-        </div>
-
-        {/* Tab switcher */}
-        <div className="avatar-editor-tabs">
-          <button
-            className={`avatar-editor-tab ${tab === "library" ? "active" : ""}`}
-            onClick={() => setTab("library")}
-          >
-            From library
-          </button>
-          <button
-            className={`avatar-editor-tab ${tab === "upload" ? "active" : ""}`}
-            onClick={() => setTab("upload")}
-          >
-            Upload
-          </button>
-        </div>
-
-        {/* Tab content */}
-        <div className="avatar-editor-body">
-          {tab === "library" && (
-            <>
-              <div className="avatar-editor-search">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--mist)"
-                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Search your photos..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-                {searchQuery && (
-                  <button className="avatar-editor-clear" onClick={() => setSearchQuery("")}>&times;</button>
-                )}
-              </div>
-              {selectedCluster && !debouncedQuery && (
-                <div className="avatar-editor-cluster-header">
-                  <div className="avatar-editor-cluster-info">
-                    {selectedCluster.avatar && (
-                      <img src={selectedCluster.avatar} alt="" style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover" }} />
-                    )}
-                    <span style={{ fontWeight: 700, fontSize: 13 }}>{selectedCluster.label}</span>
-                    <span style={{ color: "var(--mist)", fontSize: 11 }}>{selectedCluster.photo_count} photos</span>
-                  </div>
-                  <button
-                    className="avatar-editor-browse-link"
-                    onClick={() => { setSelectedCluster(null); setPhotos([]); setShowAllClusters(true); }}
-                  >
-                    Browse other people
-                  </button>
-                </div>
-              )}
-              {showAllClusters && !selectedCluster && !debouncedQuery && clusters.length > 0 && (
-                <div className="avatar-editor-clusters">
-                  {clusters.slice(0, 10).map((c) => (
-                    <button
-                      key={c.id}
-                      className="avatar-editor-cluster-chip"
-                      onClick={() => { setSelectedCluster(c); loadClusterPhotos(c.id); setShowAllClusters(false); }}
-                    >
-                      {c.avatar && (
-                        <img src={c.avatar} alt="" style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "cover" }} />
-                      )}
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div className="avatar-editor-grid">
-                {loading && <div className="avatar-editor-loading">Loading...</div>}
-                {!loading && photos.length === 0 && (
-                  <div className="avatar-editor-empty">No photos found</div>
-                )}
-                {!loading && photos.map((p) => (
-                  <button
-                    key={p.photo_id}
-                    className={`avatar-editor-photo ${selectedPhotoId === p.photo_id ? "selected" : ""}`}
-                    onClick={() => setSelectedPhotoId(p.photo_id)}
-                  >
-                    <img src={p.thumb_url} alt={p.photo_title} />
-                    {selectedPhotoId === p.photo_id && (
-                      <div className="avatar-editor-check">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                          stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12"/>
-                        </svg>
-                      </div>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-
-          {tab === "upload" && (
-            <div className="avatar-editor-upload">
-              {uploadPreview ? (
-                <div className="avatar-editor-upload-preview">
-                  <div className="avatar-editor-crop-frame">
-                    <img src={uploadPreview} alt="Preview" />
-                  </div>
-                  <button
-                    className="avatar-editor-change-file"
-                    onClick={() => { setUploadFile(null); setUploadPreview(null); }}
-                  >
-                    Choose different image
-                  </button>
-                </div>
-              ) : (
-                <label className="avatar-editor-dropzone">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--mist)"
-                    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                    <polyline points="17 8 12 3 7 8"/>
-                    <line x1="12" y1="3" x2="12" y2="15"/>
-                  </svg>
-                  <span>Click to choose an image</span>
-                  <span className="avatar-editor-hint">JPG, PNG, or WebP. Max 5MB.</span>
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={handleFileChange}
-                    style={{ display: "none" }}
-                  />
-                </label>
-              )}
+      {source ? (
+        image
+          ? <AvatarCrop image={image} label={source.label} saving={saving} error={error} onBack={() => choosePhoto(null)}
+              onSave={saveAvatar} />
+          : <div className="avatar-editor-body">
+              <p role="status">Opening photo…</p>
+              <button type="button" className="kx-button" onClick={() => choosePhoto(null)}>Back</button>
             </div>
-          )}
+      ) : (
+        <div className="avatar-editor-body">
+          <div className="avatar-editor-current">
+            <span className="kx-avatar lg" aria-hidden="true">
+              {currentAvatarUrl ? <img src={BACKEND + currentAvatarUrl} alt="" /> : displayName.charAt(0).toUpperCase()}
+            </span>
+            <div><strong>{displayName}</strong><span>{currentAvatarUrl ? "Current profile photo" : "No profile photo yet"}</span></div>
+            {currentAvatarUrl && <button type="button" className="avatar-editor-remove" disabled={saving}
+              onClick={() => void saveAvatar()}>Remove photo</button>}
+          </div>
+          <div className="avatar-editor-sources">
+            <button type="button" className="kx-button" disabled={saving} onClick={() => fileInput.current?.click()}>
+              <UploadIcon size={16} /> Upload photo
+            </button>
+            <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" hidden
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = "";
+                if (!file) return;
+                if (file.size > 5 * 1024 * 1024) {
+                  setError("Choose a JPG, PNG, or WebP image under 5 MB.");
+                  return;
+                }
+                choosePhoto({ file, label: file.name });
+              }} />
+            {sources.data?.google === "available" && !googlePhotoFailed && <button type="button" className="kx-button" disabled={saving}
+              onClick={() => choosePhoto({ url: AVATAR + "/google", label: "Google profile photo" })}>Use Google photo</button>}
+            {(sources.data?.google === "linked" || googlePhotoFailed) && !saving &&
+              <a className="kx-button" href={GOOGLE_REFRESH}>Refresh Google photo</a>}
+          </div>
+          {error && <p className="avatar-editor-error" role="alert">{error}</p>}
+          <AvatarLibrary disabled={saving} onChoose={(photo) => choosePhoto({
+            url: photoImageUrl(photo.photo_id, 1280, "jpeg"), label: photo.photo_title || "Library photo",
+          })} />
         </div>
+      )}
+    </div>
+  </dialog>;
+}
 
-        {/* Footer */}
-        <div className="avatar-editor-footer">
-          <button className="button ghost" onClick={onClose}>Cancel</button>
-          <button
-            className="button primary"
-            disabled={!canSave || saving}
-            onClick={handleSave}
-          >
-            {saving ? "Saving..." : "Save"}
-          </button>
-        </div>
+function AvatarLibrary({ disabled, onChoose }: { disabled: boolean; onChoose: (photo: Photo) => void }) {
+  const [query, setQuery] = useState("");
+  const [searchText, setSearchText] = useState("");
+  const trimmed = query.trim();
+  const searching = trimmed.length >= 2;
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchText(trimmed), 250);
+    return () => clearTimeout(timer);
+  }, [trimmed]);
+
+  const recent = useInfiniteQuery({
+    queryKey: ["avatar-library"],
+    enabled: !searching,
+    initialPageParam: "",
+    queryFn: async ({ pageParam, signal }): Promise<PhotoPage> => {
+      const params = new URLSearchParams({ media: "photo", sort: "newest", limit: "30" });
+      if (pageParam) params.set("cursor", pageParam);
+      const response = await fetch(BACKEND + "/library/photos?" + params, { signal });
+      return (await requireOk(response, "Couldn’t open your library.")).json();
+    },
+    getNextPageParam: (page) => page.next_cursor || undefined,
+    retry: false,
+  });
+
+  const settled = searchText === trimmed;
+  const search = useSearchResults(new URLSearchParams({ q: searchText, media: "photo" }).toString(), 48, searching && settled, false);
+  const photos: Photo[] = searching ? (settled ? search.results : []) : recent.data?.pages.flatMap((page) => page.photos) ?? [];
+  const loading = searching ? !settled || search.loading : recent.isPending;
+  const failed = searching ? settled && search.error : recent.isError;
+
+  return <section className="avatar-editor-library" aria-labelledby="avatar-library-heading">
+    <div className="avatar-editor-library-heading">
+      <h3 id="avatar-library-heading">From your library</h3>
+      <input type="search" aria-label="Search library photos" placeholder="Search photos" value={query}
+        disabled={disabled} onChange={(event) => setQuery(event.target.value)} />
+    </div>
+    {loading && <p role="status">Loading photos…</p>}
+    {failed && <div className="avatar-editor-retry">
+      <p role="alert">Couldn’t load photos.</p>
+      <button className="kx-button" type="button" disabled={disabled || recent.isFetchingNextPage}
+        onClick={() => void (searching ? search.retry() : recent.isFetchNextPageError ? recent.fetchNextPage() : recent.refetch())}>Retry</button>
+    </div>}
+    {!failed && !loading && !photos.length && <p>{searching ? "No matching photos." : "No photos in your library yet."}</p>}
+    {!!photos.length && <div className="avatar-editor-grid">
+      {photos.map((photo) => (
+        <button key={photo.photo_id} type="button" disabled={disabled} onClick={() => onChoose(photo)}
+          aria-label={photo.photo_title || (photo.taken_at ? "Photo taken " + photo.taken_at.slice(0, 10) : "Library photo")}>
+          <img src={photoImageUrl(photo.photo_id, 160)} alt="" loading="lazy" />
+        </button>
+      ))}
+    </div>}
+    {!searching && recent.hasNextPage && !failed && <button type="button" className="kx-button avatar-editor-more"
+      disabled={disabled || recent.isFetchingNextPage} onClick={() => void recent.fetchNextPage()}>
+      {recent.isFetchingNextPage ? "Loading photos…" : "Load more photos"}
+    </button>}
+  </section>;
+}
+
+function AvatarCrop({ image, label, saving, error, onBack, onSave }: {
+  image: HTMLImageElement;
+  label: string;
+  saving: boolean;
+  error: string;
+  onBack: () => void;
+  onSave: (file: Promise<Blob>) => Promise<void>;
+}) {
+  const [position, setPosition] = useState<AvatarPosition>(CENTERED_AVATAR);
+  const frame = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ id: number; x: number; y: number } | null>(null);
+  const { naturalWidth: width, naturalHeight: height } = image;
+  const crop = avatarCrop(width, height, position);
+
+  useEffect(() => { frame.current?.focus(); }, []);
+
+  function startDrag(event: PointerEvent<HTMLDivElement>) {
+    if (saving || !event.isPrimary || event.button !== 0) return;
+    event.currentTarget.focus();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  }
+
+  function dragPhoto(event: PointerEvent<HTMLDivElement>) {
+    const started = drag.current;
+    if (!started || started.id !== event.pointerId) return;
+    const scale = crop.size / event.currentTarget.getBoundingClientRect().width;
+    const dx = (event.clientX - started.x) * scale;
+    const dy = (event.clientY - started.y) * scale;
+    drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    setPosition((current) => moveAvatar(width, height, current, dx, dy));
+  }
+
+  function saveCrop() {
+    if (saving) return;
+    void onSave(new Promise<Blob>((resolve, reject) => {
+      const failure = new Error("Couldn’t crop this photo. Try another image.");
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 512;
+      const context = canvas.getContext("2d");
+      if (!context) throw failure;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(image, crop.left, crop.top, crop.size, crop.size, 0, 0, 512, 512);
+      canvas.toBlob((file) => { if (file) resolve(file); else reject(failure); }, "image/png");
+    }));
+  }
+
+  return <>
+    <div className="avatar-editor-body avatar-editor-crop">
+      <p id="avatar-crop-instructions">Drag to position the photo, or use the arrow keys. Zoom to frame it.</p>
+      <div ref={frame} className="avatar-editor-frame" role="group" tabIndex={0} aria-label="Crop preview" aria-describedby="avatar-crop-instructions"
+        onPointerDown={startDrag} onPointerMove={dragPhoto} onLostPointerCapture={() => { drag.current = null; }}
+        onKeyDown={(event) => {
+          const directions: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+          const direction = directions[event.key];
+          if (saving || !direction) return;
+          event.preventDefault();
+          const step = crop.size * (event.shiftKey ? 0.1 : 0.025);
+          setPosition((current) => moveAvatar(width, height, current, direction[0] * step, direction[1] * step));
+        }}>
+        <img src={image.src} alt={label} draggable={false}
+          style={{ width: width / crop.size * 100 + "%", left: -crop.left / crop.size * 100 + "%", top: -crop.top / crop.size * 100 + "%" }} />
       </div>
-    </dialog>
-  );
+      <div className="avatar-editor-zoom">
+        <label htmlFor="avatar-photo-zoom">Zoom</label>
+        <input id="avatar-photo-zoom" type="range" min="1" max="4" step="0.05" value={position.zoom} disabled={saving}
+          onChange={(event) => {
+            const zoom = Number(event.currentTarget.value);
+            setPosition((current) => moveAvatar(width, height, { ...current, zoom }, 0, 0));
+          }} />
+        <button className="kx-button" type="button" disabled={saving} onClick={() => setPosition(CENTERED_AVATAR)}>Reset</button>
+      </div>
+      {error && <p className="avatar-editor-error" role="alert">{error}</p>}
+    </div>
+    <footer className="avatar-editor-footer">
+      <button type="button" className="kx-button" disabled={saving} onClick={onBack}>Back</button>
+      <button type="button" className="kx-button primary" disabled={saving} onClick={saveCrop}>
+        {saving ? "Saving…" : "Save photo"}
+      </button>
+    </footer>
+  </>;
 }

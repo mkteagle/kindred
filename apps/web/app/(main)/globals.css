@@ -5928,347 +5928,120 @@ dialog::backdrop { background: rgba(18, 18, 24, .6); backdrop-filter: blur(6px);
   color: var(--muted);
 }
 
-/* ── Avatar Editor Dialog ─────────────────────────────────────────────────── */
+/* ── Profile photo editor ───────────────────────────────────────────────── */
 
 .avatar-editor {
-  border: none;
-  border-radius: 16px;
-  padding: 0;
-  width: min(520px, 92vw);
-  max-height: 85vh;
-  background: var(--card);
-  box-shadow: 0 40px 120px rgba(42, 32, 27, .28);
-}
-
-.avatar-editor::backdrop {
-  background: rgba(42, 32, 27, .5);
-  backdrop-filter: blur(4px);
-}
-
-.avatar-editor-content {
-  display: flex;
-  flex-direction: column;
-  max-height: 85vh;
-}
-
-.avatar-editor-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px 12px;
-}
-
-.avatar-editor-header h3 {
-  margin: 0;
-  font-family: var(--display);
-  font-size: 18px;
-}
-
-.avatar-editor-close {
-  background: none;
-  border: none;
-  font-size: 24px;
-  cursor: pointer;
-  color: var(--mist);
-  padding: 0 4px;
-  line-height: 1;
-}
-
-.avatar-editor-preview {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 24px 16px;
-}
-
-.avatar-editor-current {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 3px solid var(--paper);
-  box-shadow: 0 8px 24px rgba(42, 32, 27, .15);
-}
-
-.avatar-editor-initials {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, var(--ember), var(--gold));
-  font-family: var(--display);
-  font-size: 26px;
-  font-weight: 700;
-  color: white;
-}
-
-.avatar-editor-remove {
-  background: none;
-  border: none;
-  color: var(--rosehip);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 4px 8px;
-}
-
-.avatar-editor-remove:hover {
-  text-decoration: underline;
-}
-
-.avatar-editor-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--line);
-  padding: 0 24px;
-}
-
-.avatar-editor-tab {
-  flex: 1;
-  padding: 10px 0;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  font-family: var(--body);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--mist);
-  cursor: pointer;
-  transition: color .15s, border-color .15s;
-}
-
-.avatar-editor-tab.active {
-  color: var(--ash);
-  border-bottom-color: var(--ember);
-}
-
-.avatar-editor-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px 24px;
-  min-height: 260px;
-}
-
-.avatar-editor-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--paper);
+  background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin-bottom: 12px;
-}
-
-.avatar-editor-search input {
-  flex: 1;
-  background: none;
-  border: none;
-  outline: none;
-  font-family: var(--body);
-  font-size: 14px;
-  color: var(--ash);
-}
-
-.avatar-editor-search input::placeholder {
-  color: var(--mist);
-}
-
-.avatar-editor-clear {
-  background: none;
-  border: none;
-  font-size: 18px;
-  cursor: pointer;
-  color: var(--mist);
-  line-height: 1;
-}
-
-.avatar-editor-cluster-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 0 10px;
-}
-.avatar-editor-cluster-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-family: var(--display);
-  color: var(--ash);
-}
-.avatar-editor-browse-link {
-  background: none;
-  border: none;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: .06em;
-  color: var(--ember);
-  cursor: pointer;
-  text-decoration: none;
-}
-.avatar-editor-browse-link:hover {
-  text-decoration: underline;
-}
-.avatar-editor-clusters {
-  display: flex;
-  gap: 6px;
-  padding: 0 0 12px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.avatar-editor-clusters::-webkit-scrollbar { display: none; }
-.avatar-editor-cluster-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--ash);
-  font-family: var(--body);
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background .15s, color .15s;
-}
-.avatar-editor-cluster-chip:hover {
-  background: var(--canvas);
-}
-.avatar-editor-cluster-chip.active {
-  background: var(--ash);
-  color: var(--paper);
-  border-color: var(--ash);
-}
-.avatar-editor-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-}
-
-.avatar-editor-photo {
-  position: relative;
-  aspect-ratio: 1;
-  border: 2px solid transparent;
-  border-radius: 8px;
-  overflow: hidden;
-  cursor: pointer;
+  border-radius: 18px;
+  color: var(--ink);
+  margin: auto;
+  max-height: calc(100dvh - 32px);
   padding: 0;
-  background: var(--canvas);
-  transition: border-color .15s;
+  width: min(540px, calc(100vw - 24px));
+  box-shadow: 0 24px 80px rgb(0 0 0 / 26%);
 }
 
-.avatar-editor-photo img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
+.avatar-editor::backdrop { background: rgb(15 12 22 / 57%); }
+.avatar-editor-content { display: flex; flex-direction: column; max-height: inherit; }
 
-.avatar-editor-photo.selected {
-  border-color: var(--ember);
-}
-
-.avatar-editor-check {
-  position: absolute;
-  inset: 0;
-  background: rgba(201, 85, 28, .4);
+.avatar-editor-header, .avatar-editor-footer {
   display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.avatar-editor-loading,
-.avatar-editor-empty {
-  grid-column: 1 / -1;
-  text-align: center;
-  padding: 40px 0;
-  color: var(--muted);
-  font-size: 14px;
-}
-
-.avatar-editor-upload {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-}
-
-.avatar-editor-dropzone {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 40px;
-  border: 2px dashed var(--line-dark);
-  border-radius: 12px;
-  cursor: pointer;
-  text-align: center;
-  transition: border-color .2s, background .2s;
-  width: 100%;
-}
-
-.avatar-editor-dropzone:hover {
-  border-color: var(--ember);
-  background: rgba(201, 85, 28, .04);
-}
-
-.avatar-editor-dropzone span {
-  font-size: 14px;
-  color: var(--ash);
-  font-weight: 500;
-}
-
-.avatar-editor-hint {
-  font-size: 12px;
-  color: var(--muted) !important;
-  font-weight: 400 !important;
-}
-
-.avatar-editor-upload-preview {
-  display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 12px;
+  padding: 16px clamp(16px, 4vw, 24px);
 }
 
-.avatar-editor-crop-frame {
-  width: 160px;
-  height: 160px;
-  border-radius: 50%;
-  overflow: hidden;
-  border: 3px solid var(--line);
-  box-shadow: 0 8px 24px rgba(42, 32, 27, .12);
-}
+.avatar-editor-header { justify-content: space-between; border-bottom: 1px solid var(--line); }
+.avatar-editor-header h2 { margin: 0; font-size: 21px; line-height: 1.25; }
+.avatar-editor .kx-button { min-height: 44px; }
+.avatar-editor-close.kx-button { width: 44px; padding: 0; justify-content: center; }
+.avatar-editor-body { padding: 20px clamp(16px, 4vw, 24px); overflow-y: auto; }
+.avatar-editor-body p { margin: 0 0 12px; color: var(--ink-2); }
+.avatar-editor-current { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.avatar-editor-current .kx-avatar { flex: 0 0 auto; }
+.avatar-editor-current img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-editor-current > div { display: grid; gap: 3px; }
+.avatar-editor-current > div > span { font-size: 13px; color: var(--ink-2); }
 
-.avatar-editor-crop-frame img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.avatar-editor-change-file {
-  background: none;
-  border: none;
-  color: var(--ember);
-  font-size: 13px;
-  font-weight: 600;
+.avatar-editor-remove {
+  margin-left: auto;
+  min-height: 44px;
+  padding: 6px 4px;
+  color: var(--ink-2);
+  background: transparent;
+  border: 0;
   cursor: pointer;
-}
-
-.avatar-editor-change-file:hover {
   text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
-.avatar-editor-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 16px 24px;
-  border-top: 1px solid var(--line);
+.avatar-editor-sources { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 22px; }
+.avatar-editor-library { border-top: 1px solid var(--line); padding-top: 16px; }
+.avatar-editor-library-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 12px; }
+.avatar-editor-library-heading h3 { margin: 0; font-size: 15px; flex: 1 0 auto; }
+
+.avatar-editor-library input {
+  min-height: 44px;
+  width: min(100%, 190px);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-radius: 9px;
+  padding: 8px 11px;
+  font: inherit;
 }
+
+.avatar-editor-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; }
+.avatar-editor-grid button {
+  display: grid;
+  aspect-ratio: 1;
+  min-width: 0;
+  background: var(--fill-2);
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  overflow: hidden;
+  padding: 0;
+}
+
+.avatar-editor-grid button:focus-visible { outline-offset: 2px; }
+.avatar-editor-grid img { width: 100%; height: 100%; aspect-ratio: 1; object-fit: cover; }
+.avatar-editor-more { margin-top: 12px; }
+.avatar-editor-retry { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.avatar-editor-retry p { margin: 0; }
+.avatar-editor .avatar-editor-error { color: var(--ink); padding: 9px 12px; background: var(--fill-2); border-radius: 8px; }
+
+.avatar-editor-crop { display: grid; justify-items: center; gap: 14px; }
+.avatar-editor-crop p { text-align: center; margin: 0; font-size: 14px; }
+.avatar-editor-frame {
+  background: var(--fill-2);
+  cursor: grab;
+  aspect-ratio: 1;
+  width: min(100%, 260px, 44dvh);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--line);
+  overflow: hidden;
+  position: relative;
+  touch-action: none;
+  user-select: none;
+}
+
+.avatar-editor-frame:active { cursor: grabbing; }
+.avatar-editor-frame:focus-visible { outline-offset: 4px; }
+.avatar-editor-frame img { max-width: none; height: auto; position: absolute; pointer-events: none; }
+
+.avatar-editor-zoom {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: min(100%, 330px);
+  font-size: 14px;
+}
+
+.avatar-editor-zoom input { width: 100%; min-height: 44px; accent-color: var(--accent); }
+.avatar-editor-footer { justify-content: flex-end; border-top: 1px solid var(--line); }
 
 /* ── Topbar avatar with real photo ────────────────────────────────────────── */
 

@@ -15,26 +15,34 @@ struct HomeView: View {
     @State private var favoritesRequest = UUID()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 2)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var isWide: Bool { KindredTabletLayout.isExpanded(horizontalSizeClass) }
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: isWide ? 16 : 6), count: 2)
+    }
+    private var contentWidth: CGFloat { isWide ? KindredTabletLayout.canvasWidth : 560 }
+    private var gutter: CGFloat { isWide ? KindredTabletLayout.gutter : KindredTheme.gutter }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 29) {
+                VStack(alignment: .leading, spacing: isWide ? 32 : 29) {
                     favoritesSection
                     albumsSection
                 }
-                .padding(.horizontal, KindredTheme.gutter)
-                .padding(.top, 7)
+                .padding(.horizontal, gutter)
+                .padding(.top, isWide ? 17 : 7)
                 .padding(.bottom, 28)
-                .frame(maxWidth: 560)
+                .frame(maxWidth: contentWidth)
                 .frame(maxWidth: .infinity)
                 .safeAreaInset(edge: .top, spacing: 0) {
                     KindredAppBar(
                         unreadCount: inboxVM.unreadCount(readState: readState),
+                        horizontalInset: gutter,
                         onAction: { showInbox = true }
                     )
-                    .frame(maxWidth: 560)
+                    .frame(maxWidth: contentWidth)
                     .frame(maxWidth: .infinity)
                     .background(KindredTheme.bg)
                 }
@@ -86,23 +94,11 @@ struct HomeView: View {
             }
 
             if let favorites, !favorites.isEmpty {
-                LazyVGrid(columns: columns, spacing: 6) {
-                    ForEach(favorites) { photo in
-                        Button {
-                            viewing = photo
-                        } label: {
-                            PhotoTile(photo: photo, cornerRadius: 12)
-                                .aspectRatio(1, contentMode: .fit)
-                                .overlay(alignment: .topTrailing) {
-                                    Image(systemName: "heart.fill")
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundStyle(.white)
-                                        .shadow(color: .black.opacity(0.45), radius: 3, y: 1)
-                                        .padding(8)
-                                        .accessibilityHidden(true)
-                                }
-                        }
-                        .buttonStyle(.plain)
+                if isWide, let featured = favorites.first {
+                    tabletFavorites(featured, others: favorites.dropFirst())
+                } else {
+                    LazyVGrid(columns: columns, spacing: 6) {
+                        ForEach(favorites) { photo in favoriteTile(photo) }
                     }
                 }
             } else if favorites == nil && !favoritesFailed {
@@ -120,6 +116,70 @@ struct HomeView: View {
         }
     }
 
+    private func tabletFavorites(_ featured: LibraryPhoto, others: ArraySlice<LibraryPhoto>) -> some View {
+        VStack(spacing: 12) {
+            Button {
+                viewing = featured
+            } label: {
+                Color.clear.aspectRatio(2.65, contentMode: .fit)
+                    .overlay {
+                        ZStack {
+                            KindredThumbnail(photo: featured)
+                                .blur(radius: 28)
+                                .overlay(.black.opacity(0.48))
+                                .accessibilityHidden(true)
+                            KindredThumbnail(photo: featured, variant: .preview,
+                                             contentMode: .fit, placeholder: .clear)
+                        }
+                    }
+                    .overlay(alignment: .bottomLeading) {
+                        if let title = featured.photo_title, !title.isEmpty {
+                            Text(title)
+                                .font(.body(18, weight: .semibold, relativeTo: .headline))
+                                .foregroundStyle(.white)
+                                .lineLimit(2)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(.black.opacity(0.62), in: .rect(cornerRadius: 12))
+                                .padding(18)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .clipShape(.rect(cornerRadius: 20))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(featured.photo_title ?? "Featured favorite")
+            .accessibilityIdentifier("home.featuredFavorite")
+
+            if !others.isEmpty {
+                HStack(spacing: 12) {
+                    ForEach(others) { photo in favoriteTile(photo, aspectRatio: 1.9) }
+                }
+            }
+        }
+    }
+
+    private func favoriteTile(_ photo: LibraryPhoto, aspectRatio: CGFloat = 1) -> some View {
+        Button {
+            viewing = photo
+        } label: {
+            Color.clear.aspectRatio(aspectRatio, contentMode: .fit)
+                .overlay {
+                    PhotoTile(photo: photo, cornerRadius: 12)
+                }
+                .overlay(alignment: .topTrailing) {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.45), radius: 3, y: 1)
+                        .padding(8)
+                        .accessibilityHidden(true)
+                }
+                .clipShape(.rect(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+    }
+
     private var albumsSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             heading("Albums")
@@ -130,7 +190,7 @@ struct HomeView: View {
                             NavigationLink {
                                 HomeGalleryView(title: album.name, source: .album(id: id))
                             } label: {
-                                HomeAlbumTile(album: album, albumID: id)
+                                HomeAlbumTile(album: album, albumID: id, expanded: isWide)
                             }
                             .buttonStyle(.plain)
                         }
@@ -153,7 +213,7 @@ struct HomeView: View {
 
     private func heading(_ title: String) -> some View {
         Text(title)
-            .font(.display(28, weight: .bold, relativeTo: .largeTitle))
+            .font(.display(isWide ? 35 : 28, weight: .bold, relativeTo: .largeTitle))
             .foregroundStyle(KindredTheme.ink)
             .accessibilityAddTraits(.isHeader)
     }
@@ -218,10 +278,11 @@ struct HomeView: View {
 private struct HomeAlbumTile: View {
     let album: Album
     let albumID: String
+    var expanded = false
     @State private var cover: LibraryPhoto?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: expanded ? 9 : 5) {
             ZStack {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(KindredTheme.tile)
@@ -229,7 +290,7 @@ private struct HomeAlbumTile: View {
                     KindredThumbnail(photo: cover, cornerRadius: 12)
                 }
             }
-            .aspectRatio(1.2, contentMode: .fit)
+            .aspectRatio(expanded ? 1.85 : 1.2, contentMode: .fit)
             .clipShape(.rect(cornerRadius: 12))
             .accessibilityHidden(true)
 
@@ -239,14 +300,10 @@ private struct HomeAlbumTile: View {
                 .lineLimit(1)
         }
         .accessibilityLabel(album.name)
-        .task(id: "\(albumID):\(album.cover_photo_id ?? ""):\(album.photo_count)") {
+        .task(id: album.photo_count) {
             guard album.photo_count > 0 else { cover = nil; return }
             if DemoDataProvider.shared.isActive {
                 cover = DemoDataProvider.shared.albumPage(id: albumID).photos.first
-            } else if let photoID = album.cover_photo_id {
-                cover = LibraryPhoto(photo_id: photoID, photo_title: nil, date_taken: nil,
-                                     media_kind: album.cover_media_kind, duration_seconds: nil,
-                                     flickr_url: nil, thumb_url: nil)
             } else if let page = try? await APIClient.shared.libraryPhotos(albumID: albumID, limit: 1),
                       !Task.isCancelled {
                 cover = page.photos.first
@@ -261,6 +318,14 @@ private struct HomeGalleryView: View {
     @State private var gallery = GalleryViewModel()
     @State private var viewing: LibraryPhoto?
     @State private var favoritesChanged = false
+    @Environment(\.horizontalSizeClass) private var widthClass
+
+    private var expanded: Bool { KindredTabletLayout.isExpanded(widthClass) }
+
+    private var columns: [GridItem] {
+        if expanded { return [GridItem(.adaptive(minimum: 150), spacing: 10)] }
+        return Array(repeating: GridItem(.flexible(), spacing: 3), count: 3)
+    }
 
     var body: some View {
         ScrollView {
@@ -279,7 +344,7 @@ private struct HomeGalleryView: View {
                     ContentUnavailableView("No photos yet", systemImage: "photo")
                 }
             } else {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: 3), spacing: 3) {
+                LazyVGrid(columns: columns, spacing: expanded ? 10 : 3) {
                     ForEach(gallery.photos) { photo in
                         Button {
                             viewing = photo

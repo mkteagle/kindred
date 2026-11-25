@@ -9,7 +9,7 @@ from anyio.from_thread import run as run_from_worker_thread
 from pydantic import BaseModel, Field
 from typing import Literal, Optional, List
 from functools import lru_cache
-from contextlib import closing
+from contextlib import closing, contextmanager
 import numpy as np
 import json
 import uuid
@@ -18,6 +18,7 @@ import threading
 import flickr_limits
 import household_lifecycle
 import asyncio
+import fcntl
 import base64
 import os
 from pathlib import Path
@@ -35,6 +36,7 @@ from storage import LocalStorageProvider
 from storage.local import managed_originals
 from backup_status import build_backup_status_items
 from resumable_uploads import ChunkAppendError, append_chunk
+from profile_avatar import MAX_AVATAR_BYTES, avatar_image, google_picture_url, profile_avatar_url
 from review_account import (
     REVIEW_PUBLIC, REVIEW_USERNAME, archive_review_photo, build_review_auth_response,
     configure_review_connection, prepare_review_archive, review_credentials_match, review_route_allowed,
@@ -378,7 +380,8 @@ def create_confirmed_session(user_id: str) -> dict:
 
 def validate_session(token: str) -> dict | None:
     rows = db_query(
-        """SELECT u.id as user_id, u.username, u.display_name, u.role, u.flickr_user_id, u.avatar_photo_id
+        """SELECT u.id as user_id, u.username, u.display_name, u.role, u.flickr_user_id, u.avatar_photo_id,
+                  u.avatar_upload IS NOT NULL as has_avatar_upload, u.updated_at
            FROM sessions s JOIN users u ON s.user_id = u.id
            WHERE s.token = %s AND s.expires_at > now()""",
         (token,),
@@ -393,6 +396,8 @@ def validate_session(token: str) -> dict | None:
         "role": r["role"],
         "flickr_user_id": r.get("flickr_user_id"),
         "avatar_photo_id": r.get("avatar_photo_id"),
+        "has_avatar_upload": r.get("has_avatar_upload"),
+        "avatar_updated_at": r.get("updated_at"),
     }
 
 def generate_invite_code() -> str:
@@ -473,28 +478,44 @@ _clip_preprocess = None
 _clip_tokenizer = None
 _clip_init_lock = threading.Lock()
 
+@contextmanager
+def _model_cache_lock(directory: Path, model: str):
+    """Serialize first-run downloads across recognition processes."""
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / f".{model}.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
 def get_face_app():
     global _face_app
     if _face_app is None:
         from insightface.app import FaceAnalysis
         import onnxruntime
-        options = onnxruntime.SessionOptions()
-        options.intra_op_num_threads = max(1, int(os.environ.get("KINDRED_INFERENCE_THREADS", "2")))
-        options.inter_op_num_threads = 1
-        _face_app = FaceAnalysis(name="buffalo_l",
-            root=os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "insightface"),
-            allowed_modules=["detection", "recognition"],
-            sess_options=options, providers=["CPUExecutionProvider"])
-        _face_app.prepare(ctx_id=0, det_size=(960, 960))
+
+        cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "insightface"
+        with _model_cache_lock(cache, "buffalo_l"):
+            if _face_app is None:
+                options = onnxruntime.SessionOptions()
+                options.intra_op_num_threads = max(1, int(os.environ.get("KINDRED_INFERENCE_THREADS", "2")))
+                options.inter_op_num_threads = 1
+                model = FaceAnalysis(name="buffalo_l", root=str(cache),
+                    allowed_modules=["detection", "recognition"],
+                    sess_options=options, providers=["CPUExecutionProvider"])
+                det_size = int(os.environ.get("KINDRED_FACE_DETECT_SIZE", "960"))
+                model.prepare(ctx_id=0, det_size=(det_size, det_size))
+                _face_app = model
     return _face_app
 
 def get_yolo():
     global _yolo
     if _yolo is None:
         from ultralytics import YOLO
-        model_directory = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "ultralytics")
-        os.makedirs(model_directory, exist_ok=True)
-        _yolo = YOLO(os.path.join(model_directory, "yolov8n.pt"))
+
+        cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "ultralytics"
+        with _model_cache_lock(cache, "yolov8n"):
+            if _yolo is None:
+                _yolo = YOLO(str(cache / "yolov8n.pt"))
     return _yolo
 
 def get_clip():
@@ -695,7 +716,7 @@ def is_dismissed_face(conn, embedding, category, threshold=0.35):
         """, (category, vec, threshold))
         return cur.fetchone() is not None
 
-def insert_detection(conn, photo, category, subtype, bbox, score, embedding, img_bgr):
+def insert_detection(conn, photo, category, subtype, bbox, score, embedding, img_bgr, *, mark_processed=True):
     # Check if this face looks like a previously dismissed person
     if is_dismissed_face(conn, embedding, category):
         return None
@@ -733,10 +754,10 @@ def insert_detection(conn, photo, category, subtype, bbox, score, embedding, img
             bbox_json, round(float(score), 3),
             chip, vec,
         ))
-    # Track that this photo was processed
-    with conn.cursor() as cur:
-        cur.execute("INSERT INTO processed_photos (photo_id) VALUES (%s) ON CONFLICT DO NOTHING",
-                   (photo["id"],))
+    if mark_processed:
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO processed_photos (photo_id) VALUES (%s) ON CONFLICT DO NOTHING",
+                        (photo["id"],))
     return det_id
 
 def region_embedding(img_bgr, bbox: list, size: int = 64) -> list:
@@ -801,6 +822,7 @@ def get_app_config():
     return {
         "api_version": "1.0",
         "app_name": "Kindred",
+        "web_url": os.environ.get("PUBLIC_WEB_URL", "").strip() or None,
         "setup_complete": setup_complete,
         "household_deleted": closed,
         "review_read_only": APP_REVIEW_READ_ONLY,
@@ -901,7 +923,7 @@ def auth_flickr_login(req: FlickrLoginRequest, request: FastAPIRequest):
     run_from_worker_thread(authorize_flickr_sign_in, request, req.flickr_user_id,
                            req.flickr_oauth_token, req.flickr_oauth_secret)
     rows = db_query(
-        "SELECT id, username, display_name, role, avatar_photo_id, avatar_upload IS NOT NULL as has_avatar_upload FROM users WHERE flickr_user_id = %s AND role = 'admin'",
+        "SELECT id, username, display_name, role, avatar_photo_id, avatar_upload IS NOT NULL as has_avatar_upload, updated_at FROM users WHERE flickr_user_id = %s AND role = 'admin'",
         (req.flickr_user_id,),
     )
     if not rows:
@@ -915,7 +937,7 @@ def auth_flickr_login(req: FlickrLoginRequest, request: FastAPIRequest):
             fetch=False,
         )
     uid = str(user["id"])
-    avatar_url = f"/users/{uid}/avatar" if (user.get("avatar_photo_id") or user.get("has_avatar_upload")) else None
+    avatar_url = profile_avatar_url(uid, user.get("updated_at")) if (user.get("avatar_photo_id") or user.get("has_avatar_upload")) else None
     session = create_confirmed_session(uid)
     return {
         "user": {"id": uid, "username": user["username"],
@@ -1023,7 +1045,7 @@ def auth_login(req: LoginRequest):
         return build_review_auth_response(req.username)
 
     rows = db_query(
-        "SELECT id, username, display_name, role, password_hash, avatar_photo_id, avatar_upload IS NOT NULL as has_avatar_upload FROM users WHERE username = %s",
+        "SELECT id, username, display_name, role, password_hash, avatar_photo_id, avatar_upload IS NOT NULL as has_avatar_upload, updated_at FROM users WHERE username = %s",
         (req.username,),
     )
     if not rows or not rows[0]["password_hash"]:
@@ -1032,7 +1054,7 @@ def auth_login(req: LoginRequest):
     if not verify_password(req.password, user["password_hash"]):
         raise HTTPException(401, "Invalid username or password")
     uid = str(user["id"])
-    avatar_url = f"/users/{uid}/avatar" if (user.get("avatar_photo_id") or user.get("has_avatar_upload")) else None
+    avatar_url = profile_avatar_url(uid, user.get("updated_at")) if (user.get("avatar_photo_id") or user.get("has_avatar_upload")) else None
     session = create_confirmed_session(uid)
     return {
         "user": {"id": uid, "username": user["username"],
@@ -1093,15 +1115,8 @@ def auth_me(request: FastAPIRequest):
     user = getattr(request.state, "user", None)
     if not user or not user.get("user_id"):
         return {"loggedIn": False}
-    # Build avatar URL if the user has one
-    avatar_url = None
-    if user.get("avatar_photo_id"):
-        avatar_url = f"/users/{user['user_id']}/avatar"
-    elif user.get("user_id"):
-        # Check if they have a custom upload
-        rows = db_query("SELECT avatar_upload IS NOT NULL as has_upload FROM users WHERE id = %s", (user["user_id"],))
-        if rows and rows[0].get("has_upload"):
-            avatar_url = f"/users/{user['user_id']}/avatar"
+    avatar_url = (profile_avatar_url(user["user_id"], user.get("avatar_updated_at"))
+                  if user.get("avatar_photo_id") or user.get("has_avatar_upload") else None)
     return {
         "loggedIn": True,
         "userId": user["user_id"],
@@ -1175,11 +1190,11 @@ def roll_api_key(key_id: str, user=Depends(get_current_user)):
 
 @app.get("/users")
 def list_users(admin=Depends(require_admin)):
-    rows = db_query("SELECT id, username, display_name, role, flickr_user_id, avatar_photo_id, avatar_upload IS NOT NULL as has_avatar_upload, created_at FROM users ORDER BY created_at")
+    rows = db_query("SELECT id, username, display_name, role, flickr_user_id, avatar_photo_id, avatar_upload IS NOT NULL as has_avatar_upload, created_at, updated_at FROM users ORDER BY created_at")
     def user_avatar_url(r):
         uid = str(r["id"])
         if r.get("avatar_photo_id") or r.get("has_avatar_upload"):
-            return f"/users/{uid}/avatar"
+            return profile_avatar_url(uid, r.get("updated_at"))
         return None
     return {"users": [{"id": str(r["id"]), "username": r["username"], "display_name": r["display_name"],
                         "role": r["role"], "flickr_user_id": r.get("flickr_user_id"),
@@ -1312,56 +1327,89 @@ def delete_user(user_id: uuid.UUID, admin=Depends(require_admin)):
 
 # ── User avatar endpoints ───────────────────────────────────────────────────
 
-from fastapi import UploadFile, File, Form
+def linked_google_picture(user_id):
+    return db_query("SELECT picture_url FROM user_identities WHERE user_id=%s AND provider='google'", (user_id,))
 
-class SetAvatarPhotoRequest(BaseModel):
-    photo_id: str
+
+@app.get("/users/me/avatar/sources")
+def user_avatar_sources(user=Depends(get_current_user)):
+    if not user.get("user_id"):
+        raise HTTPException(403, "A household account is required")
+    rows = linked_google_picture(user["user_id"])
+    google = "unlinked"
+    if rows:
+        google = "available" if google_picture_url(rows[0]["picture_url"]) else "linked"
+    return {"google": google}
+
+
+@app.get("/users/me/avatar/google")
+async def get_google_avatar(user=Depends(get_current_user)):
+    if not user.get("user_id"):
+        raise HTTPException(403, "A household account is required")
+    rows = await asyncio.to_thread(linked_google_picture, user["user_id"])
+    url = google_picture_url(rows[0]["picture_url"]) if rows else None
+    if not url:
+        raise HTTPException(404, "No Google profile photo is available.")
+    try:
+        data = bytearray()
+        async with asyncio.timeout(10), httpx.AsyncClient(timeout=5, follow_redirects=False) as client:
+            async with client.stream("GET", url) as response:
+                response.raise_for_status()
+                async for chunk in response.aiter_bytes(chunk_size=64 * 1024):
+                    if len(data) + len(chunk) > MAX_AVATAR_BYTES:
+                        raise ValueError("Image too large")
+                    data.extend(chunk)
+        image = await asyncio.to_thread(avatar_image, data)
+    except (httpx.HTTPError, TimeoutError, ValueError) as exc:
+        raise HTTPException(502, "Couldn’t load your Google profile photo. Try refreshing it.") from exc
+    return Response(image, media_type="image/webp", headers={"Cache-Control": "private, no-store"})
 
 @app.put("/users/me/avatar")
 async def set_user_avatar(request: FastAPIRequest, user=Depends(get_current_user)):
     """Set the current user's avatar. Accepts JSON with photo_id or multipart file upload."""
+    uid = user.get("user_id")
+    if not uid:
+        raise HTTPException(403, "A household account is required")
     content_type = request.headers.get("content-type", "")
     if "multipart/form-data" in content_type:
-        # Multipart file upload
-        form = await request.form()
-        file = form.get("file")
-        if not file:
-            raise HTTPException(400, "No file provided")
-        image_data = await file.read()
-        if len(image_data) > 5 * 1024 * 1024:
-            raise HTTPException(400, "Image must be under 5MB")
-        # Store as uploaded avatar, clear photo_id reference
-        conn = get_db()
+        from starlette.datastructures import UploadFile as FormUpload
+
         try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE users SET avatar_upload = %s, avatar_photo_id = NULL, updated_at = now() WHERE id = %s",
-                    (psycopg2.Binary(image_data), user["user_id"]),
-                )
-            conn.commit()
-        finally:
-            conn.close()
-        return {"ok": True, "avatar_url": f"/users/{user['user_id']}/avatar"}
+            async with request.form(max_files=1, max_fields=0) as form:
+                file = form.get("file")
+                if not isinstance(file, FormUpload):
+                    raise HTTPException(400, "Choose an image to upload.")
+                data = await file.read(MAX_AVATAR_BYTES + 1)
+            image = await asyncio.to_thread(avatar_image, data)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        rows = await asyncio.to_thread(
+            db_query,
+            "UPDATE users SET avatar_upload = %s, avatar_photo_id = NULL, updated_at = clock_timestamp() WHERE id = %s RETURNING updated_at",
+            (psycopg2.Binary(image), uid),
+        )
     else:
-        # JSON body with photo_id
-        body = await request.json()
-        photo_id = body.get("photo_id")
-        if not photo_id:
+        try:
+            body = await request.json()
+        except ValueError as exc:
+            raise HTTPException(400, "Invalid photo selection") from exc
+        photo_id = body.get("photo_id") if isinstance(body, dict) else None
+        if not isinstance(photo_id, str) or not photo_id:
             raise HTTPException(400, "photo_id is required")
-        # Verify the photo exists in the library (check detections or photo_metadata)
-        rows = db_query(
-            "SELECT photo_id FROM photo_metadata WHERE photo_id = %s UNION SELECT DISTINCT photo_id FROM detections WHERE photo_id = %s LIMIT 1",
+        if not await asyncio.to_thread(_catalog_photo, photo_id) and not await asyncio.to_thread(
+            db_query,
+            "SELECT photo_id FROM photo_metadata WHERE photo_id = %s UNION SELECT photo_id FROM detections WHERE photo_id = %s LIMIT 1",
             (photo_id, photo_id),
-        )
-        if not rows:
+        ):
             raise HTTPException(404, "Photo not found in library")
-        # Store photo_id reference, clear uploaded avatar
-        db_query(
-            "UPDATE users SET avatar_photo_id = %s, avatar_upload = NULL, updated_at = now() WHERE id = %s",
-            (photo_id, user["user_id"]),
-            fetch=False,
+        rows = await asyncio.to_thread(
+            db_query,
+            "UPDATE users SET avatar_photo_id = %s, avatar_upload = NULL, updated_at = clock_timestamp() WHERE id = %s RETURNING updated_at",
+            (photo_id, uid),
         )
-        return {"ok": True, "avatar_url": f"/users/{user['user_id']}/avatar"}
+    if not rows:
+        raise HTTPException(404, "Account not found")
+    return {"ok": True, "avatar_url": profile_avatar_url(uid, rows[0]["updated_at"])}
 
 @app.get("/users/{user_id}/avatar")
 async def get_user_avatar(user_id: str, size: str = "q", user=Depends(get_current_user)):
@@ -2019,192 +2067,22 @@ def _run_subtype_clustering(category: str, distance_threshold: float = 0.80):
     print(f"  Clustering {category}: {len(by_subtype)} subtypes, {sum(len(v) for v in by_subtype.values())} detections")
 
 
+def group_pending_people(limit: int = 128, distance_threshold: float = 0.36) -> int:
+    from people_index import group_batch
+
+    grouped = group_batch(get_db, limit=limit, threshold=min(0.36, distance_threshold))
+    if grouped:
+        invalidate_cache()
+    return grouped
+
+
 def run_clustering(category: str, distance_threshold: float = 0.80):
-    """Three-phase clustering for people, subtype-based for animals/vehicles."""
-    # For animals: clean named clusters first, then cluster remaining by subtype
     if category in ("pets", "vehicles"):
         _clean_named_clusters_by_subtype(category)
         return _run_subtype_clustering(category, distance_threshold)
-
-    # For people: full three-phase clustering
-    from sklearn.cluster import AgglomerativeClustering
-    from sklearn.preprocessing import normalize
-    from sklearn.metrics.pairwise import cosine_distances
-
-    # Get protected detections: pinned OR in a labeled/named cluster
-    pinned_rows = db_query("""
-        SELECT dc.detection_id, dc.cluster_id, d.embedding
-        FROM detection_clusters dc
-        JOIN detections d ON d.id = dc.detection_id
-        WHERE dc.category = %s AND d.embedding IS NOT NULL
-          AND (dc.pinned = true OR EXISTS (
-            SELECT 1 FROM clusters c WHERE c.id = dc.cluster_id AND c.category = dc.category AND c.label IS NOT NULL
-          ))
-    """, (category,))
-    pinned_ids = {r["detection_id"] for r in pinned_rows}
-
-    # Build exemplar sets for each named/pinned cluster
-    # Instead of a single averaged centroid, keep up to 15 diverse exemplars
-    # per person. This handles kids aging, different expressions, lighting.
-    cluster_embeddings: dict[str, list] = {}
-    for r in pinned_rows:
-        cluster_embeddings.setdefault(r["cluster_id"], []).append(r["embedding"])
-
-    MAX_EXEMPLARS = 15
-    exemplars: dict[str, np.ndarray] = {}  # cluster_id -> (N, 512) matrix
-    for cid, embs in cluster_embeddings.items():
-        all_vecs = normalize(np.array(embs, dtype=np.float32))
-        if len(all_vecs) <= MAX_EXEMPLARS:
-            exemplars[cid] = all_vecs
-        elif len(all_vecs) <= 100:
-            # For medium clusters, pick evenly spaced samples
-            indices = np.linspace(0, len(all_vecs) - 1, MAX_EXEMPLARS, dtype=int)
-            exemplars[cid] = all_vecs[indices]
-        else:
-            # For large clusters, random sample for speed
-            rng = np.random.default_rng(42)
-            indices = rng.choice(len(all_vecs), MAX_EXEMPLARS, replace=False)
-            exemplars[cid] = all_vecs[indices]
-
-    # Get all unpinned detections
-    rows = db_query(
-        "SELECT id, embedding FROM detections WHERE category = %s AND embedding IS NOT NULL",
-        (category,)
-    )
-    unpinned = [(r["id"], r["embedding"]) for r in rows if r["id"] not in pinned_ids]
-
-    if not unpinned:
-        return
-
-    # Phase 1: match new faces to existing named people using exemplars
-    # For each new face, find the nearest exemplar across all people
-    auto_assigned = []  # (det_id, cluster_id)
-    still_unmatched = []  # (det_id, embedding)
-
-    if exemplars:
-        # Build a flat matrix of all exemplars with cluster labels
-        all_exemplar_vecs = []
-        all_exemplar_cids = []
-        for cid, vecs in exemplars.items():
-            for v in vecs:
-                all_exemplar_vecs.append(v)
-                all_exemplar_cids.append(cid)
-        exemplar_matrix = np.array(all_exemplar_vecs, dtype=np.float32)
-
-        for det_id, emb in unpinned:
-            vec = normalize(np.array(emb, dtype=np.float32).reshape(1, -1))
-            dists = cosine_distances(vec, exemplar_matrix)[0]
-            min_idx = int(np.argmin(dists))
-            min_dist = float(dists[min_idx])
-
-            # 0.55 generous — exemplars are real diverse faces, catches angle/expression variation
-            if min_dist < 0.55:
-                auto_assigned.append((det_id, all_exemplar_cids[min_idx]))
-            else:
-                still_unmatched.append((det_id, emb))
-    else:
-        still_unmatched = unpinned
-
-    # Phase 2: cluster remaining unknowns — use UUIDs so IDs never collide with named clusters
-    new_cluster_values = []
-    if len(still_unmatched) >= 2:
-        u_ids = [u[0] for u in still_unmatched]
-        vectors = np.array([u[1] for u in still_unmatched], dtype=np.float32)
-        vectors = normalize(vectors)
-
-        clustering = AgglomerativeClustering(
-            n_clusters=None,
-            distance_threshold=distance_threshold,
-            metric="cosine",
-            linkage="average",
-        )
-        labels = clustering.fit_predict(vectors)
-
-        # Map agglomerative label numbers to stable UUIDs
-        label_to_uuid = {}
-        for lbl in set(labels):
-            label_to_uuid[int(lbl)] = str(uuid.uuid4())
-
-        # Group detections by their new cluster label
-        new_clusters: dict[int, list] = {}
-        for i in range(len(u_ids)):
-            new_clusters.setdefault(int(labels[i]), []).append(i)
-
-        # Phase 3: check each new cluster's centroid against named clusters
-        # If close enough, merge into the named cluster instead of creating new
-        if exemplars:
-            for lbl, member_indices in list(new_clusters.items()):
-                member_vecs = vectors[member_indices]
-                centroid = member_vecs.mean(axis=0, keepdims=True)
-                centroid = normalize(centroid)
-                dists = cosine_distances(centroid, exemplar_matrix)[0]
-                min_idx = int(np.argmin(dists))
-                min_dist = float(dists[min_idx])
-
-                # 0.65 — looser than per-face (0.55) since this is a centroid
-                if min_dist < 0.65:
-                    matched_cid = all_exemplar_cids[min_idx]
-                    for idx in member_indices:
-                        new_cluster_values.append((u_ids[idx], matched_cid, category, True))
-                    del new_clusters[lbl]
-
-        # Remaining truly unknown clusters get new UUIDs
-        for lbl, member_indices in new_clusters.items():
-            new_uuid = str(uuid.uuid4())
-            for idx in member_indices:
-                new_cluster_values.append((u_ids[idx], new_uuid, category, False))
-
-    elif len(still_unmatched) == 1:
-        det_id = still_unmatched[0][0]
-        # Check single face against named exemplars too
-        if exemplars:
-            vec = normalize(np.array(still_unmatched[0][1], dtype=np.float32).reshape(1, -1))
-            dists = cosine_distances(vec, exemplar_matrix)[0]
-            min_idx = int(np.argmin(dists))
-            if float(dists[min_idx]) < 0.65:
-                new_cluster_values.append((det_id, all_exemplar_cids[min_idx], category, True))
-            else:
-                new_cluster_values.append((det_id, str(uuid.uuid4()), category, False))
-        else:
-            new_cluster_values.append((det_id, str(uuid.uuid4()), category, False))
-
-    # Write to DB
-    conn = get_db()
-    try:
-        with conn.cursor() as cur:
-            # Only delete unpinned detections that are NOT in a labeled cluster
-            cur.execute("""
-                DELETE FROM detection_clusters
-                WHERE category = %s AND pinned = false
-                  AND NOT EXISTS (
-                    SELECT 1 FROM clusters c
-                    WHERE c.id = detection_clusters.cluster_id
-                      AND c.category = detection_clusters.category
-                      AND c.label IS NOT NULL
-                  )
-            """, (category,))
-
-            # Auto-assigned faces get pinned to their matched cluster
-            if auto_assigned:
-                auto_values = [(did, cid, category, True) for did, cid in auto_assigned]
-                execute_values(cur,
-                    "INSERT INTO detection_clusters (detection_id, cluster_id, category, pinned) VALUES %s",
-                    auto_values)
-
-            # Remaining get new cluster assignments
-            if new_cluster_values:
-                execute_values(cur,
-                    "INSERT INTO detection_clusters (detection_id, cluster_id, category, pinned) VALUES %s",
-                    new_cluster_values)
-        conn.commit()
-    finally:
-        conn.close()
-
-    n_auto = len(auto_assigned)
-    n_new = len(new_cluster_values)
-    print(f"  Clustering {category}: {n_auto} auto-matched to known people, {n_new} in new clusters")
-    # Invalidate cached explore data since clusters changed
-    invalidate_cache()
+    if category == "people":
+        while group_pending_people(distance_threshold=distance_threshold) == 128:
+            pass
 
 @app.post("/cluster")
 def cluster(req: ClusterRequest, admin=Depends(require_admin)):
@@ -4314,6 +4192,7 @@ async def _process_uploaded_photo(
     local_path: str | None = None,
     cluster_after: bool = True,
     fetch_flickr_info: bool = True,
+    index_stage: Literal["all", "categories", "faces"] = "all",
 ) -> None:
     """Run ML for a Flickr photo, preferring its NAS original when supplied."""
     import urllib.parse
@@ -4337,7 +4216,7 @@ async def _process_uploaded_photo(
             qs = urllib.parse.urlencode(params)
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
-                    f"{flickr_url}?{qs}", headers={"Authorization": auth_header}
+                    f"{flickr_url}?{qs}", headers=_flickr_headers(auth_header)
                 )
                 data = resp.json()
             if data.get("stat") != "ok":
@@ -4379,72 +4258,76 @@ async def _process_uploaded_photo(
             print(f"[upload-process] Could not decode image for {photo_id}")
             return
 
-        face_app = get_face_app()
-        yolo = get_yolo()
         conn = get_db()
         counts = {"people": 0, "pets": 0, "vehicles": 0}
 
         try:
-            faces = face_app.get(img)
-            for face in faces:
-                bbox = face.bbox.tolist()
-                bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
-                if bw < 24 or bh < 24:
-                    continue
-                x1, y1 = max(0, int(bbox[0])), max(0, int(bbox[1]))
-                x2, y2 = min(img.shape[1], int(bbox[2])), min(img.shape[0], int(bbox[3]))
-                face_crop = img[y1:y2, x1:x2]
-                if face_crop.size > 0:
-                    gray = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
-                    if cv2.Laplacian(gray, cv2.CV_64F).var() < 15:
+            if index_stage != "categories":
+                from people_index import detect_faces
+
+                for bbox, score, embedding in detect_faces(get_face_app(), img):
+                    insert_detection(conn, photo, "people", "face",
+                        bbox, score, embedding, img)
+                    counts["people"] += 1
+
+            if index_stage != "faces":
+                yolo_results = get_yolo()(img[:, :, ::-1], verbose=False)
+                # Decide what is worth embedding before embedding anything. This
+                # used to run CLIP over every box YOLO returned and then discard the
+                # ones that were neither pet nor vehicle -- on a street scene that is
+                # a dozen forward passes to keep two.
+                wanted = []
+                for box in yolo_results[0].boxes:
+                    score = float(box.conf[0])
+                    if score < 0.4:
                         continue
-                if float(face.det_score) < 0.35:
-                    continue
-                insert_detection(conn, photo, "people", "face",
-                    bbox, float(face.det_score),
-                    face.embedding.tolist(), img)
-                counts["people"] += 1
+                    cls_id = int(box.cls[0])
+                    if cls_id in PET_CLASSES:
+                        category, subtype = "pets", PET_CLASSES[cls_id]
+                    elif cls_id in VEHICLE_CLASSES:
+                        category, subtype = "vehicles", VEHICLE_CLASSES[cls_id]
+                    else:
+                        continue
+                    wanted.append((box.xyxy[0].tolist(), score, category, subtype))
 
-            yolo_results = yolo(img[:, :, ::-1], verbose=False)
-            # Decide what is worth embedding before embedding anything. This
-            # used to run CLIP over every box YOLO returned and then discard the
-            # ones that were neither pet nor vehicle -- on a street scene that is
-            # a dozen forward passes to keep two.
-            wanted = []
-            for box in yolo_results[0].boxes:
-                score = float(box.conf[0])
-                if score < 0.4:
-                    continue
-                cls_id = int(box.cls[0])
-                if cls_id in PET_CLASSES:
-                    category, subtype = "pets", PET_CLASSES[cls_id]
-                elif cls_id in VEHICLE_CLASSES:
-                    category, subtype = "vehicles", VEHICLE_CLASSES[cls_id]
-                else:
-                    continue
-                wanted.append((box.xyxy[0].tolist(), score, category, subtype))
+                # Every crop and the whole frame in one pass through the model.
+                embeddings = clip_embed_regions(img, [bbox for bbox, _, _, _ in wanted] + [None])
+                photo_clip = embeddings[-1]
+                for (xyxy, score, category, subtype), clip_emb in zip(wanted, embeddings):
+                    insert_detection(conn, photo, category, subtype, xyxy, score,
+                        clip_emb.tolist() if clip_emb is not None else [], img,
+                        mark_processed=index_stage == "all")
+                    counts[category] += 1
+                if photo_clip is not None:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            INSERT INTO photo_embeddings (photo_id, clip_embedding)
+                            VALUES (%s, %s) ON CONFLICT (photo_id) DO NOTHING
+                        """, (photo_id, np.array(photo_clip, dtype=np.float32)))
 
-            # Every crop and the whole frame in one pass through the model.
-            embeddings = clip_embed_regions(img, [bbox for bbox, _, _, _ in wanted] + [None])
-            photo_clip = embeddings[-1]
-            for (xyxy, score, category, subtype), clip_emb in zip(wanted, embeddings):
-                insert_detection(conn, photo, category, subtype, xyxy, score,
-                    clip_emb.tolist() if clip_emb is not None else [], img)
-                counts[category] += 1
-            if photo_clip is not None:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        INSERT INTO photo_embeddings (photo_id, clip_embedding)
-                        VALUES (%s, %s) ON CONFLICT (photo_id) DO NOTHING
-                    """, (photo_id, np.array(photo_clip, dtype=np.float32)))
+                try:
+                    colors = _extract_dominant_colors(img)
+                    if colors:
+                        with conn.cursor() as cur:
+                            cur.execute("""
+                                INSERT INTO photo_colors (photo_id, colors)
+                                VALUES (%s, %s) ON CONFLICT (photo_id) DO NOTHING
+                            """, (photo_id, json.dumps(colors)))
+                except Exception:
+                    pass
 
-            # Record completion even when the image contains no object
-            # detections; otherwise a restart analyzes it forever.
             with conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO processed_photos (photo_id) VALUES (%s) ON CONFLICT DO NOTHING",
-                    (photo_id,),
-                )
+                if index_stage == "categories":
+                    cur.execute(
+                        "UPDATE nas_source_files SET categorized_at=now() WHERE photo_id=%s",
+                        (photo_id,),
+                    )
+                else:
+                    # A successful face pass also records photos with zero detections.
+                    cur.execute(
+                        "INSERT INTO processed_photos (photo_id) VALUES (%s) ON CONFLICT DO NOTHING",
+                        (photo_id,),
+                    )
 
             conn.commit()
 

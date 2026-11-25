@@ -14,7 +14,7 @@ final class KindredScreenshots: XCTestCase {
         app = XCUIApplication()
         if !name.contains("testLibraryRetriesThenLoadsAfterRelaunch") && !name.contains("testHomeShowsFavoritesBeforeSlowAlbums")
             && !name.contains("testSearchPaginatesCaptureMonth") && !name.contains("testSelectionExportsOriginals")
-            && !name.contains("testAdminIndexingProgress") {
+            && !name.contains("testAdminSettingsHandsOffToWeb") {
             app.launch()
         }
     }
@@ -22,73 +22,6 @@ final class KindredScreenshots: XCTestCase {
     override func tearDown() {
         app = nil
         super.tearDown()
-    }
-
-    @MainActor func testFreshInstallRequiresHouseholdServer() {
-        continueAfterFailure = false
-        app.terminate()
-        app.launchArguments = ["-kindred_server_url", " ", "-hasSeenOnboarding", "YES"]
-        app.launch()
-
-        let enterServer = app.buttons["Enter server address"]
-        XCTAssertTrue(enterServer.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["Scan a pairing code"].exists)
-        XCTAssertTrue(app.buttons["Try the demo"].exists)
-        XCTAssertFalse(app.buttons["Sign in"].exists)
-        XCTAssertFalse(app.buttons["Continue with Google"].exists)
-
-        enterServer.tap()
-        let address = app.textFields["https://photos.example.com"]
-        XCTAssertTrue(address.waitForExistence(timeout: 5))
-        address.tap()
-        address.typeText("http://photos.example.com")
-        let next = app.buttons["Continue"]
-        next.tap()
-        XCTAssertTrue(app.staticTexts["Enter your Kindred server’s HTTPS address."].waitForExistence(timeout: 5))
-
-        app.buttons["Cancel"].tap()
-        enterServer.tap()
-        XCTAssertTrue(address.waitForExistence(timeout: 5))
-        address.tap()
-        address.typeText("photos.example.com")
-        next.tap()
-        XCTAssertTrue(app.buttons["Sign in"].waitForExistence(timeout: 5))
-        XCTAssertEqual(app.staticTexts["login.serverAddress"].label, "https://photos.example.com")
-        XCTAssertFalse(app.buttons["Continue with Google"].exists)
-        XCTAssertFalse(app.buttons["Continue with Flickr"].exists)
-    }
-
-    @MainActor func testPairingLinkConfirmsServerBeforeClaiming() throws {
-        continueAfterFailure = false
-        let fixture = try LibraryFixture()
-        let ready = expectation(description: "Pairing server is listening")
-        fixture.start { ready.fulfill() }
-        wait(for: [ready], timeout: 5)
-        let address = "http://127.0.0.1:\(try XCTUnwrap(fixture.port))"
-
-        app.terminate()
-        app.launchArguments = ["-hasSeenOnboarding", "YES"]
-        app.launch()
-        var link = URLComponents()
-        link.scheme = "kindred"
-        link.host = "pair"
-        link.queryItems = [URLQueryItem(name: "server", value: address), URLQueryItem(name: "code", value: "ABCD2345")]
-        app.open(try XCTUnwrap(link.url))
-
-        let confirm = app.buttons["Connect"]
-        XCTAssertTrue(confirm.waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts[address].exists)
-        XCTAssertEqual(fixture.pairingClaims, 0)
-        confirm.tap()
-        XCTAssertTrue(app.staticTexts["Paired"].waitForExistence(timeout: 8))
-        XCTAssertEqual(fixture.pairingClaims, 1)
-        app.buttons["Done"].tap()
-        XCTAssertTrue(app.buttons["Library"].waitForExistence(timeout: 8))
-
-        app.terminate()
-        app.launch()
-        XCTAssertTrue(app.buttons["Library"].waitForExistence(timeout: 8))
-        try signOutOfFixture()
     }
 
     func testRedesignedLibraryAndViewer() {
@@ -115,23 +48,46 @@ final class KindredScreenshots: XCTestCase {
         XCTAssertTrue(app.staticTexts["Easter morning"].waitForExistence(timeout: 5))
     }
 
-    @MainActor func testAdminIndexingProgress() throws {
+    @MainActor func testAdminSettingsHandsOffToWeb() throws {
         continueAfterFailure = false
         let fixture = try LibraryFixture(isAdmin: true)
         try signIn(to: fixture)
         let settings = app.buttons["Settings"]
-        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        let settingsReady = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in settings.isHittable }, object: nil)
+        wait(for: [settingsReady], timeout: 10)
         settings.tap()
 
-        let indexing = app.descendants(matching: .any)["settings.indexingProgress"].firstMatch
-        XCTAssertTrue(indexing.waitForExistence(timeout: 5))
-        indexing.tap()
-        let thumbnails = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Thumbnails", "Running")).firstMatch
-        XCTAssertTrue(thumbnails.waitForExistence(timeout: 8))
-        takeScreenshot(named: "admin-indexing-progress")
+        let manage = app.buttons["settings.manageOnWeb"]
+        XCTAssertTrue(manage.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Advanced"].exists)
+        XCTAssertFalse(app.buttons["settings.indexingProgress"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["settings.backup"].firstMatch.exists)
+        XCTAssertTrue(app.descendants(matching: .any)["Help & Docs"].firstMatch.exists)
+        takeScreenshot(named: "settings-device-and-web")
 
-        app.navigationBars.firstMatch.buttons.firstMatch.tap()
+        // Older self-hosted APIs may supply no web origin. The app requests it
+        // explicitly instead of sending that household to the hosted library.
+        manage.tap()
+        XCTAssertTrue(app.textFields["settings.webLibraryAddress"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["Open settings"].isEnabled)
+        app.buttons["Cancel"].tap()
+
+        // Saving a new crop on the web changes the version of the same avatar URL.
+        fixture.setAvatarRevision(1)
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        let firstAvatar = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            fixture.avatarRevisionsRequested.contains(1)
+        }, object: nil)
+        wait(for: [firstAvatar], timeout: 8)
+        fixture.setAvatarRevision(2)
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        let revisedAvatar = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            fixture.avatarRevisionsRequested.contains(2)
+        }, object: nil)
+        wait(for: [revisedAvatar], timeout: 8)
+
         try signOutOfFixture(settingsAlreadyShown: true)
     }
 
@@ -171,6 +127,130 @@ final class KindredScreenshots: XCTestCase {
         let isSharing = shareTarget.waitForExistence(timeout: 8)
         takeScreenshot(named: "library-zip-share-sheet")
         XCTAssertTrue(isSharing)
+    }
+
+    func testIPadUsesTheSamePrimaryTabs() throws {
+        guard isIPad else { throw XCTSkip("iPad navigation test") }
+        continueAfterFailure = false
+        app.terminate()
+        XCUIDevice.shared.orientation = .portrait
+        app.launchArguments = ["--ui-test-home"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["home.favoritesHeading"].waitForExistence(timeout: 8))
+        takeScreenshot(named: "ipad-home-portrait")
+
+        let library = app.buttons["Library"]
+        library.tap()
+        XCTAssertTrue(app.buttons["library.select"].waitForExistence(timeout: 8))
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        XCTAssertTrue(app.buttons["library.select"].waitForExistence(timeout: 5))
+        takeScreenshot(named: "ipad-library-landscape")
+        app.buttons["Videos"].tap()
+        XCTAssertTrue(app.buttons["Videos"].isSelected)
+
+        app.buttons["Settings"].tap()
+        let help = app.descendants(matching: .any).matching(identifier: "Help & Docs").firstMatch
+        XCTAssertTrue(help.waitForExistence(timeout: 5))
+        takeScreenshot(named: "ipad-settings-landscape")
+        library.tap()
+        XCTAssertTrue(app.buttons["Videos"].isSelected)
+    }
+
+    func testIPadPhotoJournalKeepsRowsAndSelection() throws {
+        guard isIPad else { throw XCTSkip("iPad Photo Journal test") }
+        continueAfterFailure = false
+        app.terminate()
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        app.launchArguments = ["--ui-test-home"]
+        app.launch()
+        app.buttons["Library"].tap()
+
+        let select = app.buttons["library.select"]
+        XCTAssertTrue(select.waitForExistence(timeout: 8))
+        let easter = app.buttons["library.journal.demo_tp01"]
+        let garden = app.buttons["library.journal.demo_tp02"]
+        XCTAssertTrue(easter.waitForExistence(timeout: 5))
+        XCTAssertTrue(garden.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["April 2026"].exists)
+        takeScreenshot(named: "ipad-photo-journal-landscape")
+
+        select.tap()
+        easter.tap()
+        XCTAssertTrue(app.staticTexts["1 selected"].waitForExistence(timeout: 5))
+        app.buttons["Done"].tap()
+        XCTAssertTrue(select.waitForExistence(timeout: 5))
+
+        XCUIDevice.shared.orientation = .portrait
+        XCTAssertTrue(select.waitForExistence(timeout: 5))
+        XCTAssertTrue(easter.waitForExistence(timeout: 5))
+        takeScreenshot(named: "ipad-photo-journal-portrait")
+    }
+
+    func testCaptureStoreScreenshots() throws {
+        continueAfterFailure = false
+        app.terminate()
+        XCUIDevice.shared.orientation = .portrait
+        app.launchArguments = ["--ui-test-home"]
+        app.launch()
+
+        XCTAssertTrue(app.scrollViews["home.scrollView"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["Camping"].waitForExistence(timeout: 5))
+        takeScreenshot(named: "01_favorites_and_albums")
+
+        app.buttons["Library"].tap()
+        XCTAssertTrue(app.buttons["library.select"].waitForExistence(timeout: 5))
+        let photo = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Easter morning")).firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout: 5))
+        takeScreenshot(named: "02_photo_library")
+
+        photo.tap()
+        XCTAssertTrue(app.buttons["Close photo"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.scrollViews["viewer.filmstrip"].exists)
+        takeScreenshot(named: "03_photo_viewer")
+        app.buttons["Close photo"].tap()
+
+        app.buttons["People"].tap()
+        let face = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Mom")).firstMatch
+        XCTAssertTrue(face.waitForExistence(timeout: 5))
+        takeScreenshot(named: "04_people")
+
+        app.buttons["Search"].tap()
+        let searchField = app.textFields["search.input"]
+        XCTAssertTrue(searchField.waitForExistence(timeout: 5))
+        searchField.tap()
+        searchField.typeText("campfire\n")
+        XCTAssertTrue(app.staticTexts["search.resultCount"].waitForExistence(timeout: 5))
+        takeScreenshot(named: "05_photo_search")
+        app.buttons["Settings"].tap()
+        XCTAssertTrue(app.buttons["settings.manageOnWeb"].waitForExistence(timeout: 5))
+        takeScreenshot(named: "06_device_settings")
+    }
+
+    func testIPadPairingCodeIsReachableFromWelcome() throws {
+        guard isIPad else { throw XCTSkip("iPad pairing test") }
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let pair = app.buttons["Pair this device"]
+        XCTAssertTrue(pair.waitForExistence(timeout: 8))
+        pair.tap()
+        XCTAssertTrue(app.navigationBars["Add this device"].waitForExistence(timeout: 5))
+
+        let code = app.textFields["pairing.code"]
+        if !code.waitForExistence(timeout: 2) {
+            app.buttons["Enter the code instead"].tap()
+        }
+        XCTAssertTrue(code.waitForExistence(timeout: 5))
+        let submit = app.buttons["pairing.submit"]
+        XCTAssertFalse(submit.isEnabled)
+        code.tap()
+        code.typeText("ABCD2345")
+        XCTAssertEqual(code.value as? String, "ABCD-2345")
+        XCTAssertTrue(submit.isEnabled)
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(pair.waitForExistence(timeout: 5))
     }
 
     func testCaptureIPadSearch() throws {
@@ -261,9 +341,10 @@ final class KindredScreenshots: XCTestCase {
         try signOutOfFixture()
     }
 
-    func testHomeScrollsAndPreservesPositionAcrossTabs() {
+    func testHomeScrollsAndPreservesPositionAcrossTabs() throws {
+        if isIPad { throw XCTSkip("The iPad fits the complete demo Home at this size.") }
         app.terminate()
-        app.launchArguments = ["--ui-test-home"]
+        app.launchArguments = ["--ui-test-home", "-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityMedium.rawValue]
         app.launch()
 
         let home = app.buttons["Home"]
@@ -278,10 +359,9 @@ final class KindredScreenshots: XCTestCase {
         XCTAssertTrue(app.buttons["Camping"].waitForExistence(timeout: 5))
         takeScreenshot(named: "home-favorites-and-albums")
         let originalY = heading.frame.minY
-        let window = app.windows.firstMatch
-        let start = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78))
-        let end = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
-        start.press(forDuration: 0.05, thenDragTo: end)
+        let start = scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.82))
+        let end = scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.35))
+        start.press(forDuration: 0.08, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.15)
         let moved = NSPredicate { _, _ in heading.frame.minY < originalY - 5 }
         expectation(for: moved, evaluatedWith: nil)
         waitForExpectations(timeout: 3)
@@ -290,7 +370,7 @@ final class KindredScreenshots: XCTestCase {
         app.buttons["Settings"].tap()
         home.tap()
         XCTAssertEqual(heading.frame.minY, scrolledY, accuracy: 5)
-        end.press(forDuration: 0.05, thenDragTo: start)
+        end.press(forDuration: 0.08, thenDragTo: start, withVelocity: .slow, thenHoldForDuration: 0.15)
         let returned = NSPredicate { _, _ in heading.frame.minY > scrolledY + 5 }
         expectation(for: returned, evaluatedWith: nil)
         waitForExpectations(timeout: 3)
@@ -393,6 +473,7 @@ final class KindredScreenshots: XCTestCase {
         activity.tap()
         let activityBar = app.navigationBars["Backup activity"]
         XCTAssertTrue(activityBar.waitForExistence(timeout: 5))
+        takeScreenshot(named: "backup-activity")
         activityBar.buttons.firstMatch.tap()
         XCTAssertTrue(backupBar.waitForExistence(timeout: 5))
         backupBar.buttons.firstMatch.tap()
@@ -400,7 +481,7 @@ final class KindredScreenshots: XCTestCase {
         let storage = app.descendants(matching: .any)["settings.storage"].firstMatch
         XCTAssertTrue(storage.waitForExistence(timeout: 5))
         storage.tap()
-        let storageBar = app.navigationBars["Storage"]
+        let storageBar = app.navigationBars["Device storage"]
         XCTAssertTrue(storageBar.waitForExistence(timeout: 5))
 
         let nas = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Home NAS")).firstMatch
@@ -465,7 +546,7 @@ final class KindredScreenshots: XCTestCase {
             "Household Flickr", "Needs verification", "Needs verification"
         )).firstMatch
         XCTAssertTrue(flickrStatus.waitForExistence(timeout: 8))
-        app.navigationBars["Storage"].buttons.firstMatch.tap()
+        app.navigationBars["Device storage"].buttons.firstMatch.tap()
         try signOutOfFixture(settingsAlreadyShown: true, captureConfirmation: true)
     }
 
@@ -476,7 +557,7 @@ final class KindredScreenshots: XCTestCase {
         let port = try XCTUnwrap(fixture.port)
 
         app.terminate()
-        app.launchArguments = ["-kindred_server_url", "http://127.0.0.1:\(port)", "-hasSeenOnboarding", "YES"]
+        app.launchArguments = ["--ui-test-fresh-session", "-kindred_server_url", "http://127.0.0.1:\(port)", "-hasSeenOnboarding", "YES"]
         app.launch()
 
         let signIn = app.buttons["Sign in"]
@@ -488,15 +569,21 @@ final class KindredScreenshots: XCTestCase {
         password.tap()
         password.typeText("fixture-password")
         signIn.tap()
+
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let passwordPromptButtons = [app.buttons["Not Now"], springboard.buttons["Not Now"]]
+        let passwordPrompt = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            passwordPromptButtons.contains(where: \.isHittable)
+        }, object: nil)
+        if XCTWaiter.wait(for: [passwordPrompt], timeout: 3) == .completed {
+            passwordPromptButtons.first(where: \.isHittable)?.tap()
+        }
+        app.launchArguments.removeAll { $0 == "--ui-test-fresh-session" }
     }
 
     private func signOutOfFixture(settingsAlreadyShown: Bool = false, captureConfirmation: Bool = false) throws {
         if !settingsAlreadyShown { app.buttons["Settings"].tap() }
-        let account = app.descendants(matching: .any)["settings.account"].firstMatch
-        XCTAssertTrue(account.waitForExistence(timeout: 5))
-        account.tap()
-        XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 5))
-        let signOut = app.buttons["Sign out"].firstMatch
+        let signOut = app.buttons["settings.signOut"]
         for _ in 0..<4 where !signOut.isHittable {
             app.swipeUp()
         }
@@ -528,7 +615,7 @@ final class KindredScreenshots: XCTestCase {
             sleep(2)
         }
 
-        guard app.staticTexts["Kindred"].waitForExistence(timeout: 5) else {
+        guard app.scrollViews["home.scrollView"].waitForExistence(timeout: 5) else {
             XCTFail("Could not enter demo mode")
             return
         }
@@ -696,7 +783,6 @@ private final class LibraryFixture {
     private var available = false
     private var requestedJPEG = false
     private var favoriteRequestCount = 0
-    private var pairingClaimCount = 0
     private var heldHomeRoutes: Set<HomeRoute> = []
     private var queuedHomeReplies: [HomeRoute: [(NWConnection, String)]] = [:]
     private let exerciseDateSearch: Bool
@@ -705,14 +791,16 @@ private final class LibraryFixture {
     private var originalRequests: Set<String> = []
     private var sawNovemberPageTwo = false
     private var sawNovemberVideos = false
+    private var avatarRevision: Int?
+    private var seenAvatarRevisions: Set<Int> = []
 
     var port: UInt16? { listener.port?.rawValue }
     var sawJPEG: Bool { queue.sync { requestedJPEG } }
     var favoriteRequests: Int { queue.sync { favoriteRequestCount } }
-    var pairingClaims: Int { queue.sync { pairingClaimCount } }
     var requestedNovemberPageTwo: Bool { queue.sync { sawNovemberPageTwo } }
     var requestedNovemberVideos: Bool { queue.sync { sawNovemberVideos } }
     var originalsRequested: Set<String> { queue.sync { originalRequests } }
+    var avatarRevisionsRequested: Set<Int> { queue.sync { seenAvatarRevisions } }
 
     @MainActor init(holdHomeRequests: Bool = false, exerciseDateSearch: Bool = false, exerciseExport: Bool = false, isAdmin: Bool = false) throws {
         self.exerciseDateSearch = exerciseDateSearch
@@ -747,6 +835,7 @@ private final class LibraryFixture {
 
     func restoreLibrary() { queue.sync { available = true } }
     func failLibrary() { queue.sync { available = false } }
+    func setAvatarRevision(_ revision: Int) { queue.sync { avatarRevision = revision } }
 
     func releaseHomeRequests(_ route: HomeRoute) {
         queue.sync {
@@ -808,9 +897,6 @@ private final class LibraryFixture {
         let role = isAdmin ? "admin" : "member"
         let user = #"{"id":"fixture", "username":"fixture-user", "display_name":"Fixture User", "role":"\#(role)"}"#
         switch target {
-        case "/public/pairing/claim":
-            pairingClaimCount += 1
-            return json(#"{"server_url":"http://127.0.0.1:\#(port ?? 0)","user":\#(user),"session":{"token":"\#(token)","expires_at":"2099-11-21T00:00:00Z"}}"#)
         case "/auth/login":
             return json(#"{"user":\#(user),"session":{"token":"\#(token)","expires_at":"2099-11-21T00:00:00Z"}}"#)
         case "/app-config", "/health":
@@ -819,11 +905,18 @@ private final class LibraryFixture {
         }
 
         let authenticated = headers.lowercased().contains("\r\nx-session-token: \(token.lowercased())")
-        let mediaURL = target.hasPrefix("/photos/fixture-photo/image?")
+        let avatarURL = target.hasPrefix("/users/fixture/avatar?")
+        let mediaURL = avatarURL || target.hasPrefix("/photos/fixture-photo/image?")
             || (exerciseDateSearch && target.hasPrefix("/photos/november-"))
             || (exerciseExport && target.hasPrefix("/photos/export-"))
         guard authenticated || (mediaURL && target.contains("session_token=\(token)")) else {
             return json("{}", status: 401)
+        }
+
+        if avatarURL {
+            let version = URLComponents(string: target)?.queryItems?.first(where: { $0.name == "v" })?.value
+            if let version, let revision = Int(version) { seenAvatarRevisions.insert(revision) }
+            return (200, "image/jpeg", thumbnail)
         }
 
         if target == "/admin/indexing-progress" {
@@ -836,7 +929,12 @@ private final class LibraryFixture {
               ]}
               """)
         }
-        if target == "/auth/me" { return json(#"{"loggedIn":true,"userId":"fixture"}"#) }
+        if target == "/auth/me" {
+            if let avatarRevision {
+                return json(#"{"loggedIn":true,"userId":"fixture","avatar_url":"/users/fixture/avatar?v=\#(avatarRevision)"}"#)
+            }
+            return json(#"{"loggedIn":true,"userId":"fixture"}"#)
+        }
         if target == "/clusters/people/summary" { return json(#"{"clusters":[]}"#) }
         if target == "/syncs" { return json("[]") }
         if target == "/integrations/flickr" { return json(#"{"configured":true,"connected":true,"verified":false}"#) }

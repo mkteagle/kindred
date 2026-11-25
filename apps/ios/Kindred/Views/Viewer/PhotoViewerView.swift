@@ -5,7 +5,6 @@ struct PhotoViewerView: View {
     let photos: [LibraryPhoto]
     let initial: LibraryPhoto
     let startsFavorited: Bool
-    let onArchive: (() -> Void)?
 
     @Environment(\.displayScale) private var displayScale
     @State private var index: Int
@@ -16,16 +15,12 @@ struct PhotoViewerView: View {
     @State private var zoom: CGFloat = 1
     @State private var showInfo = false
     @State private var showShare = false
-    @State private var confirmReviewArchive = false
-    @State private var archiveError: String?
     @State private var playing: LibraryPhoto?
     @Environment(\.dismiss) private var dismiss
 
-    init(photos: [LibraryPhoto], initial: LibraryPhoto, startsFavorited: Bool = false,
-         onArchive: (() -> Void)? = nil) {
+    init(photos: [LibraryPhoto], initial: LibraryPhoto, startsFavorited: Bool = false) {
         self.initial = initial
         self.startsFavorited = startsFavorited
-        self.onArchive = onArchive
         if let index = photos.firstIndex(where: { $0.id == initial.id }) {
             self.photos = photos
             _index = State(initialValue: index)
@@ -63,20 +58,6 @@ struct PhotoViewerView: View {
         }
         .sheet(isPresented: $showShare) {
             SelectionShareSheet(photos: [current])
-        }
-        .confirmationDialog("Archive sample photo?", isPresented: $confirmReviewArchive, titleVisibility: .visible) {
-            Button("Archive for one hour") { Task { await archiveReviewPhoto() } }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This sample will return to your demo library automatically after one hour.")
-        }
-        .alert("Couldn’t archive photo", isPresented: Binding(
-            get: { archiveError != nil },
-            set: { if !$0 { archiveError = nil } }
-        )) {
-            Button("OK") { archiveError = nil }
-        } message: {
-            Text(archiveError ?? "")
         }
         .fullScreenCover(item: $playing) { video in
             VideoPlayerView(video: video)
@@ -117,9 +98,6 @@ struct PhotoViewerView: View {
             Menu {
                 Button("Photo info", systemImage: "info.circle") { showInfo = true }
                 Button("Share", systemImage: "square.and.arrow.up") { showShare = true }
-                if SessionManager.shared.isReadOnlyReview {
-                    Button("Archive sample", systemImage: "archivebox") { confirmReviewArchive = true }
-                }
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 18, weight: .semibold))
@@ -135,19 +113,6 @@ struct PhotoViewerView: View {
         .foregroundStyle(KindredTheme.accent)
         .padding(.horizontal, 12)
         .padding(.bottom, 8)
-    }
-
-    private func archiveReviewPhoto() async {
-        guard SessionManager.shared.isReadOnlyReview, let id = UUID(uuidString: current.photo_id) else { return }
-        do {
-            let _: EmptyResponse = try await APIClient.shared.send(
-                "/review/photos/\(id.uuidString.lowercased())/archive", method: "POST"
-            )
-            onArchive?()
-            dismiss()
-        } catch {
-            archiveError = error.localizedDescription
-        }
     }
 
     // MARK: - Stage

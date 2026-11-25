@@ -106,7 +106,7 @@ class SocialAuthTests(unittest.TestCase):
                                    SECRET, lambda: conn, create)
         self.assertEqual(result['user'], user)
         create.assert_called_once_with('existing')
-        self.assertEqual(cursor.execute.call_args.args[1], ('apple', 'external-id', 'existing', 'owner@gmail.com'))
+        self.assertEqual(cursor.execute.call_args.args[1], ('apple', 'external-id', 'existing', 'owner@gmail.com', None))
 
     def test_unverified_relay_and_third_party_email_do_not_trigger_auto_link(self):
         for claims in (

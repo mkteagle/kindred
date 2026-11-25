@@ -1,5 +1,7 @@
 "use client";
 
+import { ScanMaintenance } from "./scan-maintenance";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { BACKEND, fmt } from "@/lib/constants";
@@ -443,7 +445,8 @@ export function HouseholdTools({ section }: { section: "household" | "advanced" 
       </>}
 
       {section === "advanced" && <>
-              <section className="kx-card">
+              <ScanMaintenance />
+      <section className="kx-card">
         <div className="kx-cardhead">
           <h2>API keys</h2>
           <div className="kx-cardhead-actions">

@@ -224,12 +224,31 @@ struct KindredChipRow<Item: Hashable>: View {
     }
 }
 
+// MARK: - Tablet layout
+
+enum KindredTabletLayout {
+    static let canvasWidth: CGFloat = 1160
+    static let gutter: CGFloat = 32
+
+    static func isExpanded(_ sizeClass: UserInterfaceSizeClass?) -> Bool {
+        UIDevice.current.userInterfaceIdiom == .pad && sizeClass == .regular
+    }
+
+    static func galleryColumns(in width: CGFloat, spacing: CGFloat) -> Int {
+        let count = Int((max(width, 0) + spacing) / (166 + spacing))
+        return min(6, max(2, count))
+    }
+}
+
 // MARK: - Tab Bar
 
 /// Frosted tab bar with the capsule pill behind the active item.
 /// `rgba(12,14,12,.86)` + blur, 1px top hairline, padding 10/14/22.
 struct KindredTabBar: View {
     @Binding var selectedTab: Int
+    @Environment(\.horizontalSizeClass) private var widthClass
+
+    private var expanded: Bool { KindredTabletLayout.isExpanded(widthClass) }
 
     private let tabs: [(id: Int, label: String, icon: String)] = [
         (0, "Home", "house"),
@@ -245,12 +264,21 @@ struct KindredTabBar: View {
                 Button {
                     withAnimation(KindredTheme.ease(0.16)) { selectedTab = tab.id }
                 } label: {
-                    VStack(spacing: 3) {
-                        Image(systemName: tab.icon)
-                            .font(.system(size: 22, weight: isActive ? .semibold : .medium))
-                            .frame(height: 24)
-                        Text(tab.label)
-                            .font(.body(10, weight: isActive ? .bold : .medium, relativeTo: .caption2))
+                    Group {
+                        if expanded {
+                            Label(tab.label, systemImage: tab.icon)
+                                .font(.body(15, weight: isActive ? .bold : .semibold, relativeTo: .body))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        } else {
+                            VStack(spacing: 3) {
+                                Image(systemName: tab.icon)
+                                    .font(.system(size: 22, weight: isActive ? .semibold : .medium))
+                                    .frame(height: 24)
+                                Text(tab.label)
+                                    .font(.body(10, weight: isActive ? .bold : .medium, relativeTo: .caption2))
+                            }
+                        }
                     }
                     .foregroundStyle(isActive ? KindredTheme.accent : KindredTheme.inkMeta)
                     .padding(.vertical, 6)
@@ -259,7 +287,7 @@ struct KindredTabBar: View {
                         isActive ? KindredTheme.accent.opacity(0.16) : Color.clear,
                         in: Capsule()
                     )
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, minHeight: 48)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -268,7 +296,9 @@ struct KindredTabBar: View {
             }
         }
         .padding(.horizontal, 14)
-        .padding(.top, 10)
+        .frame(maxWidth: expanded ? 680 : 560)
+        .frame(maxWidth: .infinity)
+        .padding(.top, expanded ? 5 : 10)
         .background(
             Rectangle()
                 .fill(.ultraThinMaterial)
@@ -290,6 +320,7 @@ struct KindredAppBar: View {
     var unreadCount: Int = 0
     var actionIcon = "bell"
     var actionLabel: String? = nil
+    var horizontalInset: CGFloat = KindredTheme.gutter
     var onAction: () -> Void
 
     var body: some View {
@@ -334,7 +365,7 @@ struct KindredAppBar: View {
                 actionLabel ?? (unreadCount > 0 ? "Notifications, \(unreadCount) unread" : "Notifications")
             )
         }
-        .padding(.horizontal, KindredTheme.gutter)
+        .padding(.horizontal, horizontalInset)
     }
 }
 

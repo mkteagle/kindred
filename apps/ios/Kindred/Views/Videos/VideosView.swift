@@ -17,6 +17,9 @@ struct VideosView<Header: View>: View {
     @State private var clipCount: Int?
     @State private var scrollOffset: CGFloat = 0
     @State private var playing: LibraryPhoto?
+    @Environment(\.horizontalSizeClass) private var widthClass
+
+    private var expanded: Bool { KindredTabletLayout.isExpanded(widthClass) }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -65,17 +68,17 @@ struct VideosView<Header: View>: View {
     private var posterStack: some View {
         VStack(spacing: 10) {
             if let hero = gallery.photos.first {
-                posterCard(hero, height: 168, titleSize: 15, showsPlayChip: true)
+                posterCard(hero, height: expanded ? 290 : 168, titleSize: expanded ? 20 : 15, showsPlayChip: true)
                     .onTapGesture { playing = hero }
             }
 
             let rest = Array(gallery.photos.dropFirst())
             ForEach(Array(stride(from: 0, to: rest.count, by: 2)), id: \.self) { start in
                 HStack(spacing: 10) {
-                    posterCard(rest[start], height: 108, titleSize: 12, showsPlayChip: false)
+                    posterCard(rest[start], height: expanded ? 184 : 108, titleSize: expanded ? 16 : 12, showsPlayChip: false)
                         .onTapGesture { playing = rest[start] }
                     if start + 1 < rest.count {
-                        posterCard(rest[start + 1], height: 108, titleSize: 12, showsPlayChip: false)
+                        posterCard(rest[start + 1], height: expanded ? 184 : 108, titleSize: expanded ? 16 : 12, showsPlayChip: false)
                             .onTapGesture { playing = rest[start + 1] }
                     } else {
                         Color.clear
@@ -84,7 +87,7 @@ struct VideosView<Header: View>: View {
                 .task { await gallery.loadMoreIfNeeded(currentItem: rest[start]) }
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, expanded ? KindredTabletLayout.gutter : 16)
     }
 
     private func posterCard(
@@ -101,13 +104,13 @@ struct VideosView<Header: View>: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(video.photo_title ?? "Untitled")
                     .font(.body(titleSize, weight: .semibold, relativeTo: .subheadline))
-                    .foregroundStyle(KindredTheme.ink)
+                    .foregroundStyle(.white)
                     .lineLimit(1)
                 Spacer(minLength: 4)
                 if let duration = video.durationLabel {
                     Text(duration)
                         .font(.mono(height > 130 ? 10 : 9))
-                        .foregroundStyle(KindredTheme.ink.opacity(0.75))
+                        .foregroundStyle(.white.opacity(0.9))
                 }
             }
             .padding(.horizontal, height > 130 ? 12 : 9)
@@ -119,7 +122,7 @@ struct VideosView<Header: View>: View {
             if showsPlayChip {
                 Image(systemName: "play.fill")
                     .font(.system(size: 13))
-                    .foregroundStyle(KindredTheme.ink)
+                    .foregroundStyle(.white)
                     .frame(width: 34, height: 34)
                     .background(Color(hex: 0x0C0E0C, alpha: 0.55), in: Circle())
                     .padding(10)

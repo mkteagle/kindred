@@ -1,3 +1,4 @@
+import ImageIO
 import SwiftUI
 
 /// Display and speculative loads share one memory cache and deduplicate URLs.
@@ -81,6 +82,7 @@ struct KindredThumbnail: View {
     var cornerRadius: CGFloat = 0
     var contentMode: ContentMode = .fill
     var placeholder: Color = KindredTheme.tile
+    var onAspectRatio: ((CGFloat) -> Void)? = nil
     @Environment(\.displayScale) private var displayScale
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var loaded: UIImage?
@@ -114,9 +116,25 @@ struct KindredThumbnail: View {
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .task(id: "\(url?.absoluteString ?? ""):\(near):\(visible)") {
-                guard near, let url, !DemoDataProvider.isDemoURL(photo.thumb_url ?? "") else { return }
+                guard near else { return }
+                if DemoDataProvider.isDemoURL(photo.thumb_url) {
+                    if let onAspectRatio, let reference = photo.thumb_url,
+                       let file = DemoThumbnailView.fileURL(for: reference),
+                       let source = CGImageSourceCreateWithURL(file as CFURL, nil),
+                       let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+                       let width = properties[kCGImagePropertyPixelWidth] as? CGFloat,
+                       let height = properties[kCGImagePropertyPixelHeight] as? CGFloat, height > 0 {
+                        let orientation = properties[kCGImagePropertyOrientation] as? Int ?? 1
+                        onAspectRatio((5...8).contains(orientation) && width > 0 ? height / width : width / height)
+                    }
+                    return
+                }
+                guard let url else { return }
                 let delivery = PhotoImageDelivery.shared
-                if variant == .thumb, delivery.thumbnail(for: photo.photo_id) != nil { return }
+                if variant == .thumb, let image = delivery.thumbnail(for: photo.photo_id) {
+                    if image.size.height > 0 { onAspectRatio?(image.size.width / image.size.height) }
+                    return
+                }
                 var image = await delivery.image(url, speculative: !visible)
                 if image == nil, publishedURL != nil, visible, !Task.isCancelled,
                    let apiURL, apiURL != url {
@@ -129,14 +147,15 @@ struct KindredThumbnail: View {
                 guard !Task.isCancelled, let image else { return }
                 withAnimation(reduceMotion ? nil : KindredTheme.ease(0.2)) { loaded = image; loadedURL = url }
                 if variant == .thumb { delivery.remember(image, photoID: photo.photo_id) }
+                if image.size.height > 0 { onAspectRatio?(image.size.width / image.size.height) }
             }
         }
         .if(contentMode == .fill) { $0.clipped() }
         .contentShape(Rectangle())
-        .accessibilityLabel(Text(accessibilityText))
+        .accessibilityLabel(Text(Self.accessibilityText(for: photo)))
     }
 
-    private var accessibilityText: String {
+    static func accessibilityText(for photo: LibraryPhoto) -> String {
         let kind = photo.isVideo ? "Video" : "Photo"
         let title = photo.photo_title.flatMap { $0.isEmpty ? nil : $0 }
         let date = photo.takenAt.map { KindredThumbnail.dateFormatter.string(from: $0) }
@@ -161,9 +180,10 @@ struct PhotoTile: View {
     var isSelecting: Bool = false
     var matchPercent: Int? = nil
     var cornerRadius: CGFloat = KindredTheme.radiusTile
+    var onAspectRatio: ((CGFloat) -> Void)? = nil
 
     var body: some View {
-        KindredThumbnail(photo: photo, cornerRadius: cornerRadius)
+        KindredThumbnail(photo: photo, cornerRadius: cornerRadius, onAspectRatio: onAspectRatio)
             // Selected photo: .78 opacity behind a 3px inset terracotta outline.
             .opacity(isSelected ? 0.78 : 1)
             .overlay(alignment: .bottomLeading) {

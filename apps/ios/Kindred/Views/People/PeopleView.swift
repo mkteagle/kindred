@@ -14,9 +14,11 @@ struct PeopleView<Header: View>: View {
     @State private var reviewing = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
+    private var expanded: Bool { KindredTabletLayout.isExpanded(horizontalSizeClass) }
+    private var gutter: CGFloat { expanded ? KindredTabletLayout.gutter : KindredTheme.gutter }
     private var columns: [GridItem] {
-        let count = horizontalSizeClass == .regular ? 5 : 3
-        return Array(repeating: GridItem(.flexible(), spacing: 12), count: count)
+        if expanded { return [GridItem(.adaptive(minimum: 128), spacing: 20)] }
+        return Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
     }
 
     var body: some View {
@@ -32,7 +34,7 @@ struct PeopleView<Header: View>: View {
 
                 if unnamedCount > 0 {
                     reviewBanner
-                        .padding(.horizontal, KindredTheme.gutter)
+                        .padding(.horizontal, gutter)
                         .padding(.bottom, 16)
                 }
 
@@ -50,7 +52,7 @@ struct PeopleView<Header: View>: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(.horizontal, KindredTheme.gutter)
+                    .padding(.horizontal, gutter)
                 }
 
                 Color.clear.frame(height: 100)
@@ -158,9 +160,11 @@ struct ClusterGridView<Header: View>: View {
     @State private var scrollOffset: CGFloat = 0
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
+    private var expanded: Bool { KindredTabletLayout.isExpanded(horizontalSizeClass) }
+    private var gutter: CGFloat { expanded ? KindredTabletLayout.gutter : KindredTheme.gutter }
     private var columns: [GridItem] {
-        let count = horizontalSizeClass == .regular ? 5 : 3
-        return Array(repeating: GridItem(.flexible(), spacing: 12), count: count)
+        if expanded { return [GridItem(.adaptive(minimum: 128), spacing: 20)] }
+        return Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
     }
 
     var body: some View {
@@ -207,7 +211,7 @@ struct ClusterGridView<Header: View>: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(.horizontal, KindredTheme.gutter)
+                    .padding(.horizontal, gutter)
                 }
 
                 Color.clear.frame(height: 100)

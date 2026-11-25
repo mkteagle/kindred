@@ -5,7 +5,6 @@ struct StorageSettingsView: View {
     @State private var uploadVM = UploadViewModel()
     @State private var flickr = HouseholdFlickrConnection.checking
     @State private var showsDeviceSpace = false
-    @State private var showsConnection = false
     @State private var showCleanup = false
     @State private var isCleaningUp = false
     @State private var showFreedSpace = false
@@ -20,16 +19,11 @@ struct StorageSettingsView: View {
     }
 
     var body: some View {
-        SettingsPage("Storage") {
+        SettingsPage("Device storage") {
             destinations
             copyChecks
             deviceSpace
 
-            DisclosureGroup("Server connection", isExpanded: $showsConnection) {
-                ServerConnectionDetails()
-            }
-            .disclosureGroupStyle(SettingsDisclosureStyle())
-            .kindredGroupedCard()
         }
         .task { flickr = await HouseholdFlickrConnection.load() }
         .task(id: checksCopiesAutomatically) {
@@ -90,15 +84,6 @@ struct StorageSettingsView: View {
                 }
             }
 
-            if SessionManager.shared.currentUser?.role == "admin",
-               HostedSocialSignIn.supports(server: APIClient.publicBaseURL) {
-                Divider()
-
-                Link(destination: HostedSocialSignIn.integrationsURL) {
-                    SettingsLinkLabel("Manage Flickr", icon: "arrow.up.right.square")
-                }
-                .accessibilityHint("Opens Kindred settings in your browser")
-            }
         }
         .buttonStyle(.plain)
         .kindredGroupedCard()
@@ -201,32 +186,6 @@ struct StorageSettingsView: View {
             showFreedSpace = true
         } catch {
             // The view model exposes the verification or removal error in Device space.
-        }
-    }
-}
-
-private struct ServerConnectionDetails: View {
-    @State private var viewModel = SettingsViewModel()
-    @State private var checkedConnection = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            if DemoDataProvider.shared.isActive {
-                Text("Demo library")
-            } else {
-                if let host = URL(string: APIClient.publicBaseURL)?.host {
-                    Text(host)
-                        .textSelection(.enabled)
-                }
-                Text(checkedConnection ? (viewModel.isHealthy ? "Online" : "Offline") : "Checking…")
-            }
-        }
-        .font(.kindredCaption)
-        .foregroundStyle(KindredTheme.inkSecondary)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .task {
-            await viewModel.checkHealth()
-            checkedConnection = true
         }
     }
 }

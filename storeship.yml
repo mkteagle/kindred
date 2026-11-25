@@ -76,11 +76,11 @@ ios:
       Services and regional availability
       Core functionality uses the household's own Kindred HTTPS server, PostgreSQL catalog, and storage such as a NAS. iOS PhotoKit is used after the user grants photo access. Flickr is optional for secondary backup. Google and Sign in with Apple are optional on installations configured for those sign-in methods. Face grouping and photo indexing run on the household's server. App features and sample content are the same across storefronts. The review media depict fictional examples, and ordinary households supply their own library content.
   what_to_test: >-
-    Enter https://demo.kindredphotos.app and sign in with the review credentials.
-    Browse the seeded library, search for November 2025, and archive a sample
-    from the photo viewer. Try a local-only import from the Library plus button.
-    On a disposable self-hosted household, test account deletion, ownership
-    transfer, and whole-household deletion under Settings, Account, Manage account.
+    Browse Library and open the photo viewer on iPad in portrait and landscape.
+    Check light and dark mode, search for photos by month, and open Backup & Sync
+    from Settings. Use Manage on the web to change your profile photo, then
+    return to the app and check that it updates. Try pairing from the sign-in screen.
+    The review account opens a sample library.
 
 brand:
   paper: "#FBF4E7"

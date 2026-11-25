@@ -36,6 +36,12 @@ actor APIClient {
     func currentSessionToken() -> String? { sessionToken }
     func currentBaseURL() -> String { baseURL }
 
+    func configuredWebLibrary() async -> String? {
+        struct Configuration: Decodable { let web_url: String? }
+        let configuration: Configuration? = try? await request("/app-config", timeout: 4)
+        return configuration?.web_url
+    }
+
     /// Synchronously accessible base URL for constructing image proxy URLs
     nonisolated(unsafe) static var publicBaseURL: String = ""
 

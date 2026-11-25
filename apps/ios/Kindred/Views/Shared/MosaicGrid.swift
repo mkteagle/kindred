@@ -181,18 +181,24 @@ struct MosaicGrid: View {
     var selection: Set<String> = []
     var matchPercent: (LibraryPhoto) -> Int? = { _ in nil }
     var squareTileRadius: CGFloat? = nil
+    var journalWidth: CGFloat? = nil
+    var dateLabel: (LibraryPhoto) -> String? = { _ in nil }
+    var onSelectDate: ((LibraryPhoto) -> Void)? = nil
     var onTap: (LibraryPhoto) -> Void
     var onLongPress: (LibraryPhoto) -> Void = { _ in }
     var onSweep: (Set<String>) -> Void = { _ in }
 
     private let space = "kindred.mosaic"
     @State private var frames: [String: CGRect] = [:]
+    @State private var imageRatios: [String: CGFloat] = [:]
     @State private var sweepStart: CGPoint?
     @State private var sweptIDs: Set<String> = []
 
     var body: some View {
         Group {
-            if squareTileRadius != nil {
+            if let journalWidth {
+                journalRows(width: journalWidth)
+            } else if squareTileRadius != nil {
                 let tracks = Array(repeating: GridItem(.flexible(), spacing: spacing), count: columns)
                 LazyVGrid(columns: tracks, spacing: spacing) { tiles }
             } else {
@@ -205,22 +211,99 @@ struct MosaicGrid: View {
     }
 
     private var tiles: some View {
-        ForEach(photos) { photo in
-            let isSelected = selection.contains(photo.id)
-            Group {
-                if let squareTileRadius {
-                    SquarePhotoTile(photo: photo, isSelected: isSelected, isSelecting: isSelecting,
-                                    matchPercent: matchPercent(photo), cornerRadius: squareTileRadius)
-                } else {
-                    PhotoTile(photo: photo, isSelected: isSelected, isSelecting: isSelecting,
-                              matchPercent: matchPercent(photo))
+        ForEach(photos) { tile($0) }
+    }
+
+    private func journalRows(width: CGFloat) -> some View {
+        let available = max(1, width)
+        let preferredCount = available < 660 ? 2 : 3
+        let fullRows = max(1, Int((Double(photos.count) / Double(preferredCount)).rounded()))
+        let photosPerRow = photos.count / fullRows
+        let extraPhotos = photos.count % fullRows
+        let maximumHeight = min(250, available / (available < 660 ? 2.8 : 4.35))
+
+        return LazyVStack(alignment: .leading, spacing: spacing) {
+            ForEach(0..<fullRows, id: \.self) { row in
+                let start = row * photosPerRow + min(row, extraPhotos)
+                let end = start + photosPerRow + (row < extraPhotos ? 1 : 0)
+                let items = photos[start..<end]
+                let ratios = items.map { imageRatios[$0.id] ?? 1.5 }
+                let gaps = CGFloat(max(0, ratios.count - 1)) * spacing
+                let usableWidth = max(1, available - gaps)
+                let totalRatio = max(1, ratios.reduce(0, +))
+                let fittedHeight = usableWidth / totalRatio
+                let height = min(maximumHeight * 1.15, fittedHeight)
+                let fillsRow = items.count >= preferredCount
+                // A row of similarly shaped photos still gets a featured tile when
+                // the height cap already requires cropping to fill the canvas.
+                let similarShapes = (ratios.max() ?? 0) - (ratios.min() ?? 0) < 0.28
+                let emphasizesOnePhoto = available >= 660 && fillsRow && similarShapes && height < fittedHeight
+                let weights = ratios.enumerated().map { index, ratio in
+                    emphasizesOnePhoto && index == row % ratios.count ? ratio * 1.38 : ratio
+                }
+                let widthPerUnit = fillsRow ? usableWidth / max(1, weights.reduce(0, +)) : height
+                HStack(spacing: spacing) {
+                    ForEach(items) { photo in
+                        if let index = items.firstIndex(where: { $0.id == photo.id }) {
+                            tile(photo, journalSize: CGSize(
+                                width: widthPerUnit * weights[index - items.startIndex], height: height
+                            ))
+                        }
+                    }
                 }
             }
-            .onTapGesture { onTap(photo) }
-            .onLongPressGesture(minimumDuration: 0.35) { onLongPress(photo) }
-            .accessibilityAction { onTap(photo) }
-            .reportsTileFrame(id: photo.id, in: .named(space))
         }
+        .frame(width: available, alignment: .leading)
+    }
+
+    private func tile(_ photo: LibraryPhoto, journalSize: CGSize? = nil) -> some View {
+        let isSelected = selection.contains(photo.id)
+        return Group {
+            if let journalSize {
+                PhotoTile(photo: photo, isSelected: isSelected, isSelecting: isSelecting,
+                          cornerRadius: 8, onAspectRatio: { ratio in
+                    let clamped = min(2.8, max(0.55, ratio))
+                    if imageRatios[photo.id] == nil { imageRatios[photo.id] = clamped }
+                })
+                .frame(width: journalSize.width, height: journalSize.height)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(KindredThumbnail.accessibilityText(for: photo))
+                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+                .accessibilityValue(isSelecting ? (isSelected ? "Selected" : "Not selected") : "")
+                .accessibilityIdentifier("library.journal.\(photo.id)")
+            } else if let squareTileRadius {
+                SquarePhotoTile(photo: photo, isSelected: isSelected, isSelecting: isSelecting,
+                                matchPercent: matchPercent(photo), cornerRadius: squareTileRadius)
+            } else {
+                PhotoTile(photo: photo, isSelected: isSelected, isSelecting: isSelecting,
+                          matchPercent: matchPercent(photo))
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if let label = dateLabel(photo) {
+                if let onSelectDate {
+                    Button {
+                        onSelectDate(photo)
+                    } label: {
+                        KindredPhotoBadge(text: label)
+                            .frame(minWidth: 44, minHeight: 44, alignment: .bottomTrailing)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Select photos from \(label)")
+                    .padding(7)
+                } else {
+                    KindredPhotoBadge(text: label)
+                        .padding(7)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+        .onTapGesture { onTap(photo) }
+        .onLongPressGesture(minimumDuration: 0.35) { onLongPress(photo) }
+        .accessibilityAction { onTap(photo) }
+        .reportsTileFrame(id: photo.id, in: .named(space))
     }
 
     /// Press and drag across tiles to sweep. Only armed in select mode, so an

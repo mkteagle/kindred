@@ -46,10 +46,10 @@ class QueueOrderTests(unittest.TestCase):
         self.assertEqual(sql.count("%s"), len(params))
         self.assertEqual(params[-1], 50)
 
-    def test_the_unlimited_query_still_passes_its_sentinel(self):
+    def test_the_unlimited_query_needs_no_bound_parameters(self):
         self.pending(None)
         _, params = self.main.db_query.call_args.args
-        self.assertEqual(params, ("0001-01-01",))
+        self.assertEqual(params, ())
 
     def test_undated_photos_sort_behind_dated_ones(self):
         # The sentinel is what puts them last; a bare taken_at would sort NULLs

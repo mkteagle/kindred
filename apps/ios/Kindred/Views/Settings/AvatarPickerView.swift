@@ -473,7 +473,7 @@ struct AvatarAsyncImage: View {
                     }
             }
         }
-        .task {
+        .task(id: avatarPath) {
             avatarURL = await APIClient.shared.avatarImageURL(for: avatarPath)
         }
     }

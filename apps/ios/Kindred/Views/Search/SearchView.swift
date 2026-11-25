@@ -49,8 +49,13 @@ struct SearchView: View {
         guard let selectedPerson else { return photos }
         return photos.filter { personForPhoto[$0.id] == selectedPerson }
     }
+    private var expanded: Bool { KindredTabletLayout.isExpanded(widthClass) }
+    private var gutter: CGFloat { expanded ? KindredTabletLayout.gutter : KindredTheme.gutter }
+    private var canvasWidth: CGFloat { expanded ? KindredTabletLayout.canvasWidth : 760 }
+    private var gridGap: CGFloat { expanded ? 10 : 6 }
     private var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 6), count: widthClass == .regular ? 4 : 2)
+        if expanded { return [GridItem(.adaptive(minimum: 160), spacing: gridGap)] }
+        return Array(repeating: GridItem(.flexible(), spacing: gridGap), count: 2)
     }
     private var historyKey: String? {
         guard !DemoDataProvider.shared.isActive, let id = SessionManager.shared.currentUser?.id else { return nil }
@@ -62,11 +67,11 @@ struct SearchView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     Text("Search")
-                        .font(.display(34, weight: .bold, relativeTo: .largeTitle))
+                        .font(.display(expanded ? 42 : 34, weight: .bold, relativeTo: .largeTitle))
                         .foregroundStyle(KindredTheme.ink)
                         .accessibilityAddTraits(.isHeader)
-                        .padding(.top, 8)
-                        .padding(.bottom, 15)
+                        .padding(.top, expanded ? 17 : 8)
+                        .padding(.bottom, expanded ? 22 : 15)
 
                     searchField
                     if showResults {
@@ -75,16 +80,16 @@ struct SearchView: View {
                         startContent.padding(.top, 25)
                     }
                 }
-                .padding(.horizontal, KindredTheme.gutter)
+                .padding(.horizontal, gutter)
                 .padding(.bottom, 28)
-                .frame(maxWidth: 760)
+                .frame(maxWidth: canvasWidth)
                 .frame(maxWidth: .infinity)
             }
             .safeAreaInset(edge: .top, spacing: 0) {
-                KindredAppBar(unreadCount: inboxVM.unreadCount(readState: readState)) {
+                KindredAppBar(unreadCount: inboxVM.unreadCount(readState: readState), horizontalInset: gutter) {
                     showInbox = true
                 }
-                .frame(maxWidth: 760)
+                .frame(maxWidth: canvasWidth)
                 .frame(maxWidth: .infinity)
                 .background(KindredTheme.bg)
             }
@@ -156,8 +161,8 @@ struct SearchView: View {
         .foregroundStyle(KindredTheme.inkMeta)
         .padding(.leading, 14)
         .padding(.trailing, showResults ? 2 : 14)
-        .frame(minHeight: 46)
-        .background(KindredTheme.fillStrongest, in: .rect(cornerRadius: 12))
+        .frame(minHeight: expanded ? 56 : 46)
+        .background(KindredTheme.fillStrongest, in: .rect(cornerRadius: expanded ? 16 : 12))
     }
 
     private var startContent: some View {
@@ -326,7 +331,7 @@ struct SearchView: View {
 
     private var resultsGrid: some View {
         VStack(spacing: 12) {
-            LazyVGrid(columns: columns, spacing: 6) {
+            LazyVGrid(columns: columns, spacing: gridGap) {
                 ForEach(visiblePhotos) { photo in
                     Button {
                         fieldFocused = false
@@ -355,7 +360,7 @@ struct SearchView: View {
     }
 
     private var skeleton: some View {
-        LazyVGrid(columns: columns, spacing: 6) {
+        LazyVGrid(columns: columns, spacing: gridGap) {
             ForEach(0..<4, id: \.self) { _ in
                 RoundedRectangle(cornerRadius: 12)
                     .fill(KindredTheme.tile)

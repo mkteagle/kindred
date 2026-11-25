@@ -8,6 +8,7 @@ from contextlib import closing
 import jwt
 from fastapi import HTTPException
 from psycopg2.extras import RealDictCursor
+from profile_avatar import google_picture_url
 
 
 def _verified_email(claims):
@@ -127,13 +128,12 @@ def exchange_identity(assertion: str, secret: str, connect, create_session, curr
                     user = cur.fetchone()
                     if invite_code:
                         cur.execute("UPDATE invites SET used_by=%s WHERE id=%s", (str(user['id']), str(invite['id'])))
+            picture = google_picture_url(claims.get('picture')) if claims['provider'] == 'google' else None
             cur.execute("""
-                INSERT INTO user_identities (provider, subject, user_id, email) VALUES (%s,%s,%s,%s)
+                INSERT INTO user_identities (provider, subject, user_id, email, picture_url) VALUES (%s,%s,%s,%s,%s)
                 ON CONFLICT (provider, subject) DO UPDATE
-                SET email = COALESCE(EXCLUDED.email, user_identities.email)
-            """, (claims['provider'], claims['sub'], str(user['id']), email))
-            if claims["provider"] == "apple" and claims.get("apple_refresh_token"):
-                from apple_account import save_token
-                save_token(cur, claims["sub"], claims["apple_refresh_token"], secret)
+                SET email = COALESCE(EXCLUDED.email, user_identities.email),
+                    picture_url = COALESCE(EXCLUDED.picture_url, user_identities.picture_url)
+            """, (claims['provider'], claims['sub'], str(user['id']), email, picture))
     uid = str(user['id'])
     return {'user': dict(user, id=uid), 'session': create_session(uid)}

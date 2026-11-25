@@ -94,7 +94,8 @@ export async function beginSocialAuth(req: NextRequest, provider: SocialProvider
   const link = !mobile && req.nextUrl.searchParams.get("link") === "1";
   if (link && !session) return NextResponse.redirect(new URL("/login", origin));
   const flow = { state, nonce, verifier, redirectUri, origin, expires: Date.now() + 600_000,
-    returnPath: link ? "/settings/integrations" : safeReturnPath(req.nextUrl.searchParams.get("return")),
+    returnPath: link ? (req.nextUrl.searchParams.get("return") === "/settings?edit=photo" ? "/settings?edit=photo" : "/settings/integrations")
+      : safeReturnPath(req.nextUrl.searchParams.get("return")),
     invite_code: mobile ? undefined : req.nextUrl.searchParams.get("invite") || undefined,
     mobile_state: mobileState || undefined, mobile_challenge: mobileChallenge || undefined,
     link_user_id: link ? session?.user_id : undefined,
@@ -194,6 +195,7 @@ export async function finishSocialAuth(req: NextRequest, provider: SocialProvide
       private_email: provider === "apple" && (payload.is_private_email === true || payload.is_private_email === "true"),
       apple_refresh_token: provider === "apple" && typeof tokens.refresh_token === "string" ? tokens.refresh_token : undefined,
       name: typeof payload.name === "string" ? payload.name : undefined,
+      picture: provider === "google" && typeof payload.picture === "string" && payload.picture.length <= 2048 ? payload.picture : undefined,
       link_user_id: flow.link_user_id || undefined, invite_code: flow.invite_code || undefined })
       .setProtectedHeader({ alg: "HS256" }).setIssuer("kindred-web").setAudience("kindred-backend")
       .setSubject(payload.sub).setJti(crypto.randomUUID()).setIssuedAt().setExpirationTime("60s")

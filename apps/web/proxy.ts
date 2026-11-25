@@ -41,7 +41,7 @@ export function proxy(request: NextRequest) {
   // Allow if either session cookie or legacy flickr token exists
   if (!session && !flickrToken) {
     const login = new URL("/login", request.url);
-    if (pathname === "/settings/integrations") login.searchParams.set("return", pathname);
+    if (pathname === "/settings" || pathname.startsWith("/settings/")) login.searchParams.set("return", pathname + request.nextUrl.search);
     return NextResponse.redirect(login);
   }
 

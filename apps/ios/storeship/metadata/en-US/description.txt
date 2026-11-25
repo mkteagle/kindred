@@ -1,17 +1,15 @@
-Kindred Photos gives your household a private, welcoming home for the photos and videos that matter most.
+Kindred Photos lets you browse, search, and back up the photos and videos on your own Kindred server.
 
-Back up your library to your own Kindred server, then rediscover it through people, pets, places, scenes, objects, colors, and the moments you remember. Kindred groups related photos and makes your collection searchable without turning your family history into an advertising profile.
+BROWSE YOUR LIBRARY
+Scroll through photos by date, open a photo full screen, and return to your favorites and albums. iPad shows more of your collection on a larger screen and supports both light and dark mode.
 
-WITH KINDRED, YOU CAN:
+FIND A PHOTO
+Search by subject or narrow results by month. Browse groups of people and pets, then open the photos you want to keep, share, or export.
 
-• Back up photos and large videos with resumable uploads
-• Browse a warm home feed built around recent and meaningful memories
-• Find photos of the people and pets in your life
-• Search by place, scene, object, color, or text found inside an image
-• See every photo of selected family members together
-• Share one household library across iPhone and iPad
-• Keep control of the server and storage behind your library
+BACK UP TO YOUR SERVER
+Back up photos and videos from your devices. Resumable uploads pick up after interruptions. See what has reached your NAS and check your Flickr copy if your household uses Flickr.
 
-Kindred is built for self-hosting. A Kindred server is required to connect and back up a real photo library. Not ready to connect one? Tap Try the demo to explore the complete experience with representative local data.
+CONNECT YOUR DEVICES
+Use a pairing code from your Kindred server to connect another device. Manage household settings from the web, and set a profile photo from your library, an upload, or an available Google profile photo.
 
-Your memories should feel like yours. With Kindred, they are.
+Kindred is self-hosted. Connecting and backing up a real library requires a Kindred server. Flickr and Google are optional. The in-app demo includes a sample library you can explore without an account.

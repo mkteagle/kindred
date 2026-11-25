@@ -25,6 +25,12 @@ struct KindredApp: App {
         cache.diskCapacity = 0
         configureAppearance()
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-test-fresh-session") {
+            KeychainHelper.delete(key: "kindred_session_token")
+            KeychainHelper.delete(key: "kindred_session_user")
+            KeychainHelper.delete(key: "kindred_session_expiry")
+            KeychainHelper.delete(key: PairingService.sessionServerURLKey)
+        }
         if ProcessInfo.processInfo.arguments.contains("--ui-test-home") {
             DemoDataProvider.shared.isActive = true
             return

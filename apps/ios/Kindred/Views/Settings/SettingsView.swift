@@ -1,246 +1,230 @@
 import SwiftUI
 
+enum KindredLinks {
+    static let hostedLibrary = URL(string: "https://www.kindredphotos.app")!
+    static let documentation = hostedLibrary.appending(path: "docs")
+    static let privacy = hostedLibrary.appending(path: "privacy")
+
+    static func webLibrary(_ value: String) -> URL? {
+        let input = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let normalized = PairingService.normaliseServer(input),
+              let components = URLComponents(string: normalized),
+              let scheme = components.scheme?.lowercased(), ["https", "http"].contains(scheme),
+              components.user == nil, components.password == nil,
+              components.query == nil, components.fragment == nil else { return nil }
+        return components.url
+    }
+}
+
 struct SettingsView: View {
-    @State private var session = SessionManager.shared
-    @State private var showsAdvanced = false
+    @State private var viewModel = SettingsViewModel()
+    @State private var confirmingSignOut = false
+    @State private var findingWebLibrary = false
+    @State private var editingWebLibrary = false
+    @State private var webLibraryAddress = ""
+    @Environment(\.horizontalSizeClass) private var widthClass
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
+
+    private var expanded: Bool { KindredTabletLayout.isExpanded(widthClass) }
+    private var isDemo: Bool { DemoDataProvider.shared.isActive }
+    private var signOutTitle: String { isDemo ? "Leave demo" : "Sign out" }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: expanded ? 22 : 16) {
                     KindredPageHeader(title: "Settings")
                         .padding(.horizontal, -KindredTheme.gutter)
-                    account
+                    accountSummary
 
-                    if session.isReadOnlyReview {
-                        Text("This sample library is read-only. You can try an on-device import from Library.")
-                            .font(.kindredBody)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("This device")
+                            .font(.kindredLabel)
                             .foregroundStyle(KindredTheme.inkSecondary)
-                    } else {
-                        VStack(spacing: 0) {
-                            NavigationLink {
-                                BackupSettingsView()
-                            } label: {
-                                SettingsLinkLabel("Backup & Sync", icon: "arrow.triangle.2.circlepath")
-                            }
-                            .accessibilityIdentifier("settings.backup")
+                            .accessibilityAddTraits(.isHeader)
+                        deviceSettings
+                    }
 
-                            Divider()
+                    VStack(spacing: 0) {
+                        Button(action: openWebSettings) {
+                            SettingsLinkLabel("Manage on the web", icon: "globe",
+                                              detail: findingWebLibrary ? "Finding your web library…" : "Profile, household, and library settings",
+                                              isExternal: true)
+                        }
+                        .disabled(findingWebLibrary)
+                        .accessibilityIdentifier("settings.manageOnWeb")
+                        .accessibilityHint("Opens your Kindred library in a browser")
 
-                            NavigationLink {
-                                StorageSettingsView()
-                            } label: {
-                                SettingsLinkLabel("Storage", icon: "externaldrive")
-                            }
-                            .accessibilityIdentifier("settings.storage")
+                        Divider()
+
+                        Link(destination: KindredLinks.documentation) {
+                            SettingsLinkLabel("Help & Docs", icon: "book", isExternal: true)
+                        }
+                        .accessibilityIdentifier("Help & Docs")
+                    }
+                    .buttonStyle(.plain)
+                    .kindredGroupedCard()
+
+                    if !isDemo && !viewModel.session.isReadOnlyReview {
+                        NavigationLink {
+                            AccountManagementView()
+                        } label: {
+                            SettingsLinkLabel("Manage account", icon: "person.crop.circle", detail: "Account deletion and household ownership")
                         }
                         .buttonStyle(.plain)
                         .kindredGroupedCard()
                     }
 
-                    VStack(spacing: 0) {
-                        NavigationLink {
-                            NotificationsSettingsView()
+                    HStack(spacing: 20) {
+                        Button {
+                            confirmingSignOut = true
                         } label: {
-                            SettingsLinkLabel("Notifications", icon: "bell")
+                            Text(signOutTitle)
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
                         }
+                        .foregroundStyle(KindredTheme.dangerText)
+                        .accessibilityIdentifier("settings.signOut")
 
-                        if session.currentUser?.role == "admin" {
-                            Divider()
+                        Spacer(minLength: 4)
 
-                            if !session.isReadOnlyReview {
-                                NavigationLink {
-                                    HouseholdSettingsView()
-                                } label: {
-                                    SettingsLinkLabel("Household", icon: "person.2")
-                                }
-
-                                Divider()
-                            }
-
-                            NavigationLink {
-                                IndexingProgressView()
-                            } label: {
-                                SettingsLinkLabel("Indexing progress", icon: "waveform.path")
-                            }
-                            .accessibilityIdentifier("settings.indexingProgress")
+                        Link(destination: KindredLinks.privacy) {
+                            Text("Privacy policy")
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
                         }
+                        .foregroundStyle(KindredTheme.inkSecondary)
                     }
+                    .font(.kindredLabel)
                     .buttonStyle(.plain)
-                    .kindredGroupedCard()
-
-                    DisclosureGroup("Advanced", isExpanded: $showsAdvanced) {
-                        VStack(spacing: 0) {
-                            NavigationLink {
-                                IntelligenceView()
-                            } label: {
-                                SettingsLinkLabel("Intelligence", icon: "sparkle")
-                            }
-
-                            if session.currentUser?.role == "admin" && !session.isReadOnlyReview {
-                                Divider()
-
-                                NavigationLink {
-                                    AdminScanView()
-                                } label: {
-                                    SettingsLinkLabel("Scan & maintenance", icon: "wrench.and.screwdriver")
-                                }
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, -14)
-                    }
-                    .disclosureGroupStyle(SettingsDisclosureStyle())
-                    .kindredGroupedCard()
+                    .padding(.horizontal, 14)
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, expanded ? KindredTabletLayout.gutter : 16)
+                .padding(.top, expanded ? 15 : 0)
                 .padding(.bottom, 32)
-                .frame(maxWidth: 640)
+                .frame(maxWidth: expanded ? 760 : 640)
                 .frame(maxWidth: .infinity)
             }
             .kindredPaperBackground()
             .navigationTitle("Settings")
             .toolbar(.hidden, for: .navigationBar)
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active, viewModel.session.isAuthenticated, !isDemo {
+                    Task { await viewModel.session.refreshUser() }
+                }
+            }
+            .sheet(isPresented: $confirmingSignOut) {
+                SignOutSheet(onConfirm: {
+                    confirmingSignOut = false
+                    viewModel.logout()
+                }, onCancel: { confirmingSignOut = false }, isDemo: isDemo)
+                .presentationDetents([.height(320)])
+                .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $editingWebLibrary) { webLibrarySheet }
         }
     }
 
-    private var account: some View {
-        NavigationLink {
-            AccountSettingsView()
-        } label: {
-            HStack(spacing: 12) {
-                if let user = session.currentUser {
-                    AccountAvatar(user: user)
-                } else {
-                    Image(systemName: "person.crop.circle")
-                        .font(.system(size: 38))
+    private var accountSummary: some View {
+        HStack(spacing: 12) {
+            if let user = viewModel.session.currentUser, !isDemo {
+                AccountAvatar(user: user)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(user.display_name).font(.kindredLabel)
+                    Text("@\(user.username)")
+                        .font(.kindredCaption)
                         .foregroundStyle(KindredTheme.inkSecondary)
-                        .accessibilityHidden(true)
                 }
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(session.currentUser?.display_name ?? "Account")
-                        .font(.kindredLabel)
-                        .foregroundStyle(KindredTheme.ink)
-                    if session.currentUser != nil {
-                        Text("Account")
-                            .font(.kindredCaption)
-                            .foregroundStyle(KindredTheme.inkSecondary)
-                    }
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(KindredTheme.inkMeta)
+            } else {
+                Image(systemName: "person.crop.circle")
+                    .font(.system(size: 36))
                     .accessibilityHidden(true)
+                Text(isDemo ? "Demo library" : "Account").font(.kindredLabel)
             }
-            .padding(14)
-            .contentShape(Rectangle())
-            .kindredGroupedCard()
+        }
+        .foregroundStyle(KindredTheme.ink)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var deviceSettings: some View {
+        VStack(spacing: 0) {
+            NavigationLink {
+                BackupSettingsView()
+            } label: {
+                SettingsLinkLabel("Backup & Sync", icon: "arrow.triangle.2.circlepath")
+            }
+            .accessibilityIdentifier("settings.backup")
+
+            Divider()
+
+            NavigationLink {
+                StorageSettingsView()
+            } label: {
+                SettingsLinkLabel("Device storage", icon: "externaldrive")
+            }
+            .accessibilityIdentifier("settings.storage")
+
+            Divider()
+
+            NavigationLink {
+                NotificationsSettingsView()
+            } label: {
+                SettingsLinkLabel("Notifications", icon: "bell")
+            }
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("settings.account")
+        .kindredGroupedCard()
     }
-}
 
-private struct AccountSettingsView: View {
-    @State private var viewModel = SettingsViewModel()
-    @State private var showAvatarPicker = false
-    @State private var showPrivacy = false
-    @State private var showSignOut = false
-
-    var body: some View {
-        SettingsPage("Account") {
-            VStack(spacing: 0) {
-                if let user = viewModel.session.currentUser {
-                    Button {
-                        showAvatarPicker = true
-                    } label: {
-                        HStack(spacing: 12) {
-                            AccountAvatar(user: user)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(user.display_name)
-                                    .font(.kindredLabel)
-                                    .foregroundStyle(KindredTheme.ink)
-                                Text("@\(user.username)")
-                                    .font(.kindredCaption)
-                                    .foregroundStyle(KindredTheme.inkSecondary)
-                            }
-                            Spacer()
-                            Image(systemName: "pencil")
-                                .foregroundStyle(KindredTheme.accent)
-                        }
-                        .padding(14)
-                        .contentShape(Rectangle())
-                    }
-                    .accessibilityLabel("Edit profile photo")
-                    .disabled(viewModel.session.isReadOnlyReview)
-
-                    Divider()
+    private var webLibrarySheet: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("https://photos.example.com", text: $webLibraryAddress)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("settings.webLibraryAddress")
+                } footer: {
+                    Text("Enter the address you use to open your Kindred library in a browser.")
                 }
-
-                if HostedSocialSignIn.supports(server: APIClient.publicBaseURL) {
-                    Link(destination: HostedSocialSignIn.integrationsURL) {
-                        SettingsLinkLabel("Sign-in methods", icon: "person.badge.key")
-                    }
-                    .accessibilityHint("Opens Kindred settings in your browser")
-
-                    Divider()
+                Button("Open settings") {
+                    guard let url = KindredLinks.webLibrary(webLibraryAddress) else { return }
+                    editingWebLibrary = false
+                    openURL(url.appending(path: "settings"))
                 }
-
-                if !DemoDataProvider.shared.isActive && !viewModel.session.isReadOnlyReview {
-                    NavigationLink {
-                        AccountManagementView()
-                    } label: {
-                        SettingsLinkLabel("Manage account", icon: "person.crop.circle.badge.minus")
-                    }
-
-                    Divider()
-                }
-
-                Button {
-                    showPrivacy = true
-                } label: {
-                    SettingsLinkLabel("Privacy", icon: "lock.shield")
-                }
-
-                Divider()
-
-                Link(destination: URL(string: "https://kindredphotos.app/privacy")!) {
-                    SettingsLinkLabel("Privacy policy", icon: "doc.text")
-                }
+                .disabled(KindredLinks.webLibrary(webLibraryAddress) == nil)
             }
-            .buttonStyle(.plain)
-            .kindredGroupedCard()
-
-            KindredButton(title: "Sign out", icon: "rectangle.portrait.and.arrow.right",
-                          style: .danger, isFullWidth: true) {
-                showSignOut = true
-            }
-        }
-        .sheet(isPresented: $showAvatarPicker) {
-            if let user = viewModel.session.currentUser {
-                AvatarPickerView(currentAvatarURL: user.avatar_url, userName: user.display_name) { url in
-                    viewModel.session.restoreUser(UserInfo(
-                        id: user.id, username: user.username, display_name: user.display_name,
-                        role: user.role, avatar_url: url
-                    ))
+            .navigationTitle("Web library address")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { editingWebLibrary = false }
                 }
             }
         }
-        .sheet(isPresented: $showPrivacy) {
-            PrivacyInfoSheet { showPrivacy = false }
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
+    }
+
+    private func openWebSettings() {
+        if isDemo {
+            openURL(KindredLinks.hostedLibrary.appending(path: "demo/settings"))
+            return
         }
-        .sheet(isPresented: $showSignOut) {
-            SignOutSheet(onConfirm: {
-                showSignOut = false
-                viewModel.logout()
-            }, onCancel: { showSignOut = false })
-            .presentationDetents([.height(320)])
-            .presentationDragIndicator(.visible)
+        findingWebLibrary = true
+        Task {
+            defer { findingWebLibrary = false }
+            let server = await APIClient.shared.currentBaseURL()
+            if HostedSocialSignIn.supports(server: server) {
+                openURL(KindredLinks.hostedLibrary.appending(path: "settings"))
+            } else if let configured = await APIClient.shared.configuredWebLibrary(),
+                      let origin = KindredLinks.webLibrary(configured) {
+                openURL(origin.appending(path: "settings"))
+            } else {
+                editingWebLibrary = true
+            }
         }
     }
 }
@@ -257,30 +241,6 @@ private struct AccountAvatar: View {
         } else {
             KindredInitialsAvatar(initials: String(user.display_name.prefix(1)).uppercased(), size: 44)
                 .accessibilityHidden(true)
-        }
-    }
-}
-
-private struct HouseholdSettingsView: View {
-    var body: some View {
-        SettingsPage("Household") {
-            VStack(spacing: 0) {
-                NavigationLink {
-                    HouseholdMembersView()
-                } label: {
-                    SettingsLinkLabel("Members", icon: "person.2")
-                }
-
-                Divider()
-
-                NavigationLink {
-                    InviteCodesView()
-                } label: {
-                    SettingsLinkLabel("Invite codes", icon: "key")
-                }
-            }
-            .buttonStyle(.plain)
-            .kindredGroupedCard()
         }
     }
 }
@@ -311,30 +271,44 @@ struct SettingsPage<Content: View>: View {
 struct SettingsLinkLabel: View {
     let title: String
     let icon: String
+    var detail: String?
+    var isExternal: Bool
+    @Environment(\.horizontalSizeClass) private var widthClass
 
-    init(_ title: String, icon: String) {
+    init(_ title: String, icon: String, detail: String? = nil, isExternal: Bool = false) {
         self.title = title
         self.icon = icon
+        self.detail = detail
+        self.isExternal = isExternal
     }
 
+    private var expanded: Bool { KindredTabletLayout.isExpanded(widthClass) }
+
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: expanded ? 17 : 12) {
             Image(systemName: icon)
                 .font(.kindredLabel)
                 .foregroundStyle(KindredTheme.inkSecondary)
                 .frame(width: 20)
                 .accessibilityHidden(true)
-            Text(title)
-                .font(.kindredLabel)
-                .foregroundStyle(KindredTheme.ink)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.kindredLabel)
+                    .foregroundStyle(KindredTheme.ink)
+                if let detail {
+                    Text(detail)
+                        .font(.kindredCaption)
+                        .foregroundStyle(KindredTheme.inkSecondary)
+                }
+            }
             Spacer(minLength: 8)
-            Image(systemName: "chevron.right")
+            Image(systemName: isExternal ? "arrow.up.right" : "chevron.right")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(KindredTheme.inkMeta)
                 .accessibilityHidden(true)
         }
         .padding(14)
-        .frame(minHeight: 48)
+        .frame(minHeight: expanded ? 58 : 48)
         .contentShape(Rectangle())
     }
 }
@@ -374,6 +348,7 @@ struct SettingsDisclosureStyle: DisclosureGroupStyle {
 struct SignOutSheet: View {
     let onConfirm: () -> Void
     let onCancel: () -> Void
+    var isDemo = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -382,12 +357,12 @@ struct SignOutSheet: View {
                 .foregroundStyle(KindredTheme.ember)
                 .padding(.top, 32)
 
-            Text("Sign out?")
+            Text(isDemo ? "Leave demo?" : "Sign out?")
                 .font(.kindredH2)
                 .foregroundStyle(KindredTheme.ash)
                 .padding(.top, 16)
 
-            Text("Are you sure you want to sign out of your household?")
+            Text(isDemo ? "You can return to the demo anytime." : "Are you sure you want to sign out of your household?")
                 .font(.kindredBody)
                 .foregroundStyle(KindredTheme.pine)
                 .multilineTextAlignment(.center)
@@ -398,7 +373,7 @@ struct SignOutSheet: View {
 
             VStack(spacing: 10) {
                 KindredButton(
-                    title: "Sign out",
+                    title: isDemo ? "Leave demo" : "Sign out",
                     icon: "rectangle.portrait.and.arrow.right",
                     style: .danger,
                     isFullWidth: true
@@ -407,48 +382,12 @@ struct SignOutSheet: View {
                 }
 
                 KindredButton(
-                    title: "Stay signed in",
+                    title: isDemo ? "Stay in demo" : "Stay signed in",
                     style: .ghost,
                     isFullWidth: true
                 ) {
                     onCancel()
                 }
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 32)
-        }
-        .background(KindredTheme.sheet)
-    }
-}
-
-// MARK: - Privacy Info Sheet
-
-struct PrivacyInfoSheet: View {
-    let onDismiss: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Image(systemName: "lock.shield.fill")
-                .font(.system(size: 36, weight: .light))
-                .foregroundStyle(KindredTheme.forest)
-                .padding(.top, 32)
-
-            Text("Privacy")
-                .font(.kindredH2)
-                .foregroundStyle(KindredTheme.ash)
-                .padding(.top, 16)
-
-            Text("Library access is limited to your household. If Flickr is connected, it stores an additional copy of your backups.")
-                .font(.kindredBody)
-                .foregroundStyle(KindredTheme.pine)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-                .padding(.top, 8)
-
-            Spacer()
-
-            KindredButton(title: "Got it", style: .dark, isFullWidth: true) {
-                onDismiss()
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 32)

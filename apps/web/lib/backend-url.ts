@@ -20,6 +20,7 @@ const CATALOG_READ = /^(?:health|app-config|stats|locations|albums(?:\/[^/]+)?|f
 
 export function catalogRequest(method: string, path: string, query: URLSearchParams) {
   if (path.startsWith("auth/")) return true;
+  if (method === "GET" && /^users\/me\/avatar\/(?:google|sources)$/.test(path)) return true;
   if (/^photos\/[^/]+\/favorite$/.test(path) && ["PUT", "DELETE"].includes(method)) return true;
   if (path === "library/junk-settings" && method === "PATCH") return true;
   if (method === "PUT" && /^photos\/[^/]+\/keep-in-library$/.test(path)) return true;

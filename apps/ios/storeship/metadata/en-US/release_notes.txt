@@ -1,7 +1,5 @@
-Welcome to Kindred Photos.
-
-• Back up photos and large videos with resumable uploads
-• Recover cleanly from interrupted background transfers
-• Browse people, pets, places, objects, scenes, and memories
-• Search your library and find loved ones together
-• Explore the complete experience without an account in demo mode
+• Browse the redesigned iPad library in portrait or landscape, with the same navigation as iPhone.
+• Open photos in a larger viewer and find results by capture month.
+• Check backup and device storage from Settings and open household controls on the web.
+• Set and crop a profile photo in web settings from an upload, your library, or Google when available.
+• Updated the app’s iPhone and iPad layouts in light and dark mode.

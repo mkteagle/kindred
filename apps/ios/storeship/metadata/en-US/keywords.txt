@@ -1,1 +1,1 @@
-photos,family,private,backup,nas,album,memories,organize,search,people,pets,self-hosted
+NAS,self hosted,photo backup,photo library,video,albums,search,people,Flickr,household,archive
